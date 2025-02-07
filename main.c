@@ -34,21 +34,32 @@ int filter(const struct dirent *entry) {
     return 0;
 }
 
+char* concat(const char *s1, const char *s2)
+{
+    char *result = malloc(strlen(s1) + strlen(s2) + 2); 
+    strcpy(result, s1);
+    result[strlen(s1)] = '/';
+    result[strlen(s1)+1] = 0;
+    strcat(result, s2);
+    return result;
+}
+
 int find_channel_filenames(const char *dirnm) {
   struct dirent **namelist;
   int n;
   n = scandir(dirnm, &namelist, filter, alphasort);
   if (n < 16)
     return -1;
-  for (int i = 0; i < n, i++) {
-    if (strstr("C01", namelist[0]->d_name) != NULL)
-      fnc01 = namelist[0]->d_name;
-    if (strstr("C02", namelist[0]->d_name) != NULL)
-      fnc02 = namelist[1]->d_name;
-    if (strstr("C03", namelist[0]->d_name) != NULL)
-      fnc03 = namelist[2]->d_name;
-    if (strstr("C13", namelist[0]->d_name) != NULL)
-      fnc13 = namelist[12]->d_name;
+  for (int i = 0; i < n; i++) {
+    printf("name %d : %s\n", i, namelist[i]->d_name);
+    if (strstr(namelist[i]->d_name, "C01") != NULL)
+      fnc01 = concat(dirnm, namelist[0]->d_name);
+    if (strstr(namelist[i]->d_name, "C02") != NULL)
+      fnc02 = concat(dirnm, namelist[1]->d_name);
+    if (strstr(namelist[i]->d_name, "C03") != NULL)
+      fnc03 = concat(dirnm, namelist[2]->d_name);
+    if (strstr(namelist[i]->d_name, "C13") != NULL)
+      fnc13 = concat(dirnm, namelist[12]->d_name);
   }
   return 0;
 }
@@ -64,11 +75,12 @@ int main(int argc, char *argv[]) {
 
   find_id_from_name(basenm);
   find_channel_filenames(dirnm);
-
+  printf("Files %s %s %s %s\n", fnc01, fnc02, fnc03, fnc13);
+  
   DataNC c01, c02, c03, c13, aux;
-  load_nc_sf(fnc01, &c01, "Rad", 1);
-  load_nc_sf(fnc02, &c02, "Rad", 1);
-  load_nc_sf(fnc03, &c03, "Rad", 1);
+  load_nc_sf(fnc01, &c01, "CMI", 1);
+  load_nc_sf(fnc02, &c02, "CMI", 1);
+  load_nc_sf(fnc03, &c03, "CMI", 1);
 
   // Iguala los tamaños a la resolución mínima
   aux = downsample_neighbor_nc(c01, 2);
