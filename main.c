@@ -38,13 +38,18 @@ int find_channel_filenames(const char *dirnm) {
   struct dirent **namelist;
   int n;
   n = scandir(dirnm, &namelist, filter, alphasort);
-  printf("%d\n", n);
-  if (n != 16)
+  if (n < 16)
     return -1;
-  fnc01 = namelist[0]->d_name;
-  fnc02 = namelist[1]->d_name;
-  fnc03 = namelist[2]->d_name;
-  fnc13 = namelist[12]->d_name;
+  for (int i = 0; i < n, i++) {
+    if (strstr("C01", namelist[0]->d_name) != NULL)
+      fnc01 = namelist[0]->d_name;
+    if (strstr("C02", namelist[0]->d_name) != NULL)
+      fnc02 = namelist[1]->d_name;
+    if (strstr("C03", namelist[0]->d_name) != NULL)
+      fnc03 = namelist[2]->d_name;
+    if (strstr("C13", namelist[0]->d_name) != NULL)
+      fnc13 = namelist[12]->d_name;
+  }
   return 0;
 }
 
