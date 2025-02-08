@@ -1,5 +1,5 @@
 /* True color composite image generation
- * Copyright (c) 2024  Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Labotatorio Nacional de Observación de la Tierra, UNAM
  */
 #include <math.h>
@@ -11,7 +11,7 @@
 #include "datanc.h"
 #include "image.h"
 
-ImageData create_truecolor_composite(DataNC c01, DataNC c02, DataNC c03,
+ImageData create_truecolor_rgb(DataNC c01, DataNC c02, DataNC c03,
                                      unsigned char apply_histogram) {
   ImageData imout;
   imout.bpp = 3;
@@ -78,6 +78,6 @@ ImageData create_truecolor_composite(DataNC c01, DataNC c02, DataNC c03,
   }
 
   double end = omp_get_wtime();
-  printf("Tiempo composite %lf\n", end - start);
+  printf("Tiempo RGB %lf\n", end - start);
   return imout;
 }
