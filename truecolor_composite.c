@@ -13,7 +13,7 @@
 
 ImageData create_truecolor_composite(DataNC c01, DataNC c02, DataNC c03) {
   ImageData imout;
-  imout.bpp = 4;
+  imout.bpp = 3;
   imout.width = c01.width;
   imout.height = c01.height;
   imout.data = malloc(imout.bpp * c01.size);
@@ -25,28 +25,26 @@ ImageData create_truecolor_composite(DataNC c01, DataNC c02, DataNC c03) {
     for (int x = 0; x < c01.width; x++) {
       int i = y * c01.width + x;
       int po = i * imout.bpp;
-      unsigned char r, g, b, a;
+      unsigned char r, g, b;
 
       r = g = b = 0;
-      a = 0;
       if (c01.data_in[i] >= 0 && c01.data_in[i] < 4095) {
         // Verde sintético con la combinación lineal de las 3 bandas
         float gg = 0.48358168 * c02.data_in[i] + 0.45706946 * c01.data_in[i] +
                    0.08038137 * c03.data_in[i];
         // Generación de color visible para imagen
-        r = (unsigned char)(255.0 * c02.data_in[i] / 4095.0);
-        g = (unsigned char)(255.0 * gg / 4095.0);
-        b = (unsigned char)(255.0 * c01.data_in[i] / 4095.0);
+        r = (unsigned char)(255.0 * c02.data_in[i]);
+        g = (unsigned char)(255.0 * gg);
+        b = (unsigned char)(255.0 * c01.data_in[i]);
 
         imout.data[po] = r;
         imout.data[po + 1] = g;
         imout.data[po + 2] = b;
-        imout.data[po + 3] = a;
       }
     }
   }
   double end = omp_get_wtime();
-  printf("Tiempo pseudo %lf\n", end - start);
+  printf("Tiempo composite %lf\n", end - start);
 
   return imout;
 }

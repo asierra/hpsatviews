@@ -1,0 +1,9 @@
+{
+    "files.associations": {
+        "iostream": "cpp"
+    },
+    "files.exclude": {
+        "**/*.o": true,
+        "**/*.1": true
+    },
+}

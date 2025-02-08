@@ -15,4 +15,4 @@ truecolornight: $(OBJ)
 .PHONY: clean
 
 clean:
-	rm -f *.o *~ 
+	rm -f *.o *~ truecolornight
