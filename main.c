@@ -9,7 +9,8 @@
 char id[13] = "sAAAAJJJHHmm";
 char *fnc01, *fnc02, *fnc03, *fnc13;
 
-ImageData create_truecolor_composite(DataNC B, DataNC R, DataNC NiR);
+ImageData create_truecolor_composite(DataNC B, DataNC R, DataNC NiR,
+                                     unsigned char hgram);
 
 int find_id_from_name(const char *name) {
   int pos = 0;
@@ -93,7 +94,7 @@ int main(int argc, char *argv[]) {
   free(c03.data_in);
   c03 = aux;
 
-  ImageData diurna = create_truecolor_composite(c01, c02, c03);
+  ImageData diurna = create_truecolor_composite(c01, c02, c03, 1);
   //ImageData nocturna = create_nocturnal_composite(c13);
 
   write_image_png("out.png", &diurna);
