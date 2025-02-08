@@ -9,5 +9,7 @@ typedef struct {
   unsigned char *data;
 } ImageData;
 
+// Both images must be RGB and of the same size
+ImageData blend_images(ImageData bg, ImageData fg, ImageData mask);
 
 #endif
