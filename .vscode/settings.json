@@ -4,6 +4,7 @@
     },
     "files.exclude": {
         "**/*.o": true,
-        "**/*.1": true
+        "**/*.1": true,
+	"**/*.png": true
     },
 }

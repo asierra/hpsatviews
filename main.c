@@ -96,7 +96,7 @@ int main(int argc, char *argv[]) {
   ImageData diurna = create_truecolor_composite(c01, c02, c03);
   //ImageData nocturna = create_nocturnal_composite(c13);
 
-  write_image_png("nite.png", &diurna);
+  write_image_png("out.png", &diurna);
 
   return 0;
 }
