@@ -96,6 +96,9 @@ int main(int argc, char *argv[]) {
   
   DataNC c01, c02, c03, c13, aux;
   DataNCF navlo, navla;
+  
+  compute_navigation_nc(fnc13, &navla, &navlo);
+  return 0;
 
   load_nc_sf(fnc01, &c01, "CMI", 0);
   load_nc_sf(fnc02, &c02, "CMI", 0);

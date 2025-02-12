@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <netcdf.h>
+#include <math.h>
 #include <omp.h>
 #include <time.h>
 #include "datanc.h"
@@ -162,27 +163,99 @@ int load_nc_float(char *filename, DataNCF *datanc, char *variable)
   return 0;
 }
 
-// Remuestreo seleccionando vecinos cercanos con factor entero
-DataNC downsample_neighbor_nc(DataNC datanc_big, int factor)
-{
-  DataNC datanc;
-  datanc.add_offset   = datanc_big.add_offset;
-  datanc.scale_factor = datanc_big.scale_factor;
-  datanc.width  = datanc_big.width/factor;
-  datanc.height = datanc_big.height/factor;
-  datanc.size = datanc.width * datanc.height;
-  datanc.data_in = malloc(sizeof(short)*datanc.size);
-  
-  double start = omp_get_wtime();
+double rad2deg = 180.0/M_PI;
+float hsat, sm_maj, sm_min, lambda_0, H;
 
-  #pragma omp parallel for shared(datanc, datanc_big, factor) 
-  for (int j=0; j < datanc_big.height; j += factor)
-    for (int i=0; i < datanc_big.width; i += factor) {
-      int is = (j*datanc.width + i)/factor;
-      datanc.data_in[is] = datanc_big.data_in[j*datanc_big.width + i];
-    }
-  double end = omp_get_wtime();
-  printf("Tiempo downsampling %lf\n", end - start);
+int compute_lalo(float x, float y, float *la, float *lo) {
+  double snx, sny, csx, csy, sx, sy, sz, rs, a, b, c;
+  double sm_maj2 = sm_maj*sm_maj;
+  double sm_min2 = sm_min*sm_min;
 
-  return datanc;
+  snx = sin(x);
+  csx = cos(x);
+  sny = sin(y);
+  csy = cos(y);
+  a = snx*snx + csx*csx*(csy*csy + sm_maj2*sny*sny/sm_min2);
+  b  = -2.0*H*csx*csy;
+  c =  H*H - sm_maj2;
+
+  rs = (-1.0*b - sqrt(b*b - 4.0*a*c))/(2.0*a);
+
+  sx = rs*csx*csy;
+  sy = -rs*snx;
+  sz = rs*csx*csy;
+
+  *la = (float)(atan2(sm_maj2*sz, sm_min2*sqrt(((H - sx)*(H - sx))+(sy*sy)))*rad2deg);
+  *lo = (float)(lambda_0 - atan2(sy, H - sx)*rad2deg);
 }
+
+int compute_navigation_nc(char *filename, DataNCF *navla, DataNCF *navlo) 
+{
+  int ncid, varid;
+  int x, y, retval;
+  
+  if ((retval = nc_open(filename, NC_NOWRITE, &ncid)))
+    ERR(retval);
+
+  int xid, yid;
+  if ((retval = nc_inq_dimid(ncid, "x", &xid)))
+    ERR(retval);
+  if ((retval = nc_inq_dimid(ncid, "y", &yid)))
+    ERR(retval);
+
+  // Recuperamos las dimensiones de los datos
+  if ((retval = nc_inq_dimlen(ncid, xid, &navla->width)))
+    ERR(retval);
+  if ((retval = nc_inq_dimlen(ncid, yid, &navla->height)))
+    ERR(retval);
+  navla->size = navla->width * navla->height;
+  printf("Dimensiones x %d y %d\n", navla->width, navla->height);
+
+ 
+  if ((retval = nc_inq_varid(ncid, "goes_imager_projection", &varid)))
+    ERR(retval);
+  if ((retval = nc_get_att_float(ncid, varid, "perspective_point_height", &hsat)))
+    WRN(retval);
+  if ((retval = nc_get_att_float(ncid, varid, "semi_major_axis", &sm_maj)))
+    WRN(retval);
+  if ((retval = nc_get_att_float(ncid, varid, "semi_minor_axis", &sm_min)))
+    WRN(retval);
+  float lo_proj_orig;
+  if ((retval = nc_get_att_float(ncid, varid, "longitude_of_projection_origin", &lo_proj_orig)))
+    WRN(retval);
+  H = sm_maj + hsat;
+  lambda_0 = lo_proj_orig/rad2deg;
+  printf("hsat %g %g %g %g %g\n", hsat, sm_maj, sm_min, lo_proj_orig, H);
+
+  // Obtiene el factor de escala y offset de la variable
+  float x_sf, y_sf, x_ao, y_ao;
+  if ((retval = nc_get_att_float(ncid, xid, "scale_factor", &x_sf)))
+    WRN(retval);
+  if ((retval = nc_get_att_float(ncid, xid, "add_offset", &x_ao)))
+    WRN(retval);
+  if ((retval = nc_get_att_float(ncid, yid, "scale_factor", &y_sf)))
+    WRN(retval);
+  if ((retval = nc_get_att_float(ncid, yid, "add_offset", &y_ao)))
+    WRN(retval);
+
+  // Apartamos memoria para los datos 
+  navla->data_in = malloc(sizeof(float)*navla->size);
+  navlo->data_in = malloc(sizeof(float)*navlo->size);
+  for (int j=0; j <navla->height; j++) {
+    float y = j*y_sf + y_ao;
+    int k = j*navla->width;
+    for (int i=0; i <navla->width; i++) {
+      k += i;
+      float x = i*x_sf + x_ao;
+      compute_lalo(x, y, &navla->data_in[k], &navlo->data_in[k]);
+    }
+  }
+
+  if ((retval = nc_close(ncid)))
+    ERR(retval);
+
+  printf("Exito creando navegación con %s!\n", filename);
+  return 0;
+}
+
+
