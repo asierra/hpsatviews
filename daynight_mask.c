@@ -150,7 +150,6 @@ ImageData create_daynight_mask(DataNC datanc, DataNCF navla, DataNCF navlo, floa
       float la = navla.data_in[i];
       float lo = navlo.data_in[i];
       double sza = sun_zenith_angle(la, lo, datanc) * 180 / M_PI;
-
       if (sza > 88.0) {
         w = 1;
         nite++;
@@ -168,7 +167,7 @@ ImageData create_daynight_mask(DataNC datanc, DataNCF navla, DataNCF navlo, floa
     }
   }
   *dnratio = (nite==0) ? 100: 100.0*day/datanc.size;
-  //printf("day/night ratio %d %d %g\n", day, nite, dnratio);
+  printf("day/night ratio %d %d %g\n", day, nite, dnratio);
   double end = omp_get_wtime();
   printf("Tiempo mask %lf\n", end - start);
 

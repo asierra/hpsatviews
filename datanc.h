@@ -8,11 +8,7 @@
 typedef struct {
   size_t width, height;
   size_t size;
-  short *data_in;
-  float scale_factor;
-  float add_offset;
-  float kappa0;
-  float planck_fk1, planck_fk2, planck_bc1, planck_bc2;
+  float *data_in;
   int year, mon, day, hour, min, sec;
   unsigned char band_id;
 } DataNC;

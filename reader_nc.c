@@ -20,9 +20,9 @@
 #define WRN(e)                                                                 \
   { printf("Warning: %s\n", nc_strerror(e)); }
 
-// Carga un conjunto de datos con factor de escala en NetCDF y lo pone en una
-// estructura DataNC
-int load_nc_sf(char *filename, DataNC *datanc, char *variable) {
+
+// Carga un conjunto de datos de NetCDF y lo pone en una estructura DataNC
+int load_nc_sf(char *filename, char *variable, DataNC *datanc) {
   int ncid, varid;
   int x, y, retval;
 
@@ -41,26 +41,23 @@ int load_nc_sf(char *filename, DataNC *datanc, char *variable) {
   if ((retval = nc_inq_dimlen(ncid, yid, &datanc->height)))
     ERR(retval);
   datanc->size = datanc->width * datanc->height;
-  printf("Dimensiones x %d y %d\n", datanc->width, datanc->height);
+  printf("Dimensiones x %d y %d  size %d\n", datanc->width, datanc->height, datanc->size);
 
   // Obtenemos el id de la variable
   if ((retval = nc_inq_varid(ncid, variable, &varid)))
     ERR(retval);
 
   // Obtiene el factor de escala y offset de la variable
-  if ((retval = nc_get_att_float(ncid, varid, "scale_factor",
-                                 &datanc->scale_factor)))
+  float scale_factor, add_offset;
+  if ((retval=nc_get_att_float(ncid, varid, "scale_factor", &scale_factor)))
     WRN(retval);
-  if ((retval =
-           nc_get_att_float(ncid, varid, "add_offset", &datanc->add_offset)))
+  if ((retval=nc_get_att_float(ncid, varid, "add_offset", &add_offset)))
     WRN(retval);
-  printf("Scale %g Offset %g\n", datanc->scale_factor, datanc->add_offset);
-
-  // Apartamos memoria para los datos
-  datanc->data_in = malloc(sizeof(short) * datanc->size);
+  printf("Scale %g Offset %g\n", scale_factor, add_offset);
 
   // Recupera los datos
-  if ((retval = nc_get_var_short(ncid, varid, datanc->data_in)))
+  short *datatmp = malloc(sizeof(short) * datanc->size);
+  if ((retval = nc_get_var_short(ncid, varid, datatmp)))
     ERR(retval);
 
   // Obtenemos el tiempo
@@ -81,7 +78,7 @@ int load_nc_sf(char *filename, DataNC *datanc, char *variable) {
   datanc->hour = ts.tm_hour;
   datanc->min = ts.tm_min;
   datanc->sec = ts.tm_sec;
-  printf("Fecha %d %d %d\n", datanc->year, datanc->mon, datanc->day);
+  //printf("Fecha %d %d %d\n", datanc->year, datanc->mon, datanc->day);
 
   if ((retval = nc_inq_varid(ncid, "band_id", &varid)))
       ERR(retval);
@@ -89,54 +86,64 @@ int load_nc_sf(char *filename, DataNC *datanc, char *variable) {
       ERR(retval);
   printf("banda %d\n", datanc->band_id);
 
-  // Obtiene los parámetros de Planck
+  // Obtiene los parámetros de Planck o Kappa0
+  float planck_fk1, planck_fk2, planck_bc1, planck_bc2, kappa0;
   if (datanc->band_id > 6) {
     if ((retval = nc_inq_varid(ncid, "planck_fk1", &varid)))
       ERR(retval);
-    if ((retval = nc_get_var_float(ncid, varid, &datanc->planck_fk1)))
+    if ((retval = nc_get_var_float(ncid, varid, &planck_fk1)))
       ERR(retval);
     if ((retval = nc_inq_varid(ncid, "planck_fk2", &varid)))
       ERR(retval);
-    if ((retval = nc_get_var_float(ncid, varid, &datanc->planck_fk2)))
+    if ((retval = nc_get_var_float(ncid, varid, &planck_fk2)))
       ERR(retval);
     if ((retval = nc_inq_varid(ncid, "planck_bc1", &varid)))
       ERR(retval);
-    if ((retval = nc_get_var_float(ncid, varid, &datanc->planck_bc1)))
+    if ((retval = nc_get_var_float(ncid, varid, &planck_bc1)))
       ERR(retval);
     if ((retval = nc_inq_varid(ncid, "planck_bc2", &varid)))
       ERR(retval);
-    if ((retval = nc_get_var_float(ncid, varid, &datanc->planck_bc2)))
+    if ((retval = nc_get_var_float(ncid, varid, &planck_bc2)))
       ERR(retval);
-    printf("Planck %g %g %g %g\n", datanc->planck_fk1, datanc->planck_fk2,
-           datanc->planck_bc1, datanc->planck_bc2);
+    printf("Planck %g %g %g %g\n", planck_fk1, planck_fk2,
+           planck_bc1, planck_bc2);
   } else if (datanc->band_id >= 1) {
     if ((retval = nc_inq_varid(ncid, "kappa0", &varid)))
       ERR(retval);
-    if ((retval = nc_get_var_float(ncid, varid, &datanc->kappa0)))
+    if ((retval = nc_get_var_float(ncid, varid, &kappa0)))
       ERR(retval);
-    printf("Kappa0 %g\n", datanc->kappa0);
+    printf("Kappa0 %g\n", kappa0);
   }
 
   if ((retval = nc_close(ncid)))
     ERR(retval);
 
-  // Aplica factor de escala y offset
+  // Aplica factor de escala, offset y parámetros
   // Calcula máximos y mínimos para verificar datos
-
-  printf("sizes %d %d\n", sizeof(float), sizeof(short));
-  int imin = 20000;
-  int imax = -20000;
+  float fmin = 1e20;
+  float fmax = -fmin;
   int neg = 0;
+  datanc->data_in = malloc(sizeof(float)*datanc->size);
   for (int i = 0; i < datanc->size; i++)
-    if (datanc->data_in[i] >= 0) {
-      if (datanc->data_in[i] > imax)
-        imax = datanc->data_in[i];
-      if (datanc->data_in[i] < imin) {
-        imin = datanc->data_in[i];
+    if (datatmp[i] >= 0) {
+      float f;
+      float rad = scale_factor * datatmp[i] + add_offset;
+      if (datanc->band_id > 6 && datanc->band_id < 17) {
+        f = (planck_fk2 / (log((planck_fk1 / rad) + 1)) -
+                   planck_bc1) / planck_bc2;
+      } else {
+        f = kappa0*rad;
       }
-    } else if (datanc->data_in[i] < neg)
-      neg = datanc->data_in[i];
-  printf("min %d max %d neg %d\n", imin, imax, neg);
+      if (f > fmax)
+        fmax = f;
+      if (f < fmin) {
+        fmin = f;
+      }
+      datanc->data_in[i] = f;
+    } else if (datatmp[i] < neg)
+      neg = datatmp[i];
+  printf("min %g max %g neg %d\n", fmin, fmax, neg);
+  free(datatmp);
 
   printf("Exito decodificando %s!\n", filename);
   return 0;
@@ -187,28 +194,27 @@ float hsat, sm_maj, sm_min, lambda_0, H;
 
 int compute_lalo(float x, float y, float *la, float *lo) {
   double snx, sny, csx, csy, sx, sy, sz, rs, a, b, c;
-  double sm_maj2 = sm_maj * sm_maj;
-  double sm_min2 = sm_min * sm_min;
+  double sm_maj2 = sm_maj*sm_maj;
+  double sm_min2 = sm_min*sm_min;
 
   snx = sin(x);
   csx = cos(x);
   sny = sin(y);
   csy = cos(y);
-  a = snx * snx + csx * csx * (csy * csy + sm_maj2 * sny * sny / sm_min2);
-  b = -2.0 * H * csx * csy;
-  c = H * H - sm_maj2;
-
-  rs = (-1.0 * b - sqrt(b * b - 4.0 * a * c)) / (2.0 * a);
-
-  sx = rs * csx * csy;
-  sy = -rs * snx;
-  sz = rs * csx * csy;
+  a = snx*snx + csx*csx * (csy*csy + sm_maj2*sny*sny/sm_min2);
+  b = -2.0*H*csx*csy;
+  c = H*H - sm_maj2;
+  rs = (-b - sqrt(b*b - 4.0*a*c)) / (2.0*a);
+  sx = rs*csx*csy;
+  sy = -rs*snx;
+  sz = rs*csx*sny;
 
   *la = (float)(atan2(sm_maj2 * sz,
                       sm_min2 * sqrt(((H - sx) * (H - sx)) + (sy * sy))) *
                 rad2deg);
-  *lo = (float)(lambda_0 - atan2(sy, H - sx) * rad2deg);
+  *lo = (float)((lambda_0 - atan2(sy, H - sx))*rad2deg);
 }
+
 
 int compute_navigation_nc(char *filename, DataNCF *navla, DataNCF *navlo) {
   int ncid, varid;
@@ -268,19 +274,28 @@ int compute_navigation_nc(char *filename, DataNCF *navla, DataNCF *navlo) {
   navlo->data_in = malloc(sizeof(float) * navlo->size);
 
   int k = 0;
+  float lomin=1e10, lamin=1e10, lomax=-lomin, lamax=-lamin;
   for (int j = 0; j < navla->height; j++) {
     float y = j * y_sf + y_ao;
-    // int k = j*navla->width;
-    // printf("y %d %g - ", j); fflush(stdout);
     for (int i = 0; i < navla->width; i++) {
-      // k += i;
+      float la, lo;
       float x = i * x_sf + x_ao;
-      // printf("y %d %g %d %g %d - ", j, y, i, x, k); fflush(stdout);
-      compute_lalo(x, y, &navla->data_in[k], &navlo->data_in[k]);
+      compute_lalo(x, y, &la, &lo);
+      if (la < lamin)
+        lamin = la;
+      if (la > lamax)
+        lamax = la;
+      if (lo < lomin)
+        lomin = lo;
+      if (lo > lomax)
+        lomax = lo;
+      navla->data_in[k] = la;
+      navlo->data_in[k] = lo;
       k++;
     }
-  }
 
+  }
+  printf("corners %g %g  %g %g\n", lomin, lamin, lomax, lamax);
   if ((retval = nc_close(ncid)))
     ERR(retval);
 

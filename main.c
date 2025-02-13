@@ -97,10 +97,11 @@ int main(int argc, char *argv[]) {
   DataNCF navlo, navla;
 
   compute_navigation_nc(fnc13, &navla, &navlo);
-  load_nc_sf(fnc01, &c01, "Rad", 1);
-  load_nc_sf(fnc02, &c02, "Rad", 1);
-  load_nc_sf(fnc03, &c03, "Rad", 1);
-  load_nc_sf(fnc13, &c13, "Rad", 1);
+  
+  load_nc_sf(fnc01, "Rad", &c01);
+  load_nc_sf(fnc02, "Rad", &c02);
+  load_nc_sf(fnc03, "Rad", &c03);
+  load_nc_sf(fnc13, "Rad", &c13);
 
   // Iguala los tamaños a la resolución mínima
   aux = downsample_neighbor_nc(c01, 2);
@@ -134,6 +135,12 @@ int main(int argc, char *argv[]) {
     write_image_png("out.png", &blend);
   }
   // Free all memory
-
+  free(c01.data_in);
+  free(c02.data_in);
+  free(c03.data_in);
+  free(c13.data_in);
+  free(navla.data_in);
+  free(navlo.data_in);
+  
   return 0;
 }

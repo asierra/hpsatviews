@@ -9,12 +9,11 @@
 DataNC downsample_neighbor_nc(DataNC datanc_big, int factor)
 {
   DataNC datanc;
-  datanc.add_offset   = datanc_big.add_offset;
-  datanc.scale_factor = datanc_big.scale_factor;
   datanc.width  = datanc_big.width/factor;
   datanc.height = datanc_big.height/factor;
   datanc.size = datanc.width * datanc.height;
-  datanc.data_in = malloc(sizeof(short)*datanc.size);
+  printf("data size %d %d %d\n", datanc.width, datanc.height, datanc.size); fflush(stdout);
+  datanc.data_in = malloc(sizeof(float)*datanc.size);
   
   double start = omp_get_wtime();
 

@@ -35,8 +35,7 @@ ImageData create_nocturnal_pseudocolor(DataNC datanc) {
 
       r = g = b = 0;
       if (datanc.data_in[i] >= 0 && datanc.data_in[i] < 4095) {
-        float f = datanc.scale_factor * datanc.data_in[i] + datanc.add_offset;
-
+        float f = datanc.data_in[i];
         if (f < tmin)
           tmin = f;
         if (f > tmax)
