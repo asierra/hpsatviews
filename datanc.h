@@ -4,7 +4,7 @@
 #include <stdlib.h>
 
 
-// En esta estructura se guardanlos datos NetCDF recuperados de disco
+// Data structure to store data read from a NetCDF file
 typedef struct {
   size_t width, height;
   size_t size;
@@ -19,7 +19,7 @@ typedef struct {
   float *data_in;
 } DataNCF;
 
-// Remuestreo seleccionando vecinos cercanos con factor entero
+// Downsampling using Nearest-neighbor interpolation with integer factor
 DataNC downsample_neighbor_nc(DataNC datanc_big, int factor);
 
 #endif
