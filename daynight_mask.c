@@ -7,9 +7,9 @@
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
-
 #include "datanc.h"
-#include "image.h"
+#include "image.h" 
+
 
 double sun_zenith_angle(float la, float lo, DataNC datanc) {
   // input data:
@@ -127,7 +127,8 @@ double sun_zenith_angle(float la, float lo, DataNC datanc) {
   return Zenith;
 }
 
-ImageData create_daynight_mask(DataNC datanc, DataNCF navla, DataNCF navlo, float *dnratio) {
+ImageData create_daynight_mask(DataNC datanc, DataNCF navla, DataNCF navlo, 
+    float *dnratio, float max_temp) {
   ImageData imout;
   imout.bpp = 1;
   imout.width = datanc.width;
@@ -149,6 +150,7 @@ ImageData create_daynight_mask(DataNC datanc, DataNCF navla, DataNCF navlo, floa
       float w = 0;
       float la = navla.data_in[i];
       float lo = navlo.data_in[i];
+      float temp = datanc.data_in[i];
       double sza = sun_zenith_angle(la, lo, datanc) * 180 / M_PI;
       if (sza > 88.0) {
         w = 1;
@@ -162,6 +164,10 @@ ImageData create_daynight_mask(DataNC datanc, DataNCF navla, DataNCF navlo, floa
       } else {
         w = 0;
         day++;
+      }
+      // Even if it is day, it is opaque for high clouds
+      if (temp < max_temp) {
+        w = 1;
       }
       imout.data[po] = (unsigned char)(255 * w);
     }

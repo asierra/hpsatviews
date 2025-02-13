@@ -15,7 +15,8 @@ ImageData create_truecolor_rgb(DataNC B, DataNC R, DataNC NiR,
 ImageData create_nocturnal_pseudocolor(DataNC datanc);
 
 ImageData create_daynight_mask(DataNC datanc, DataNCF navla, DataNCF navlo,
-                               float *dnratio);
+                               float *dnratio, float max_tmp);
+
 
 int find_id_from_name(const char *name) {
   int pos = 0;
@@ -118,19 +119,16 @@ int main(int argc, char *argv[]) {
   ImageData nocturna = create_nocturnal_pseudocolor(c13);
 
   float dnratio;
-  ImageData mask = create_daynight_mask(c13, navla, navlo, &dnratio);
+  ImageData mask = create_daynight_mask(c13, navla, navlo, &dnratio, 263.15);
   printf("daynight ratio %g\n", dnratio);
 
   write_image_png("dia.png", &diurna);
   write_image_png("noche.png", &nocturna);
   write_image_png("mask.png", &mask);
 
-  if (dnratio > 95)
-    write_image_png("out.png", &diurna);
-  else if (dnratio < 0.25)
+  if (dnratio < 0.15)
     write_image_png("out.png", &nocturna);
   else {
-    printf("Combinando noche y día con máscara.\n");
     ImageData blend = blend_images(nocturna, diurna, mask);
     write_image_png("out.png", &blend);
   }

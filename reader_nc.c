@@ -1,5 +1,5 @@
 /* NetCDF Data reader
- * Copyright (c) 2019  Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Labotatorio Nacional de Observación de la Tierra, UNAM
  */
 #include "datanc.h"
