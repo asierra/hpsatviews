@@ -1,3 +1,7 @@
+/* NetCDF Data structure and tools
+ * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Labotatorio Nacional de Observación de la Tierra, UNAM
+ */
 #ifndef _DATANC_H_
 #define _DATANC_H_
 
@@ -19,7 +23,7 @@ typedef struct {
   float *data_in;
 } DataNCF;
 
-// Downsampling using Nearest-neighbor interpolation with integer factor
+// Downsampling using Nearest-neighbor interpolation (to do) with integer factor
 DataNC downsample_neighbor_nc(DataNC datanc_big, int factor);
 
 #endif

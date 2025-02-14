@@ -3,3 +3,7 @@ Thu Feb 13 12:48:05 PM CST 2025
 To add --version and --help command line options, maybe just as the
 command without arguments.
 
+A true coding of the Nearest-neighbor interpolation.
+
+Parallelization with OMP and CUDA.
+

@@ -1,5 +1,4 @@
-/* Basic image code.
- *
+/* Image data structure and tools
  * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Labotatorio Nacional de Observación de la Tierra, UNAM
  */

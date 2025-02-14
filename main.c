@@ -1,3 +1,9 @@
+/* Main program where everything is built and it's decided which
+ * images will be stored.
+ *
+ * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Labotatorio Nacional de Observación de la Tierra, UNAM
+ */
 #include "reader_nc.h"
 #include "writer_png.h"
 #include <dirent.h>
@@ -6,7 +12,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Date and time signature
 char id[13] = "sAAAAJJJHHmm";
+
+// Input filenames full path
 char *fnc01, *fnc02, *fnc03, *fnc13;
 
 ImageData create_truecolor_rgb(DataNC B, DataNC R, DataNC NiR,
@@ -139,6 +148,10 @@ int main(int argc, char *argv[]) {
   free(c13.data_in);
   free(navla.data_in);
   free(navlo.data_in);
+  free(fnc01);
+  free(fnc02);
+  free(fnc03);
+  free(fnc13);
   
   return 0;
 }

@@ -1,3 +1,7 @@
+/* NetCDF Data structure and tools
+ * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Labotatorio Nacional de Observación de la Tierra, UNAM
+ */
 #include <stdlib.h>
 #include <stdio.h>
 #include <omp.h>
@@ -5,7 +9,8 @@
 #include "datanc.h"
 
 
-// Remuestreo seleccionando vecinos cercanos con factor entero
+// Downsampling using Nearest-neighbor interpolation (to do) with integer factor
+// Right now it just selects without interpolation.
 DataNC downsample_neighbor_nc(DataNC datanc_big, int factor)
 {
   DataNC datanc;
