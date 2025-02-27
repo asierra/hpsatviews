@@ -15,9 +15,9 @@ ImageData create_truecolor_rgb(DataNC c01, DataNC c02, DataNC c03,
                                      unsigned char apply_histogram) {
   ImageData imout;
   imout.bpp = 3;
-  imout.width = c01.width;
-  imout.height = c01.height;
-  imout.data = malloc(imout.bpp * c01.size);
+  imout.width = c01.base.width;
+  imout.height = c01.base.height;
+  imout.data = malloc(imout.bpp * c01.base.size);
 
   // Inicializamos histograma
   unsigned int histogram[255];
@@ -29,18 +29,18 @@ ImageData create_truecolor_rgb(DataNC c01, DataNC c02, DataNC c03,
   double start = omp_get_wtime();
 
 #pragma omp parallel for shared(c01, c02, c03, imout)
-  for (int y = 0; y < c01.height; y++) {
-    for (int x = 0; x < c01.width; x++) {
-      int i = y * c01.width + x;
+  for (int y = 0; y < imout.height; y++) {
+    for (int x = 0; x < imout.width; x++) {
+      int i = y * imout.width + x;
       int po = i * imout.bpp;
       unsigned char r, g, b;
 
       r = g = b = 0;
-      if (c01.data_in[i] >= 0 && c01.data_in[i] < 4095) {
+      if (c01.base.data_in[i] >= 0 && c01.base.data_in[i] < 4095) {
         // Verde sintético con la combinación lineal de las 3 bandas
-        float c01f = c01.data_in[i];
-        float c02f = c02.data_in[i];
-        float c03f = c03.data_in[i];
+        float c01f = c01.base.data_in[i];
+        float c02f = c02.base.data_in[i];
+        float c03f = c03.base.data_in[i];
 
         float gg = 0.48358168 * c02f + 0.45706946 * c01f + 0.08038137 * c03f;
         // Generación de color visible para imagen
@@ -64,12 +64,12 @@ ImageData create_truecolor_rgb(DataNC c01, DataNC c02, DataNC c03,
     unsigned char transfer[255]; // Función de transferencia
     for (int i = 0; i < 256; i++) {
       cum += histogram[i];
-      transfer[i] = (unsigned char)(255.0 * cum / c01.size);
+      transfer[i] = (unsigned char)(255.0 * cum / c01.base.size);
     }
 #pragma omp parallel for shared(c01, imout.data)
-    for (int i = 0; i < c01.size; i++) {
+    for (int i = 0; i < c01.base.size; i++) {
       int p = i * imout.bpp;
-      if (c01.data_in[i] > 0) {
+      if (c01.base.data_in[i] > 0) {
         imout.data[p] = transfer[imout.data[p]];
         imout.data[p + 1] = transfer[imout.data[p + 1]];
         imout.data[p + 2] = transfer[imout.data[p + 2]];

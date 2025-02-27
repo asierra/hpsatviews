@@ -23,7 +23,7 @@ ImageData create_truecolor_rgb(DataNC B, DataNC R, DataNC NiR,
 
 ImageData create_nocturnal_pseudocolor(DataNC datanc);
 
-ImageData create_daynight_mask(DataNC datanc, DataNCF navla, DataNCF navlo,
+ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo,
                                float *dnratio, float max_tmp);
 
 
@@ -103,8 +103,8 @@ int main(int argc, char *argv[]) {
   }
   // printf("Files %s %s %s %s %s\n", fnc01, fnc02, fnc03, fnc13, fnnav);
 
-  DataNC c01, c02, c03, c13, aux;
-  DataNCF navlo, navla;
+  DataNC c01, c02, c03, c13;
+  DataF aux, navlo, navla;
 
   compute_navigation_nc(fnc13, &navla, &navlo);
   
@@ -114,15 +114,15 @@ int main(int argc, char *argv[]) {
   load_nc_sf(fnc13, "Rad", &c13);
 
   // Iguala los tamaños a la resolución mínima
-  aux = downsample_boxfilter_nc(c01, 2);
-  free(c01.data_in);
-  c01 = aux;
-  aux = downsample_boxfilter_nc(c02, 4);
-  free(c02.data_in);
-  c02 = aux;
-  aux = downsample_boxfilter_nc(c03, 2);
-  free(c03.data_in);
-  c03 = aux;
+  aux = downsample_boxfilter_nc(c01.base, 2);
+  free(c01.base.data_in);
+  c01.base = aux;
+  aux = downsample_boxfilter_nc(c02.base, 4);
+  free(c02.base.data_in);
+  c02.base = aux;
+  aux = downsample_boxfilter_nc(c03.base, 2);
+  free(c03.base.data_in);
+  c03.base = aux;
 
   ImageData diurna = create_truecolor_rgb(c01, c02, c03, 1);
   ImageData nocturna = create_nocturnal_pseudocolor(c13);
@@ -142,10 +142,10 @@ int main(int argc, char *argv[]) {
     write_image_png("out.png", &blend);
   }
   // Free all memory
-  free(c01.data_in);
-  free(c02.data_in);
-  free(c03.data_in);
-  free(c13.data_in);
+  free(c01.base.data_in);
+  free(c02.base.data_in);
+  free(c03.base.data_in);
+  free(c13.base.data_in);
   free(navla.data_in);
   free(navlo.data_in);
   free(fnc01);

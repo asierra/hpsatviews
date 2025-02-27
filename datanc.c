@@ -9,9 +9,9 @@
 #include "datanc.h"
 
 
-DataNC downsample_simple_nc(DataNC datanc_big, int factor)
+DataF downsample_simple_nc(DataF datanc_big, int factor)
 {
-  DataNC datanc;
+  DataF datanc;
   datanc.width  = datanc_big.width/factor;
   datanc.height = datanc_big.height/factor;
   datanc.size = datanc.width * datanc.height;
@@ -31,9 +31,9 @@ DataNC downsample_simple_nc(DataNC datanc_big, int factor)
 }
 
 
-DataNC downsample_boxfilter_nc(DataNC datanc_big, int factor)
+DataF downsample_boxfilter_nc(DataF datanc_big, int factor)
 {
-  DataNC datanc;
+  DataF datanc;
   datanc.width  = datanc_big.width/factor;
   datanc.height = datanc_big.height/factor;
   datanc.size = datanc.width * datanc.height;

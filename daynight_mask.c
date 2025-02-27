@@ -127,13 +127,14 @@ double sun_zenith_angle(float la, float lo, DataNC datanc) {
   return Zenith;
 }
 
-ImageData create_daynight_mask(DataNC datanc, DataNCF navla, DataNCF navlo, 
+// All data structures must be of the same dimensions, or the result will be wrong.
+ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo, 
     float *dnratio, float max_temp) {
   ImageData imout;
   imout.bpp = 1;
-  imout.width = datanc.width;
-  imout.height = datanc.height;
-  imout.data = malloc(imout.bpp * datanc.size);
+  imout.width = navla.width;
+  imout.height = navla.height;
+  imout.data = malloc(imout.bpp * navla.size);
 
   unsigned int day, nite;
   day = nite = 0;
@@ -141,16 +142,16 @@ ImageData create_daynight_mask(DataNC datanc, DataNCF navla, DataNCF navlo,
   double start = omp_get_wtime();
 
 #pragma omp parallel for shared(datanc, data)
-  for (int y = 0; y < datanc.height; y++) {
-    for (int x = 0; x < datanc.width; x++) {
-      int i = y * datanc.width + x;
+  for (int y = 0; y < navla.height; y++) {
+    for (int x = 0; x < navla.width; x++) {
+      int i = y * navla.width + x;
       int po = i * imout.bpp;
 
       // Para la penumbra, usa geometría solar
       float w = 0;
       float la = navla.data_in[i];
       float lo = navlo.data_in[i];
-      float temp = datanc.data_in[i];
+      float temp = datanc.base.data_in[i];
       double sza = sun_zenith_angle(la, lo, datanc) * 180 / M_PI;
       if (sza > 88.0) {
         w = 1;
@@ -172,7 +173,7 @@ ImageData create_daynight_mask(DataNC datanc, DataNCF navla, DataNCF navlo,
       imout.data[po] = (unsigned char)(255 * w);
     }
   }
-  *dnratio = (nite==0) ? 100: 100.0*day/datanc.size;
+  *dnratio = (nite==0) ? 100: 100.0*day/navla.size;
   printf("day/night ratio %d %d %g\n", day, nite, dnratio);
   double end = omp_get_wtime();
   printf("Tiempo mask %lf\n", end - start);

@@ -18,24 +18,24 @@
 ImageData create_nocturnal_pseudocolor(DataNC datanc) {
   ImageData imout;
   imout.bpp = 3;
-  imout.width = datanc.width;
-  imout.height = datanc.height;
-  imout.data = malloc(imout.bpp * datanc.size);
+  imout.width = datanc.base.width;
+  imout.height = datanc.base.height;
+  imout.data = malloc(imout.bpp * datanc.base.size);
 
   float tmin = 1e10, tmax = -1e10, rmin = 1e10, rmax = -1e10;
 
   double start = omp_get_wtime();
 
 #pragma omp parallel for shared(datanc, mout.data)
-  for (int y = 0; y < datanc.height; y++) {
-    for (int x = 0; x < datanc.width; x++) {
-      int i = y * datanc.width + x;
+  for (int y = 0; y < imout.height; y++) {
+    for (int x = 0; x < imout.width; x++) {
+      int i = y * imout.width + x;
       int po = i * imout.bpp;
       unsigned char r, g, b;
 
       r = g = b = 0;
-      if (datanc.data_in[i] >= 0 && datanc.data_in[i] < 4095) {
-        float f = datanc.data_in[i];
+      if (datanc.base.data_in[i] >= 0 && datanc.base.data_in[i] < 4095) {
+        float f = datanc.base.data_in[i];
         if (f < tmin)
           tmin = f;
         if (f > tmax)

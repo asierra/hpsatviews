@@ -36,12 +36,12 @@ int load_nc_sf(char *filename, char *variable, DataNC *datanc) {
     ERR(retval);
 
   // Recuperamos las dimensiones de los datos
-  if ((retval = nc_inq_dimlen(ncid, xid, &datanc->width)))
+  if ((retval = nc_inq_dimlen(ncid, xid, &datanc->base.width)))
     ERR(retval);
-  if ((retval = nc_inq_dimlen(ncid, yid, &datanc->height)))
+  if ((retval = nc_inq_dimlen(ncid, yid, &datanc->base.height)))
     ERR(retval);
-  datanc->size = datanc->width * datanc->height;
-  printf("Dimensiones x %d y %d  size %d\n", datanc->width, datanc->height, datanc->size);
+  datanc->base.size = datanc->base.width * datanc->base.height;
+  printf("Dimensiones x %d y %d  size %d\n", datanc->base.width, datanc->base.height, datanc->base.size);
 
   // Obtenemos el id de la variable
   if ((retval = nc_inq_varid(ncid, variable, &varid)))
@@ -56,7 +56,7 @@ int load_nc_sf(char *filename, char *variable, DataNC *datanc) {
   printf("Scale %g Offset %g\n", scale_factor, add_offset);
 
   // Recupera los datos
-  short *datatmp = malloc(sizeof(short) * datanc->size);
+  short *datatmp = malloc(sizeof(short) * datanc->base.size);
   if ((retval = nc_get_var_short(ncid, varid, datatmp)))
     ERR(retval);
 
@@ -123,8 +123,8 @@ int load_nc_sf(char *filename, char *variable, DataNC *datanc) {
   float fmin = 1e20;
   float fmax = -fmin;
   int neg = 0;
-  datanc->data_in = malloc(sizeof(float)*datanc->size);
-  for (int i = 0; i < datanc->size; i++)
+  datanc->base.data_in = malloc(sizeof(float)*datanc->base.size);
+  for (int i = 0; i < datanc->base.size; i++)
     if (datatmp[i] >= 0) {
       float f;
       float rad = scale_factor * datatmp[i] + add_offset;
@@ -139,7 +139,7 @@ int load_nc_sf(char *filename, char *variable, DataNC *datanc) {
       if (f < fmin) {
         fmin = f;
       }
-      datanc->data_in[i] = f;
+      datanc->base.data_in[i] = f;
     } else if (datatmp[i] < neg)
       neg = datatmp[i];
   printf("min %g max %g neg %d\n", fmin, fmax, neg);
@@ -149,8 +149,8 @@ int load_nc_sf(char *filename, char *variable, DataNC *datanc) {
   return 0;
 }
 
-// Carga un conjunto de datos en NetCDF y lo pone en una estructura DataNC
-int load_nc_float(char *filename, DataNCF *datanc, char *variable) {
+// Carga un conjunto de datos en NetCDF y lo pone en una estructura DataF
+int load_nc_float(char *filename, DataF *datanc, char *variable) {
   int ncid, varid;
   int x, y, retval;
 
@@ -216,7 +216,7 @@ int compute_lalo(float x, float y, float *la, float *lo) {
 }
 
 
-int compute_navigation_nc(char *filename, DataNCF *navla, DataNCF *navlo) {
+int compute_navigation_nc(char *filename, DataF *navla, DataF *navlo) {
   int ncid, varid;
   int x, y, retval;
 
