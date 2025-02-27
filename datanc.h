@@ -23,7 +23,11 @@ typedef struct {
   float *data_in;
 } DataNCF;
 
-// Downsampling using Nearest-neighbor interpolation (to do) with integer factor
-DataNC downsample_neighbor_nc(DataNC datanc_big, int factor);
+
+// Simple downsampling selecting points.
+DataNC downsample_simple_nc(DataNC datanc_big, int factor);
+
+// Downsampling using Box Filter algorithm.
+DataNC downsample_boxfilter_nc(DataNC datanc_big, int factor);
 
 #endif

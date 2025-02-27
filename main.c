@@ -114,13 +114,13 @@ int main(int argc, char *argv[]) {
   load_nc_sf(fnc13, "Rad", &c13);
 
   // Iguala los tamaños a la resolución mínima
-  aux = downsample_neighbor_nc(c01, 2);
+  aux = downsample_boxfilter_nc(c01, 2);
   free(c01.data_in);
   c01 = aux;
-  aux = downsample_neighbor_nc(c02, 4);
+  aux = downsample_boxfilter_nc(c02, 4);
   free(c02.data_in);
   c02 = aux;
-  aux = downsample_neighbor_nc(c03, 2);
+  aux = downsample_boxfilter_nc(c03, 2);
   free(c03.data_in);
   c03 = aux;
 
