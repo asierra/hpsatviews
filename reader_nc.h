@@ -7,10 +7,14 @@
 
 #include "datanc.h"
 
+
+// Load data and metadada from nc file
 int load_nc_sf(char *filename, char *variable, DataNC *datanc);
 
+// Just load float array from nc file
 int load_nc_float(char *filename, DataF *datanc, char *variable);
 
-int compute_navigation_nc(char *filename, DataF *navla, DataF *navlo);
+// From L1b file compute local navigation
+int compute_navigation_nc(char *GOES_L1b_filename, DataF *navla, DataF *navlo);
 
 #endif

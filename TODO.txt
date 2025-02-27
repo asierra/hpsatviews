@@ -7,3 +7,13 @@ A true coding of the Nearest-neighbor interpolation.
 
 Parallelization with OMP and CUDA.
 
+
+Thu Feb 27 01:06:42 PM CST 2025
+
+Actually we don't use Nearest-neighbor interpolation, we use simple
+downsampling and Box filter downsampling.
+
+To create a library as main.c is just an usage example.
+
+Add version and CR for LANOT, UNAM
+
