@@ -23,9 +23,9 @@ typedef struct {
 
 
 // Simple downsampling selecting points.
-DataF downsample_simple_nc(DataF datanc_big, int factor);
+DataF downsample_simple(DataF datanc_big, int factor);
 
 // Downsampling using Box Filter algorithm.
-DataF downsample_boxfilter_nc(DataF datanc_big, int factor);
+DataF downsample_boxfilter(DataF datanc_big, int factor);
 
 #endif
