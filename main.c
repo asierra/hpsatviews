@@ -11,7 +11,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 
 // Date and time signature
 char id[13] = "sAAAAJJJHHmm";
@@ -97,17 +96,14 @@ int main(int argc, char *argv[]) {
   fnc01 = fnc02 = fnc03 = fnc13 = NULL;
   find_channel_filenames(dirnm);
 
-  // Verifica que existen todos los archivos necesarios y si no,  marca error
+  // Verifica que existen todos los archivos necesarios 
   if (fnc01 == NULL || fnc02 == NULL || fnc03 == NULL || fnc13 == NULL) {
     printf("Error: Faltan archivos para poder constriur la imagen final.\n");
     return -1;
   }
-  // printf("Files %s %s %s %s %s\n", fnc01, fnc02, fnc03, fnc13, fnnav);
-
+  
   DataNC c01, c02, c03, c13;
   DataF aux, navlo, navla;
-
-  compute_navigation_nc(fnc13, &navla, &navlo);
   
   load_nc_sf(fnc01, "Rad", &c01);
   load_nc_sf(fnc02, "Rad", &c02);
@@ -127,6 +123,7 @@ int main(int argc, char *argv[]) {
     aux = downsample_boxfilter(c03.base, 2);
     free(c03.base.data_in);
     c03.base = aux;
+    compute_navigation_nc(fnc13, &navla, &navlo);
   } else {
     // Iguala los tamaños a la resolución máxima
     aux = upsample_bilinear(c01.base, 2);
@@ -138,7 +135,9 @@ int main(int argc, char *argv[]) {
     aux = upsample_bilinear(c03.base, 2);
     free(c03.base.data_in);
     c03.base = aux;
+    compute_navigation_nc(fnc02, &navla, &navlo);
   }
+
 
   ImageData diurna = create_truecolor_rgb(c01, c02, c03, 1);
   ImageData nocturna = create_nocturnal_pseudocolor(c13);

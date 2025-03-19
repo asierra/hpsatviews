@@ -2,9 +2,7 @@ Thu Feb 13 12:48:05 PM CST 2025
 
 To add --version and --help command line options, maybe just as the
 command without arguments.
-
 A true coding of the Nearest-neighbor interpolation.
-
 Parallelization with OMP and CUDA.
 
 
@@ -12,14 +10,12 @@ Thu Feb 27 01:06:42 PM CST 2025
 
 Actually we don't use Nearest-neighbor interpolation, we use simple
 downsampling and Box filter downsampling.
-
 To create a library as main.c is just an usage example.
-
 Add version and CR for LANOT, UNAM
 
 
 Tue Mar 18 10:43:38 PM CST 2025
 
 Add upscaling well implemented.
-Convert to C99.
-How to implemente Rayleight correction.
+Convert to C99 not possible because scandir.
+Implement Rayleight atmospheric correction.
