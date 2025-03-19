@@ -29,4 +29,7 @@ DataF downsample_simple(DataF datanc_big, int factor);
 // Downsampling using Box Filter algorithm.
 DataF downsample_boxfilter(DataF datanc_big, int factor);
 
+// Upsampling using bilinear algorithm.
+DataF upsample_bilinear(DataF datanc_big, int factor);
+
 #endif

@@ -17,3 +17,9 @@ To create a library as main.c is just an usage example.
 
 Add version and CR for LANOT, UNAM
 
+
+Tue Mar 18 10:43:38 PM CST 2025
+
+Add upscaling well implemented.
+Convert to C99.
+How to implemente Rayleight correction.

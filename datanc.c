@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <omp.h>
+#include <math.h>
 
 #include "datanc.h"
 
@@ -69,3 +70,40 @@ DataF downsample_boxfilter(DataF datanc_big, int factor)
 
   return datanc;
 }
+
+
+DataF upsample_bilinear(DataF datanc_small, int factor)
+{
+  DataF datanc;
+  datanc.width  = datanc_small.width*factor;
+  datanc.height = datanc_small.height*factor;
+  datanc.size = datanc.width * datanc.height;
+  datanc.data_in = malloc(sizeof(float)*datanc.size);
+  float xrat = (float)(datanc_small.width - 1)/(datanc.width - 1);
+  float yrat = (float)(datanc_small.height - 1)/(datanc.height - 1);
+
+  double start = omp_get_wtime();
+
+  #pragma omp parallel for shared(datanc, datanc_small, factor) 
+  for (int j=0; j < datanc.height; j++) {
+    for (int i=0; i < datanc.width; i++) {
+      int xl = (int)floor(xrat*i);
+      int yl = (int)floor(yrat*j);
+      int xh = (int)ceil(xrat*i);
+      int yh = (int)ceil(yrat*j);
+      float xw = (xrat*i) - xl;
+      float yw = (yrat*j) - yl;
+
+      double d = datanc_small.data_in[yl*datanc_small.width + xl]*(1 -xw)*(1 - yw) +
+        datanc_small.data_in[yl*datanc_small.width + xh]*xw*(1 - yw) + 
+        datanc_small.data_in[yh*datanc_small.width + xl]*(1 -xw)*yw +
+        datanc_small.data_in[yh*datanc_small.width + xh]*xw*yw;
+      datanc.data_in[j*datanc.width + i] = (float)d;
+    }
+  }
+  double end = omp_get_wtime();
+  printf("Tiempo upsampling bilinear %lf\n", end - start);
+
+  return datanc;
+}
+

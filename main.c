@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 // Date and time signature
 char id[13] = "sAAAAJJJHHmm";
@@ -113,16 +114,31 @@ int main(int argc, char *argv[]) {
   load_nc_sf(fnc03, "Rad", &c03);
   load_nc_sf(fnc13, "Rad", &c13);
 
-  // Iguala los tamaños a la resolución mínima
-  aux = downsample_boxfilter(c01.base, 2);
-  free(c01.base.data_in);
-  c01.base = aux;
-  aux = downsample_boxfilter(c02.base, 4);
-  free(c02.base.data_in);
-  c02.base = aux;
-  aux = downsample_boxfilter(c03.base, 2);
-  free(c03.base.data_in);
-  c03.base = aux;
+  char downsample = 0;
+
+  if (downsample) {
+    // Iguala los tamaños a la resolución mínima
+    aux = downsample_boxfilter(c01.base, 2);
+    free(c01.base.data_in);
+    c01.base = aux;
+    aux = downsample_boxfilter(c02.base, 4);
+    free(c02.base.data_in);
+    c02.base = aux;
+    aux = downsample_boxfilter(c03.base, 2);
+    free(c03.base.data_in);
+    c03.base = aux;
+  } else {
+    // Iguala los tamaños a la resolución máxima
+    aux = upsample_bilinear(c01.base, 2);
+    free(c01.base.data_in);
+    c01.base = aux;
+    aux = upsample_bilinear(c13.base, 4);
+    free(c13.base.data_in);
+    c13.base = aux;
+    aux = upsample_bilinear(c03.base, 2);
+    free(c03.base.data_in);
+    c03.base = aux;
+  }
 
   ImageData diurna = create_truecolor_rgb(c01, c02, c03, 1);
   ImageData nocturna = create_nocturnal_pseudocolor(c13);
