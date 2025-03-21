@@ -29,7 +29,6 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo,
 
 int find_id_from_name(const char *name) {
   int pos = 0;
-  int len = strlen(name);
 
   while (name[pos] != 's' && name[pos] > 32)
     pos++;

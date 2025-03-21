@@ -53,8 +53,6 @@ int write_image_png(char *filename, ImageData *image) {
 }
 
 void write_png_file(char *filename, png_t *pngt) {
-  int y;
-
   FILE *fp = fopen(filename, "wb");
   if (!fp)
     abort();

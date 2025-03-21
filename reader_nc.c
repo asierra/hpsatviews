@@ -24,7 +24,7 @@
 // Carga un conjunto de datos de NetCDF y lo pone en una estructura DataNC
 int load_nc_sf(char *filename, char *variable, DataNC *datanc) {
   int ncid, varid;
-  int x, y, retval;
+  int retval;
 
   if ((retval = nc_open(filename, NC_NOWRITE, &ncid)))
     ERR(retval);
@@ -41,7 +41,7 @@ int load_nc_sf(char *filename, char *variable, DataNC *datanc) {
   if ((retval = nc_inq_dimlen(ncid, yid, &datanc->base.height)))
     ERR(retval);
   datanc->base.size = datanc->base.width * datanc->base.height;
-  printf("Dimensiones x %d y %d  size %d\n", datanc->base.width, datanc->base.height, datanc->base.size);
+  printf("Dimensiones x %lu y %lu  size %lu\n", datanc->base.width, datanc->base.height, datanc->base.size);
 
   // Obtenemos el id de la variable
   if ((retval = nc_inq_varid(ncid, variable, &varid)))
@@ -152,7 +152,7 @@ int load_nc_sf(char *filename, char *variable, DataNC *datanc) {
 // Carga un conjunto de datos en NetCDF y lo pone en una estructura DataF
 int load_nc_float(char *filename, DataF *datanc, char *variable) {
   int ncid, varid;
-  int x, y, retval;
+  int retval;
 
   if ((retval = nc_open(filename, NC_NOWRITE, &ncid)))
     ERR(retval);
@@ -169,7 +169,7 @@ int load_nc_float(char *filename, DataF *datanc, char *variable) {
   if ((retval = nc_inq_dimlen(ncid, yid, &datanc->height)))
     ERR(retval);
   datanc->size = datanc->width * datanc->height;
-  printf("Dimensiones x %d y %d\n", datanc->width, datanc->height);
+  printf("Dimensiones x %lu y %lu\n", datanc->width, datanc->height);
 
   // Obtenemos el id de la variable
   if ((retval = nc_inq_varid(ncid, variable, &varid)))
@@ -192,7 +192,7 @@ int load_nc_float(char *filename, DataF *datanc, char *variable) {
 double rad2deg = 180.0 / M_PI;
 float hsat, sm_maj, sm_min, lambda_0, H;
 
-int compute_lalo(float x, float y, float *la, float *lo) {
+void compute_lalo(float x, float y, float *la, float *lo) {
   double snx, sny, csx, csy, sx, sy, sz, rs, a, b, c;
   double sm_maj2 = sm_maj*sm_maj;
   double sm_min2 = sm_min*sm_min;
@@ -218,7 +218,7 @@ int compute_lalo(float x, float y, float *la, float *lo) {
 
 int compute_navigation_nc(char *filename, DataF *navla, DataF *navlo) {
   int ncid, varid;
-  int x, y, retval;
+  int retval;
 
   if ((retval = nc_open(filename, NC_NOWRITE, &ncid)))
     ERR(retval);
@@ -238,7 +238,7 @@ int compute_navigation_nc(char *filename, DataF *navla, DataF *navlo) {
   navlo->width = navla->width;
   navlo->height = navla->height;
   navlo->size = navla->size;
-  printf("Dimensiones x %d y %d total %d\n", navla->width, navla->height,
+  printf("Dimensiones x %lu y %lu total %lu\n", navla->width, navla->height,
          navla->size);
 
   if ((retval = nc_inq_varid(ncid, "goes_imager_projection", &varid)))

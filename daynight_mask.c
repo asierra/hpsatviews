@@ -28,10 +28,9 @@ double sun_zenith_angle(float la, float lo, DataNC datanc) {
   double Declination;
   double HourAngle;
   double Zenith;
-  double Azimuth;
 
   // auxiliary
-  double t, te, wte, s1, c1, s2, c2, s3, c3, s4, c4, sp, cp, sd, cd, sH, cH,
+  double t, te, wte, s1, c1, s2, c2, s3, c3, sp, cp, sd, cd, cH,
       se0, ep, De, lambda, epsi, sl, cl, se, ce, L, nu, Dlam;
   int yt, mt;
 
@@ -110,11 +109,11 @@ double sun_zenith_angle(float la, float lo, DataNC datanc) {
   cp = sqrt((1 - sp * sp));
   sd = sin(Declination);
   cd = sqrt(1 - sd * sd);
-  sH = sin(HourAngle);
+  //sH = sin(HourAngle);
   cH = cos(HourAngle);
   se0 = sp * sd + cp * cd * cH;
   ep = asin(se0) - 4.26e-5 * sqrt(1.0 - se0 * se0);
-  Azimuth = atan2(sH, cH * sp - sd * cp / cd);
+  //Azimuth = atan2(sH, cH * sp - sd * cp / cd);
 
   if (ep > 0.0)
     De = (0.08422 * Pressure) /

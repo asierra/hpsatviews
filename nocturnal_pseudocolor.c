@@ -22,7 +22,7 @@ ImageData create_nocturnal_pseudocolor(DataNC datanc) {
   imout.height = datanc.base.height;
   imout.data = malloc(imout.bpp * datanc.base.size);
 
-  float tmin = 1e10, tmax = -1e10, rmin = 1e10, rmax = -1e10;
+  float tmin = 1e10, tmax = -1e10;
 
   double start = omp_get_wtime();
 
