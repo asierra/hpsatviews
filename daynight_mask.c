@@ -173,7 +173,7 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo,
     }
   }
   *dnratio = (nite==0) ? 100: 100.0*day/navla.size;
-  printf("day/night ratio %d %d %g\n", day, nite, dnratio);
+  //printf("day/night ratio %d %d %g\n", day, nite, *dnratio);
   double end = omp_get_wtime();
   printf("Tiempo mask %lf\n", end - start);
 
