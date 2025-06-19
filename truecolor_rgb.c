@@ -36,7 +36,7 @@ ImageData create_truecolor_rgb(DataNC c01, DataNC c02, DataNC c03,
       unsigned char r, g, b;
 
       r = g = b = 0;
-      if (c01.base.data_in[i] >= 0 && c01.base.data_in[i] < 4095) {
+      if (c01.base.data_in[i] != NonData) {
         // Verde sintético con la combinación lineal de las 3 bandas
         float c01f = c01.base.data_in[i];
         float c02f = c02.base.data_in[i];
@@ -51,7 +51,7 @@ ImageData create_truecolor_rgb(DataNC c01, DataNC c02, DataNC c03,
         // Luminosidad promedio
         unsigned int q = (unsigned int)((r + b + g + 0.5) / 3.0);
         histogram[q]++;
-      }
+      } 
       imout.data[po] = r;
       imout.data[po + 1] = g;
       imout.data[po + 2] = b;
@@ -69,14 +69,13 @@ ImageData create_truecolor_rgb(DataNC c01, DataNC c02, DataNC c03,
 #pragma omp parallel for shared(c01, imout.data)
     for (int i = 0; i < c01.base.size; i++) {
       int p = i * imout.bpp;
-      if (c01.base.data_in[i] > 0) {
+      if (c01.base.data_in[i] != NonData) {
         imout.data[p] = transfer[imout.data[p]];
         imout.data[p + 1] = transfer[imout.data[p + 1]];
         imout.data[p + 2] = transfer[imout.data[p + 2]];
       }
     }
   }
-
   double end = omp_get_wtime();
   printf("Tiempo RGB %lf\n", end - start);
   return imout;

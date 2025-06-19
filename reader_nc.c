@@ -22,6 +22,7 @@
 
 
 // Carga un conjunto de datos de NetCDF y lo pone en una estructura DataNC
+// Específico para datos L1b de GOES
 int load_nc_sf(char *filename, char *variable, DataNC *datanc) {
   int ncid, varid;
   int retval;
@@ -47,13 +48,16 @@ int load_nc_sf(char *filename, char *variable, DataNC *datanc) {
   if ((retval = nc_inq_varid(ncid, variable, &varid)))
     ERR(retval);
 
-  // Obtiene el factor de escala y offset de la variable
+  // Obtiene el factor de escala y offset de la variable y el fillvalue
   float scale_factor, add_offset;
   if ((retval=nc_get_att_float(ncid, varid, "scale_factor", &scale_factor)))
     WRN(retval);
   if ((retval=nc_get_att_float(ncid, varid, "add_offset", &add_offset)))
     WRN(retval);
-  printf("Scale %g Offset %g\n", scale_factor, add_offset);
+  short fillvalue;
+  if ((retval=nc_get_att_short(ncid, varid, "_FillValue", &fillvalue)))
+    WRN(retval);
+  printf("Scale %g Offset %g Fill value %d\n", scale_factor, add_offset, fillvalue);
 
   // Recupera los datos
   short *datatmp = malloc(sizeof(short) * datanc->base.size);
@@ -122,10 +126,11 @@ int load_nc_sf(char *filename, char *variable, DataNC *datanc) {
   // Calcula máximos y mínimos para verificar datos
   float fmin = 1e20;
   float fmax = -fmin;
-  int neg = 0;
+  unsigned nondatas = 0;
+  unsigned inan = 0;
   datanc->base.data_in = malloc(sizeof(float)*datanc->base.size);
   for (int i = 0; i < datanc->base.size; i++)
-    if (datatmp[i] >= 0) {
+    if (datatmp[i] != fillvalue) {
       float f;
       float rad = scale_factor * datatmp[i] + add_offset;
       if (datanc->band_id > 6 && datanc->band_id < 17) {
@@ -140,9 +145,14 @@ int load_nc_sf(char *filename, char *variable, DataNC *datanc) {
         fmin = f;
       }
       datanc->base.data_in[i] = f;
-    } else if (datatmp[i] < neg)
-      neg = datatmp[i];
-  printf("min %g max %g neg %d\n", fmin, fmax, neg);
+    } else {
+      datanc->base.data_in[i] = NonData;
+      inan = i;
+      nondatas++;
+    }
+  datanc->base.fmin = fmin;
+  datanc->base.fmax = fmax;
+  printf("min %g max %g Non datas %u %g %u\n", fmin, fmax, nondatas, NonData, inan);
   free(datatmp);
 
   printf("Exito decodificando %s!\n", filename);
@@ -238,8 +248,8 @@ int compute_navigation_nc(char *filename, DataF *navla, DataF *navlo) {
   navlo->width = navla->width;
   navlo->height = navla->height;
   navlo->size = navla->size;
-  printf("Dimensiones x %lu y %lu total %lu\n", navla->width, navla->height,
-         navla->size);
+  //printf("Dimensiones x %lu y %lu total %lu\n", navla->width, navla->height,
+  //       navla->size);
 
   if ((retval = nc_inq_varid(ncid, "goes_imager_projection", &varid)))
     ERR(retval);
@@ -256,7 +266,7 @@ int compute_navigation_nc(char *filename, DataF *navla, DataF *navlo) {
     WRN(retval);
   H = sm_maj + hsat;
   lambda_0 = lo_proj_orig / rad2deg;
-  printf("hsat %g %g %g %g %g\n", hsat, sm_maj, sm_min, lo_proj_orig, H);
+  //printf("hsat %g %g %g %g %g\n", hsat, sm_maj, sm_min, lo_proj_orig, H);
 
   // Obtiene el factor de escala y offset de la variable
   float x_sf, y_sf, x_ao, y_ao;

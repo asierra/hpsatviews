@@ -8,7 +8,7 @@
 #include "datanc.h"
 
 
-// Load data and metadada from nc file
+// Load GOES L1b data and metadada from nc file
 int load_nc_sf(char *filename, char *variable, DataNC *datanc);
 
 // Just load float array from nc file

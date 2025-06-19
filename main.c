@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
   load_nc_sf(fnc03, "Rad", &c03);
   load_nc_sf(fnc13, "Rad", &c13);
 
-  char downsample = 0;
+  char downsample = 1;
 
   if (downsample) {
     // Iguala los tamaños a la resolución mínima

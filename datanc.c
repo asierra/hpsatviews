@@ -9,6 +9,8 @@
 
 #include "datanc.h"
 
+float NonData=1.0e+32;
+
 
 DataF downsample_simple(DataF datanc_big, int factor)
 {
@@ -87,12 +89,14 @@ DataF upsample_bilinear(DataF datanc_small, int factor)
   #pragma omp parallel for shared(datanc, datanc_small, factor) 
   for (int j=0; j < datanc.height; j++) {
     for (int i=0; i < datanc.width; i++) {
-      int xl = (int)floor(xrat*i);
-      int yl = (int)floor(yrat*j);
-      int xh = (int)ceil(xrat*i);
-      int yh = (int)ceil(yrat*j);
-      float xw = (xrat*i) - xl;
-      float yw = (yrat*j) - yl;
+      float x = xrat * i;
+      float y = yrat * j;
+      int xl = (int)floor(x);
+      int yl = (int)floor(y);
+      int xh = (int)ceil(x);
+      int yh = (int)ceil(y);
+      float xw = x - xl;
+      float yw = y - yl;
 
       double d = datanc_small.data_in[yl*datanc_small.width + xl]*(1 -xw)*(1 - yw) +
         datanc_small.data_in[yl*datanc_small.width + xh]*xw*(1 - yw) + 

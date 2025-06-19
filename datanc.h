@@ -7,12 +7,14 @@
 
 #include <stdlib.h>
 
+extern float NonData;
 
 // Like a numpy array to store 2D gridded floating point data
 typedef struct {
   size_t width, height;
   size_t size;
   float *data_in;
+  float fmin, fmax;
 } DataF;
 
 // Data structure to store metadata read from a NetCDF file

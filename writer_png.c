@@ -36,6 +36,8 @@ int write_image_png(char *filename, ImageData *image) {
   mipng.height = image->height;
   if (bpp == 1)
     mipng.color_type = PNG_COLOR_TYPE_GRAY;
+  if (bpp == 2)
+    mipng.color_type = PNG_COLOR_TYPE_GRAY_ALPHA;
   else if (bpp == 3)
     mipng.color_type = PNG_COLOR_TYPE_RGB;
   else if (bpp == 4)

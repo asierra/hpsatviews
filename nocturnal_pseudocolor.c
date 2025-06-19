@@ -34,7 +34,7 @@ ImageData create_nocturnal_pseudocolor(DataNC datanc) {
       unsigned char r, g, b;
 
       r = g = b = 0;
-      if (datanc.base.data_in[i] >= 0 && datanc.base.data_in[i] < 4095) {
+      if (datanc.base.data_in[i] != NonData) {
         float f = datanc.base.data_in[i];
         if (f < tmin)
           tmin = f;
