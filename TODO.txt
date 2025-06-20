@@ -19,3 +19,11 @@ Tue Mar 18 10:43:38 PM CST 2025
 Add upscaling well implemented.
 Convert to C99 not possible because scandir.
 Implement Rayleight atmospheric correction.
+
+
+Fri Jun 20 12:02:51 AM CST 2025
+
+Made library
+Added command line options and singlegray.
+Make main --> truecolor
+

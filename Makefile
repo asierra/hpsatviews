@@ -14,7 +14,7 @@ LIBS=-lnetcdf -lpng -lm
 truecolornight: $(OBJ) libhpsatviews.a
 	$(CC) -o $@ $^ $(CFLAGSP) $(LIBS)
 
-singlebw: singlebw.o libhpsatviews.a
+singlegray: singlegray.o libhpsatviews.a args.o
 	$(CC) -o $@ $^ $(CFLAGSP) $(LIBS)
 
 .PHONY: clean
