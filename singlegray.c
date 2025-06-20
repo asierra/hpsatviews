@@ -98,7 +98,7 @@ int main(int argc, char *argv[]) {
   if (ap_has_args(parser))
     fnc01 = ap_get_arg_at_index(parser, 0);
   else {
-    printf("Error: Debes dar un nombre de archivo NetCDF.\n");
+    printf("Error: Debes dar un nombre de archivo NetCDF con datos GOES ABI L1b.\n");
     return -1;
   }
   outfn = ap_get_str_value(parser, "out");
@@ -109,11 +109,20 @@ int main(int argc, char *argv[]) {
 
   if (ap_found(parser, "scale"))
     scale = ap_get_int_value(parser, "scale");
-
+    printf("escala %d\n", scale);
   ap_free(parser);
 
   DataNC c01;
   load_nc_sf(fnc01, "Rad", &c01);
+  if (scale < 0) {
+    DataF aux = downsample_boxfilter(c01.base, -scale);
+    free(c01.base.data_in);
+    c01.base = aux;
+  } else if (scale > 1) {
+    DataF aux = upsample_bilinear(c01.base, scale);
+    free(c01.base.data_in);
+    c01.base = aux;
+  }
   ImageData imout = create_single_bw(c01, invert_values, apply_histogram);
   write_image_png(outfn, &imout);
 

@@ -136,8 +136,6 @@ int main(int argc, char *argv[]) {
     c03.base = aux;
     compute_navigation_nc(fnc02, &navla, &navlo);
   }
-
-
   ImageData diurna = create_truecolor_rgb(c01, c02, c03, 1);
   ImageData nocturna = create_nocturnal_pseudocolor(c13);
 

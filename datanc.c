@@ -18,6 +18,8 @@ DataF downsample_simple(DataF datanc_big, int factor)
   datanc.width  = datanc_big.width/factor;
   datanc.height = datanc_big.height/factor;
   datanc.size = datanc.width * datanc.height;
+  datanc.fmin = datanc_big.fmin;
+  datanc.fmax = datanc_big.fmax;
   datanc.data_in = malloc(sizeof(float)*datanc.size);
   
   double start = omp_get_wtime();
@@ -29,7 +31,6 @@ DataF downsample_simple(DataF datanc_big, int factor)
       datanc.data_in[is] = datanc_big.data_in[j*datanc_big.width + i];
     }
   double end = omp_get_wtime();
-
   return datanc;
 }
 
@@ -40,6 +41,8 @@ DataF downsample_boxfilter(DataF datanc_big, int factor)
   datanc.width  = datanc_big.width/factor;
   datanc.height = datanc_big.height/factor;
   datanc.size = datanc.width * datanc.height;
+  datanc.fmin = datanc_big.fmin;
+  datanc.fmax = datanc_big.fmax;
   datanc.data_in = malloc(sizeof(float)*datanc.size);
   
   double start = omp_get_wtime();
@@ -80,6 +83,8 @@ DataF upsample_bilinear(DataF datanc_small, int factor)
   datanc.width  = datanc_small.width*factor;
   datanc.height = datanc_small.height*factor;
   datanc.size = datanc.width * datanc.height;
+  datanc.fmin = datanc_small.fmin;
+  datanc.fmax = datanc_small.fmax;
   datanc.data_in = malloc(sizeof(float)*datanc.size);
   float xrat = (float)(datanc_small.width - 1)/(datanc.width - 1);
   float yrat = (float)(datanc_small.height - 1)/(datanc.height - 1);

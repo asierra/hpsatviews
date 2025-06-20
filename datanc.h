@@ -24,7 +24,6 @@ typedef struct {
   unsigned char band_id;
 } DataNC;
 
-
 // Simple downsampling selecting points.
 DataF downsample_simple(DataF datanc_big, int factor);
 
