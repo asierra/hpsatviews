@@ -11,10 +11,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-ImageData create_single_bw(DataNC c01, bool invert_value,
-                           bool apply_histogram) {
+ImageData create_single_gray(DataNC c01, bool invert_value,
+                           bool apply_histogram, bool use_alpha) {
   ImageData imout;
-  imout.bpp = 1;
+  imout.bpp = (use_alpha) ? 2: 1;
   imout.width = c01.base.width;
   imout.height = c01.base.height;
   imout.data = malloc(imout.bpp * c01.base.size);
@@ -68,7 +68,7 @@ ImageData create_single_bw(DataNC c01, bool invert_value,
     }
   }
   double end = omp_get_wtime();
-  printf("Tiempo Single BW %lf\n", end - start);
+  printf("Tiempo Single Gray %lf\n", end - start);
   return imout;
 }
 
@@ -76,6 +76,7 @@ int main(int argc, char *argv[]) {
   char *fnc01, *outfn;
   bool invert_values = false;
   bool apply_histogram = false;
+  bool use_alpha = false;
   float gamma = 0;
   int scale = 1;
 
@@ -88,8 +89,8 @@ int main(int argc, char *argv[]) {
   ap_add_dbl_opt(parser, "gamma g", 1);
   ap_add_flag(parser, "histo h");
   ap_add_flag(parser, "invert i");
-  ap_add_int_opt(parser, "scale s", 1);
   ap_add_flag(parser, "alpha a");
+  ap_add_int_opt(parser, "scale s", 1);
 
   if (!ap_parse(parser, argc, argv)) {
     exit(1);
@@ -104,9 +105,9 @@ int main(int argc, char *argv[]) {
   outfn = ap_get_str_value(parser, "out");
   invert_values = ap_found(parser, "invert");
   apply_histogram = ap_found(parser, "histo");
+  use_alpha = ap_found(parser, "alpha");
   if (ap_found(parser, "gamma"))
     gamma = ap_get_dbl_value(parser, "gamma");
-
   if (ap_found(parser, "scale"))
     scale = ap_get_int_value(parser, "scale");
     printf("escala %d\n", scale);
@@ -123,7 +124,7 @@ int main(int argc, char *argv[]) {
     free(c01.base.data_in);
     c01.base = aux;
   }
-  ImageData imout = create_single_bw(c01, invert_values, apply_histogram);
+  ImageData imout = create_single_gray(c01, invert_values, apply_histogram, use_alpha);
   write_image_png(outfn, &imout);
 
   return 0;
