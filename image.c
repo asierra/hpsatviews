@@ -3,12 +3,11 @@
  * Labotatorio Nacional de Observación de la Tierra, UNAM
  */
 #include <math.h>
+#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <omp.h>
 
 #include "image.h"
-
 
 ImageData blend_images(ImageData bg, ImageData fg, ImageData mask) {
   size_t size = bg.width * bg.height;
@@ -28,11 +27,28 @@ ImageData blend_images(ImageData bg, ImageData fg, ImageData mask) {
     float w = (float)(mask.data[pm] / 255.0);
 
     imout.data[p] = (unsigned char)(w * bg.data[p] + (1 - w) * fg.data[p]);
-    imout.data[p + 1] = (unsigned char)(w * bg.data[p + 1] + (1 - w) * fg.data[p + 1]);
-    imout.data[p + 2] = (unsigned char)(w * bg.data[p + 2] + (1 - w) * fg.data[p + 2]);
+    imout.data[p + 1] =
+        (unsigned char)(w * bg.data[p + 1] + (1 - w) * fg.data[p + 1]);
+    imout.data[p + 2] =
+        (unsigned char)(w * bg.data[p + 2] + (1 - w) * fg.data[p + 2]);
   }
   double end = omp_get_wtime();
   printf("Tiempo blend %lf\n", end - start);
 
   return imout;
+}
+
+void image_apply_gamma(ImageData im, float gamma) {
+  size_t size = im.width * im.height;
+  unsigned char nvalues[256];
+
+  for (int i = 0; i < 256; i++)
+    nvalues[i] = (unsigned char)(255 * pow(i / 255.0, gamma));
+
+  for (int i = 0; i < size; i++) {
+    int p = i * im.bpp;
+
+    int j = im.data[p];
+    im.data[p] = nvalues[j];
+  }
 }

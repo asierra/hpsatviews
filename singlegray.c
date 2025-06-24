@@ -125,6 +125,8 @@ int main(int argc, char *argv[]) {
     c01.base = aux;
   }
   ImageData imout = create_single_gray(c01, invert_values, apply_histogram, use_alpha);
+  if (gamma != 0) 
+    image_apply_gamma(imout, gamma);
   write_image_png(outfn, &imout);
 
   return 0;
