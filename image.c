@@ -6,8 +6,20 @@
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
-
 #include "image.h"
+
+
+ImageData copy_image(ImageData orig) {
+  size_t size = orig.width * orig.height;
+  ImageData imout;
+  imout.bpp = orig.bpp;
+  imout.width = orig.width;
+  imout.height = orig.height;
+  imout.data = malloc(imout.bpp * size);
+  memcpy(imout.data, orig.data, size);
+  return imout;
+}
+
 
 ImageData blend_images(ImageData bg, ImageData fg, ImageData mask) {
   size_t size = bg.width * bg.height;
@@ -38,6 +50,46 @@ ImageData blend_images(ImageData bg, ImageData fg, ImageData mask) {
   return imout;
 }
 
+
+void image_apply_histogram(ImageData im) {
+  size_t size = im.width * im.height;
+  unsigned int histogram[255];
+
+  for (int i = 0; i < 255; i++)
+    histogram[i] = 0;
+
+  for (int y = 0; y < im.height; y++) {
+    for (int x = 0; x < im.width; x++) {
+      int i = y * im.width + x;
+      int po = i * im.bpp;
+      unsigned int q;
+      if (im.bpp >= 3) 
+        // Average luminosity
+        q = (unsigned int)((im.data[po] + im.data[po+1] + 
+            im.data[po+2] + 0.5) / 3.0);
+      else 
+        q = im.data[po];
+      histogram[q]++;
+    }
+  }
+
+  unsigned int cum = 0;
+  unsigned char transfer[255]; // Función de transferencia
+  for (int i = 0; i < 256; i++) {
+    cum += histogram[i];
+    transfer[i] = (unsigned char)(255.0 * cum / size);
+  }
+  for (int i = 0; i < size; i++) {
+      int p = i*im.bpp;
+      im.data[p] = transfer[im.data[p]];
+      if (im.bpp >= 3) {
+        im.data[p + 1] = transfer[im.data[p + 1]];
+        im.data[p + 2] = transfer[im.data[p + 2]];
+      }
+  }
+}
+
+
 void image_apply_gamma(ImageData im, float gamma) {
   size_t size = im.width * im.height;
   unsigned char nvalues[256];
@@ -47,7 +99,6 @@ void image_apply_gamma(ImageData im, float gamma) {
 
   for (int i = 0; i < size; i++) {
     int p = i * im.bpp;
-
     int j = im.data[p];
     im.data[p] = nvalues[j];
   }

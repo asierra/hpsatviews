@@ -18,8 +18,7 @@ char id[13] = "sAAAAJJJHHmm";
 // Input filenames full path
 char *fnc01, *fnc02, *fnc03, *fnc13;
 
-ImageData create_truecolor_rgb(DataNC B, DataNC R, DataNC NiR,
-                               unsigned char hgram);
+ImageData create_truecolor_rgb(DataNC B, DataNC R, DataNC NiR);
 
 ImageData create_nocturnal_pseudocolor(DataNC datanc);
 
@@ -136,7 +135,8 @@ int main(int argc, char *argv[]) {
     c03.base = aux;
     compute_navigation_nc(fnc02, &navla, &navlo);
   }
-  ImageData diurna = create_truecolor_rgb(c01, c02, c03, 1);
+  ImageData diurna = create_truecolor_rgb(c01, c02, c03);
+  image_apply_histogram(diurna);
   ImageData nocturna = create_nocturnal_pseudocolor(c13);
 
   float dnratio;

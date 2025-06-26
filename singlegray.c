@@ -11,20 +11,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-ImageData create_single_gray(DataNC c01, bool invert_value,
-                           bool apply_histogram, bool use_alpha) {
+ImageData create_single_gray(DataNC c01, bool invert_value, bool use_alpha) {
   ImageData imout;
   imout.bpp = (use_alpha) ? 2: 1;
   imout.width = c01.base.width;
   imout.height = c01.base.height;
   imout.data = malloc(imout.bpp * c01.base.size);
-
-  // Inicializamos histograma
-  unsigned int histogram[255];
-  if (apply_histogram) {
-    for (int i = 0; i < 255; i++)
-      histogram[i] = 0;
-  }
 
   double start = omp_get_wtime();
 
@@ -43,7 +35,6 @@ ImageData create_single_gray(DataNC c01, bool invert_value,
           f = (c01.base.data_in[i] - c01.base.fmin) / dd;
         r = (unsigned char)(255.0 * f);
         a = 255;
-        histogram[r]++;
       }
       imout.data[po] = r;
       if (imout.bpp == 2)
@@ -51,22 +42,6 @@ ImageData create_single_gray(DataNC c01, bool invert_value,
     }
   }
 
-  // Igualación de histograma
-  if (apply_histogram) {
-    int cum = 0;
-    unsigned char transfer[255]; // Función de transferencia
-    for (int i = 0; i < 256; i++) {
-      cum += histogram[i];
-      transfer[i] = (unsigned char)(255.0 * cum / c01.base.size);
-    }
-#pragma omp parallel for shared(c01, imout.data)
-    for (int i = 0; i < c01.base.size; i++) {
-      int p = i * imout.bpp;
-      if (c01.base.data_in[i] != NonData) {
-        imout.data[p] = transfer[imout.data[p]];
-      }
-    }
-  }
   double end = omp_get_wtime();
   printf("Tiempo Single Gray %lf\n", end - start);
   return imout;
@@ -124,9 +99,11 @@ int main(int argc, char *argv[]) {
     free(c01.base.data_in);
     c01.base = aux;
   }
-  ImageData imout = create_single_gray(c01, invert_values, apply_histogram, use_alpha);
+  ImageData imout = create_single_gray(c01, invert_values, use_alpha);
   if (gamma != 0) 
     image_apply_gamma(imout, gamma);
+  if (apply_histogram)
+    image_apply_histogram(imout);
   write_image_png(outfn, &imout);
 
   return 0;
