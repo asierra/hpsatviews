@@ -226,7 +226,7 @@ void compute_lalo(float x, float y, float *la, float *lo) {
 }
 
 
-int compute_navigation_nc(char *filename, DataF *navla, DataF *navlo) {
+int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
   int ncid, varid;
   int retval;
 

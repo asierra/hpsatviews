@@ -17,6 +17,9 @@ truecolornight: $(OBJ) libhpsatviews.a
 singlegray: singlegray.o libhpsatviews.a args.o
 	$(CC) -o $@ $^ $(CFLAGSP) $(LIBS)
 
+geos2geographics: geos2geographics.o libhpsatviews.a args.o
+	$(CC) -o $@ $^ $(CFLAGSP) $(LIBS)
+
 .PHONY: clean
 
 libhpsatviews.a: $(LIBOBJS)

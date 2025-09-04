@@ -15,6 +15,6 @@ int load_nc_sf(char *filename, char *variable, DataNC *datanc);
 int load_nc_float(char *filename, DataF *datanc, char *variable);
 
 // From L1b file compute local navigation
-int compute_navigation_nc(char *GOES_L1b_filename, DataF *navla, DataF *navlo);
+int compute_navigation_nc(const char *GOES_L1b_filename, DataF *navla, DataF *navlo);
 
 #endif

@@ -1,26 +1,31 @@
 #include "reader_nc.h"
+#include <stdio.h>
+#include <omp.h>
 
 
+unsigned laheight, lowidth;
 float lamin, lamax, lomin, lomax;
 
-inline void getindices(float la, float lo, &unsigned i, &unsigned j) {
-    i = (unsigned)((navlo.width-1)*(lo - lomin)/(lomax - lomin));
-    j = (unsigned)((navla.height-1)*(la - lamin)/(lamax - lamin));
+void getindices(float la, float lo, unsigned *i, unsigned *j) {
+    *i = (unsigned)((lowidth-1)*(lo - lomin)/(lomax - lomin));
+    *j = (unsigned)((laheight-1)*(la - lamin)/(lamax - lamin));
 }
 
 
-DataNC geos2geographics(DataNC datag, DataF navla, DataF navlo)
+DataF geos2geographics(DataF datag, DataF navla, DataF navlo)
 {
-  DataNC datanc;
+  DataF datanc;
   datanc.fmin = datag.fmin;
   datanc.fmax = datag.fmax;
 
   // Define los extremos de acuerdo a las coordenadas originales
   int i, j;
-  lamax = navla[navla.width/2];
-  lamin = navla[(navla.height-1)*navla.width + navla.width/2];
-  lomin = navlo[(navlo.height/2)*navlo.width];
-  lomax = navlo[(navlo.height/2)*navlo.width + navlo.width - 1];
+  lamax = navla.data_in[navla.width/2];
+  lamin = navla.data_in[(navla.height-1)*navla.width + navla.width/2];
+  lomin = navlo.data_in[(navlo.height/2)*navlo.width];
+  lomax = navlo.data_in[(navlo.height/2)*navlo.width + navlo.width - 1];
+    laheight = navla.height; 
+    lowidth = navlo.width;
 
   // Define las dimensiones del nuevo datanc
   datanc.width  = datag.width;
@@ -36,14 +41,14 @@ DataNC geos2geographics(DataNC datag, DataF navla, DataF navlo)
         unsigned ig = j*datag.width + i;
         if (datag.data_in[ig] != NonData) {
             unsigned is, js;
-            getindices(navla.data_in[ig], navlo.data_in[ig], is, js);
+            getindices(navla.data_in[ig], navlo.data_in[ig], &is, &js);
       is = (js*datanc.width + is);
       datanc.data_in[is] = datag.data_in[ig];
         }
     }
     // Interpola los datos faltantes
     // ...
-    
+
   double end = omp_get_wtime();
   return datanc;
 }
@@ -54,9 +59,16 @@ int main(int argc, char *argv[]) {
     printf("Usanza %s <Archivo NetCDF ABI>\n", argv[0]);
     return -1;
   }
+  DataNC dc;
   const char *fnc = argv[1];
+  load_nc_sf(fnc, "Rad", &dc);
 
   // Obtén las coordenadas
-  DataF navlo, navla;
+  DataF navlo, navla, datagg;
   compute_navigation_nc(fnc, &navla, &navlo);
+ 
+  datagg = geos2geographics(dc.base, navla, navlo);
+// Falta guardarlos en NC o GeoTiff o imagen
 
+  return 0;
+}
