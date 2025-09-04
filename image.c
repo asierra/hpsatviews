@@ -101,5 +101,9 @@ void image_apply_gamma(ImageData im, float gamma) {
     int p = i * im.bpp;
     int j = im.data[p];
     im.data[p] = nvalues[j];
+    if (im.bpp >= 3) {
+        im.data[p + 1] = nvalues[im.data[p + 1]];
+        im.data[p + 2] = nvalues[im.data[p + 2]];
+      }
   }
 }
