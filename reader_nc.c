@@ -23,7 +23,7 @@
 
 // Carga un conjunto de datos de NetCDF y lo pone en una estructura DataNC
 // Específico para datos L1b de GOES
-int load_nc_sf(char *filename, char *variable, DataNC *datanc) {
+int load_nc_sf(const char *filename, char *variable, DataNC *datanc) {
   int ncid, varid;
   int retval;
 
@@ -160,7 +160,7 @@ int load_nc_sf(char *filename, char *variable, DataNC *datanc) {
 }
 
 // Carga un conjunto de datos en NetCDF y lo pone en una estructura DataF
-int load_nc_float(char *filename, DataF *datanc, char *variable) {
+int load_nc_float(const char *filename, DataF *datanc, char *variable) {
   int ncid, varid;
   int retval;
 
