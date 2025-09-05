@@ -1,3 +1,8 @@
+/* Creates a dataset in geographics from a geostationary dataset.
+ *
+ * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Labotatorio Nacional de Observación de la Tierra, UNAM
+ */
 #include "reader_nc.h"
 #include "writer_png.h"
 #include <omp.h>
