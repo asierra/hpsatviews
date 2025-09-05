@@ -3,11 +3,17 @@
  * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Labotatorio Nacional de Observación de la Tierra, UNAM
  */
+#include "datanc.h"
 #include "reader_nc.h"
 #include "writer_png.h"
 #include <omp.h>
 #include <stdbool.h>
 #include <stdio.h>
+
+float dataf_value(DataF data, unsigned i, unsigned j) {
+  unsigned ii = j*data.width + i;
+  return data.data_in[ii];
+}
 
 ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha);
 
@@ -25,14 +31,14 @@ DataF geos2geographics(DataF datag, DataF navla, DataF navlo) {
   datanc.fmax = datag.fmax;
 
   // Define los extremos de acuerdo a las coordenadas originales
-  int i, j;
-  lamax = navla.data_in[navla.width / 2];
-  lamin = navla.data_in[(navla.height - 1) * navla.width + navla.width / 2];
-  lomin = navlo.data_in[(navlo.height / 2) * navlo.width];
-  lomax = navlo.data_in[(navlo.height / 2) * navlo.width + navlo.width - 1];
+  int i, j=0;
+  lamax = navla.fmax;
+  lamin = navla.fmin;
+  lomin = navlo.fmin;
+  lomax = navlo.fmax;
   laheight = navla.height;
   lowidth = navlo.width;
-
+  printf("%u %u - %g %g %g %g\n", laheight, lowidth, lamin, lamax, lomin, lomax);
   // Define las dimensiones del nuevo datanc
   datanc.width = datag.width;
   datanc.height = datag.height;
@@ -45,12 +51,12 @@ DataF geos2geographics(DataF datag, DataF navla, DataF navlo) {
   for (int j = 0; j < datag.height; j++)
     for (int i = 0; i < datag.width; i++) {
       unsigned ig = j * datag.width + i;
-      if (datag.data_in[ig] != NonData) {
-        unsigned is, js;
-        getindices(navla.data_in[ig], navlo.data_in[ig], &is, &js);
-        is = (js * datanc.width + is);
-        datanc.data_in[is] = datag.data_in[ig];
-      }
+      unsigned is, js;
+      getindices(navla.data_in[ig], navlo.data_in[ig], &is, &js);
+      if (datag.data_in[ig] != NonData) 
+        datanc.data_in[is] = dataf_value(datag, is, js);
+      else
+        datanc.data_in[is] = NonData;
     }
   // Interpola los datos faltantes
   // ...
@@ -76,7 +82,7 @@ int main(int argc, char *argv[]) {
   bool invert_values = false;
   bool use_alpha = false;
   ImageData imout = create_single_gray(datagg, invert_values, use_alpha);
-  char *outfn;
+  const char *outfn = "outlalo.png";
   write_image_png(outfn, &imout);
 
   return 0;

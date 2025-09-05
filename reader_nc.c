@@ -291,6 +291,11 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
       float la, lo;
       float x = i * x_sf + x_ao;
       compute_lalo(x, y, &la, &lo);
+      if (isnan(la) || isnan(lo)) {
+        //printf("Is nan %g\n", la);
+        navla->data_in[k] = NonData;
+        navlo->data_in[k] = NonData;
+      } else {
       if (la < lamin)
         lamin = la;
       if (la > lamax)
@@ -301,9 +306,13 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
         lomax = lo;
       navla->data_in[k] = la;
       navlo->data_in[k] = lo;
+      }
       k++;
     }
-
+    navla->fmin = lamin; 
+    navla->fmax = lamax;
+    navlo->fmin = lomin; 
+    navlo->fmax = lomax;
   }
   printf("corners %g %g  %g %g\n", lomin, lamin, lomax, lamax);
   if ((retval = nc_close(ncid)))

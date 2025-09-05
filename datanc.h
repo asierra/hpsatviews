@@ -24,6 +24,12 @@ typedef struct {
   unsigned char band_id;
 } DataNC;
 
+
+//inline float dataf_value(DataF data, unsigned i, unsigned j) {
+ // unsigned ii = j*data.width + i;
+ // return data.data_in[ii];
+//}
+
 // Simple downsampling selecting points.
 DataF downsample_simple(DataF datanc_big, int factor);
 
