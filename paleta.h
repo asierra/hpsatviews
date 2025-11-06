@@ -1,4 +1,9 @@
-// Paleta meteorológica para nubes altas
+/* Paleta meteorológica para nubes altas
+ * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Labotatorio Nacional de Observación de la Tierra, UNAM
+ */
+#ifndef HPSATVIEWS_PALETA_H_
+#define HPSATVIEWS_PALETA_H_
 
 struct { float d, r, g, b, a; } paleta[] = {
     { 170.00, 1.000000, 1.000000, 1.000000, 1.000000 },
@@ -258,4 +263,6 @@ struct { float d, r, g, b, a; } paleta[] = {
     { 377.00, 0.000000, 0.000000, 0.000000, 0.002857 },
     { 380.00, 0.000000, 0.000000, 0.000000, 0.000000 },
 };
+
+#endif /* HPSATVIEWS_PALETA_H_ */
 

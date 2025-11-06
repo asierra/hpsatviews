@@ -2,8 +2,8 @@
  * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Labotatorio Nacional de Observación de la Tierra, UNAM
  */
-#ifndef _DATANC_H_
-#define _DATANC_H_
+#ifndef HPSATVIEWS_DATANC_H_
+#define HPSATVIEWS_DATANC_H_
 
 #include <stdlib.h>
 
@@ -50,4 +50,4 @@ DataF upsample_bilinear(DataF datanc_big, int factor);
 #define M_PI 3.14159265358979323846
 #define M_PI_2 1.57079632679489661923
 
-#endif
+#endif /* HPSATVIEWS_DATANC_H_ */

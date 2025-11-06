@@ -3,8 +3,8 @@
 // Version: 3.3.0
 // -----------------------------------------------------------------------------
 
-#ifndef args_h
-#define args_h
+#ifndef HPSATVIEWS_ARGS_H_
+#define HPSATVIEWS_ARGS_H_
 
 #include <stdbool.h>
 
@@ -214,4 +214,4 @@ bool ap_had_memory_error(ArgParser* parser);
 // parser or any command sub-parser.
 char* ap_get_zeroth_root_arg(ArgParser* parser);
 
-#endif
+#endif /* HPSATVIEWS_ARGS_H_ */

@@ -2,8 +2,8 @@
  * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Labotatorio Nacional de Observación de la Tierra, UNAM
  */
-#ifndef _IMAGE_H_
-#define _IMAGE_H_
+#ifndef HPSATVIEWS_IMAGE_H_
+#define HPSATVIEWS_IMAGE_H_
 
 
 // Estructura para guardar datos de una imagen
@@ -34,4 +34,4 @@ void image_apply_histogram(ImageData im);
 // Apply gamma correction to image
 void image_apply_gamma(ImageData im, float gamma);
 
-#endif
+#endif /* HPSATVIEWS_IMAGE_H_ */
