@@ -46,6 +46,7 @@ DataF geos2geographics(DataF datag, DataF navla, DataF navlo) {
 
   datanc.data_in = malloc(sizeof(float) * datanc.size);
 
+  unsigned nondatas = 0;
   double start = omp_get_wtime();
 #pragma omp parallel for shared(datanc, datanc_big, factor)
   for (int j = 0; j < datag.height; j++)
@@ -53,14 +54,19 @@ DataF geos2geographics(DataF datag, DataF navla, DataF navlo) {
       unsigned ig = j * datag.width + i;
       unsigned is, js;
       getindices(navla.data_in[ig], navlo.data_in[ig], &is, &js);
-      if (datag.data_in[ig] != NonData) 
-        datanc.data_in[is] = dataf_value(datag, is, js);
-      else
-        datanc.data_in[is] = NonData;
+      unsigned id = js * datanc.width + is;
+      if (datag.data_in[ig] != NonData) {
+        float val = dataf_value(datag, is, js);
+        datanc.data_in[id] = val;
+      } else {
+        datanc.data_in[id] = NonData;
+      nondatas++;
+    }
     }
   // Interpola los datos faltantes
   // ...
 
+  printf("nondatas geos %u\n", nondatas);
   double end = omp_get_wtime();
   return datanc;
 }
@@ -79,8 +85,8 @@ int main(int argc, char *argv[]) {
   compute_navigation_nc(fnc, &navla, &navlo);
 
   datagg = geos2geographics(dc.base, navla, navlo);
-  bool invert_values = false;
-  bool use_alpha = false;
+  bool invert_values = true;
+  bool use_alpha = true;
   ImageData imout = create_single_gray(datagg, invert_values, use_alpha);
   const char *outfn = "outlalo.png";
   write_image_png(outfn, &imout);

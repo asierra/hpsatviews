@@ -33,4 +33,8 @@ Added gamma. Currently only with singlegray.
 Todo: add gamma also to rgb.
 
 
+Wed Sep 24 09:50:52 AM CST 2025
+
+Poder leer L2 para generar grises.
+
 

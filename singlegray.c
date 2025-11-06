@@ -27,7 +27,7 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha) {
       int i = y * imout.width + x;
       int po = i * imout.bpp;
       unsigned char r = 0, a = 0;
-      if (c01.data_in[i] < NonData) {
+      if (c01.data_in[i] != NonData) {
         float f;
         if (invert_value)
           f = (c01.fmax - c01.data_in[i]) / dd;

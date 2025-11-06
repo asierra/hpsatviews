@@ -39,4 +39,7 @@ DataF downsample_boxfilter(DataF datanc_big, int factor);
 // Upsampling using bilinear algorithm.
 DataF upsample_bilinear(DataF datanc_big, int factor);
 
+#define M_PI 3.14159265358979323846
+#define M_PI_2 1.57079632679489661923
+
 #endif

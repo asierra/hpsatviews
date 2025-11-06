@@ -3,6 +3,6 @@
 
 #include "image.h"
 
-int write_image_png(char *filename, ImageData *image);
+int write_image_png(const char *filename, ImageData *image);
 
 #endif

@@ -24,7 +24,7 @@ int main(int argc, char *argv[]) {
   ArgParser *parser = ap_new_parser();
   ap_set_helptext(parser,
                   "Usanza: singlegray [-i (invertir)] [-h (usar histograma)] "
-                  "[-g gamma] [-s scale] <Archivo NetCDF ABI L1b>");
+                  "[-g gamma] [-s scale] [-a (alpha)] <Archivo NetCDF ABI L1b>");
   ap_set_version(parser, "1.0");
   ap_add_str_opt(parser, "out o", "out.png");
   ap_add_dbl_opt(parser, "gamma g", 1);

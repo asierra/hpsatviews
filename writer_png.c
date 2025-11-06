@@ -26,9 +26,9 @@ typedef struct {
   png_bytep *row_pointers;
 } png_t;
 
-void write_png_file(char *filename, png_t *pngt);
+void write_png_file(const char *filename, png_t *pngt);
 
-int write_image_png(char *filename, ImageData *image) {
+int write_image_png(const char *filename, ImageData *image) {
   int bpp = image->bpp;
   png_t mipng;
 
@@ -54,7 +54,7 @@ int write_image_png(char *filename, ImageData *image) {
   return 0;
 }
 
-void write_png_file(char *filename, png_t *pngt) {
+void write_png_file(const char *filename, png_t *pngt) {
   FILE *fp = fopen(filename, "wb");
   if (!fp)
     abort();

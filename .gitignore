@@ -32,9 +32,11 @@
 *.app
 truecolornight
 singlegray
+geos2geographics
 .DS_Store
 *.pdf
 *.png
+*.jpg
 *~
 
 

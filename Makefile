@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-g -I. -Wall
+CFLAGS=-g -I. -Wall -std=c99
 CFLAGSP=-fopenmp 
 DEPS = datanc.h  image.h  reader_nc.h  writer_png.h
 LIBOBJS = truecolor_rgb.o reader_nc.o writer_png.o singlegray.o \

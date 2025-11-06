@@ -41,13 +41,6 @@ int find_id_from_name(const char *name) {
   return 0;
 }
 
-int filter(const struct dirent *entry) {
-  if (strstr(entry->d_name, id) != NULL)
-    return -1;
-  else
-    return 0;
-}
-
 char *concat(const char *s1, const char *s2) {
   char *result = malloc(strlen(s1) + strlen(s2) + 2);
   strcpy(result, s1);
@@ -58,25 +51,26 @@ char *concat(const char *s1, const char *s2) {
 }
 
 int find_channel_filenames(const char *dirnm) {
-  struct dirent **namelist;
-  int n;
-  n = scandir(dirnm, &namelist, filter, alphasort);
-
-  if (n < 2)
+  DIR *d;
+  struct dirent *dir;
+  d = opendir(dirnm);
+  if (d == NULL) {
     return -1;
+  }
 
-  for (int i = 0; i < n; i++) {
-    if (strstr(namelist[i]->d_name, ".nc") != NULL) {
-      if (strstr(namelist[i]->d_name, "C01") != NULL)
-        fnc01 = concat(dirnm, namelist[i]->d_name);
-      else if (strstr(namelist[i]->d_name, "C02") != NULL)
-        fnc02 = concat(dirnm, namelist[i]->d_name);
-      else if (strstr(namelist[i]->d_name, "C03") != NULL)
-        fnc03 = concat(dirnm, namelist[i]->d_name);
-      else if (strstr(namelist[i]->d_name, "C13") != NULL)
-        fnc13 = concat(dirnm, namelist[i]->d_name);
+  while ((dir = readdir(d)) != NULL) {
+    if (strstr(dir->d_name, id) != NULL && strstr(dir->d_name, ".nc") != NULL) {
+      if (strstr(dir->d_name, "C01") != NULL)
+        fnc01 = concat(dirnm, dir->d_name);
+      else if (strstr(dir->d_name, "C02") != NULL)
+        fnc02 = concat(dirnm, dir->d_name);
+      else if (strstr(dir->d_name, "C03") != NULL)
+        fnc03 = concat(dirnm, dir->d_name);
+      else if (strstr(dir->d_name, "C13") != NULL)
+        fnc13 = concat(dirnm, dir->d_name);
     }
   }
+  closedir(d);
   return 0;
 }
 

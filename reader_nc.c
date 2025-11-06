@@ -24,15 +24,15 @@
 // Carga un conjunto de datos de NetCDF y lo pone en una estructura DataNC
 // Específico para datos L1b de GOES
 int load_nc_sf(const char *filename, char *variable, DataNC *datanc) {
-  int ncid, varid;
   int retval;
-
+  int ncid;
   if ((retval = nc_open(filename, NC_NOWRITE, &ncid)))
     ERR(retval);
 
-  int xid, yid;
+  int xid;
   if ((retval = nc_inq_dimid(ncid, "x", &xid)))
     ERR(retval);
+  int yid;
   if ((retval = nc_inq_dimid(ncid, "y", &yid)))
     ERR(retval);
 
@@ -42,33 +42,37 @@ int load_nc_sf(const char *filename, char *variable, DataNC *datanc) {
   if ((retval = nc_inq_dimlen(ncid, yid, &datanc->base.height)))
     ERR(retval);
   datanc->base.size = datanc->base.width * datanc->base.height;
-  printf("Dimensiones x %lu y %lu  size %lu\n", datanc->base.width, datanc->base.height, datanc->base.size);
+  printf("Dimensiones x %lu y %lu  size %lu\n", datanc->base.width,
+         datanc->base.height, datanc->base.size);
 
   // Obtenemos el id de la variable
-  if ((retval = nc_inq_varid(ncid, variable, &varid)))
+  int rad_varid;
+  if ((retval = nc_inq_varid(ncid, variable, &rad_varid)))
     ERR(retval);
 
   // Obtiene el factor de escala y offset de la variable y el fillvalue
   float scale_factor, add_offset;
-  if ((retval=nc_get_att_float(ncid, varid, "scale_factor", &scale_factor)))
+  if ((retval = nc_get_att_float(ncid, rad_varid, "scale_factor", &scale_factor)))
     WRN(retval);
-  if ((retval=nc_get_att_float(ncid, varid, "add_offset", &add_offset)))
+  if ((retval = nc_get_att_float(ncid, rad_varid, "add_offset", &add_offset)))
     WRN(retval);
   short fillvalue;
-  if ((retval=nc_get_att_short(ncid, varid, "_FillValue", &fillvalue)))
+  if ((retval = nc_get_att_short(ncid, rad_varid, "_FillValue", &fillvalue)))
     WRN(retval);
-  printf("Scale %g Offset %g Fill value %d\n", scale_factor, add_offset, fillvalue);
+  printf("Scale %g Offset %g Fill value %d\n", scale_factor, add_offset,
+         fillvalue);
 
   // Recupera los datos
   short *datatmp = malloc(sizeof(short) * datanc->base.size);
-  if ((retval = nc_get_var_short(ncid, varid, datatmp)))
+  if ((retval = nc_get_var_short(ncid, rad_varid, datatmp)))
     ERR(retval);
 
   // Obtenemos el tiempo
-  double tiempo;
-  if ((retval = nc_inq_varid(ncid, "t", &varid)))
+  int time_varid;
+  if ((retval = nc_inq_varid(ncid, "t", &time_varid)))
     ERR(retval);
-  if ((retval = nc_get_var_double(ncid, varid, &tiempo)))
+  double tiempo;
+  if ((retval = nc_get_var_double(ncid, time_varid, &tiempo)))
     ERR(retval);
   long tt = (long)(tiempo);
   time_t dt = 946728000 + tt;
@@ -82,39 +86,42 @@ int load_nc_sf(const char *filename, char *variable, DataNC *datanc) {
   datanc->hour = ts.tm_hour;
   datanc->min = ts.tm_min;
   datanc->sec = ts.tm_sec;
-  //printf("Fecha %d %d %d\n", datanc->year, datanc->mon, datanc->day);
+  // printf("Fecha %d %d %d\n", datanc->year, datanc->mon, datanc->day);
 
-  if ((retval = nc_inq_varid(ncid, "band_id", &varid)))
-      ERR(retval);
-  if ((retval = nc_get_var_ubyte(ncid, varid, &datanc->band_id)))
-      ERR(retval);
+  int band_id_varid;
+  if ((retval = nc_inq_varid(ncid, "band_id", &band_id_varid)))
+    ERR(retval);
+  if ((retval = nc_get_var_ubyte(ncid, band_id_varid, &datanc->band_id)))
+    ERR(retval);
   printf("banda %d\n", datanc->band_id);
 
   // Obtiene los parámetros de Planck o Kappa0
   float planck_fk1, planck_fk2, planck_bc1, planck_bc2, kappa0;
   if (datanc->band_id > 6) {
-    if ((retval = nc_inq_varid(ncid, "planck_fk1", &varid)))
+    int fk1_varid, fk2_varid, bc1_varid, bc2_varid;
+    if ((retval = nc_inq_varid(ncid, "planck_fk1", &fk1_varid)))
       ERR(retval);
-    if ((retval = nc_get_var_float(ncid, varid, &planck_fk1)))
+    if ((retval = nc_get_var_float(ncid, fk1_varid, &planck_fk1)))
       ERR(retval);
-    if ((retval = nc_inq_varid(ncid, "planck_fk2", &varid)))
+    if ((retval = nc_inq_varid(ncid, "planck_fk2", &fk2_varid)))
       ERR(retval);
-    if ((retval = nc_get_var_float(ncid, varid, &planck_fk2)))
+    if ((retval = nc_get_var_float(ncid, fk2_varid, &planck_fk2)))
       ERR(retval);
-    if ((retval = nc_inq_varid(ncid, "planck_bc1", &varid)))
+    if ((retval = nc_inq_varid(ncid, "planck_bc1", &bc1_varid)))
       ERR(retval);
-    if ((retval = nc_get_var_float(ncid, varid, &planck_bc1)))
+    if ((retval = nc_get_var_float(ncid, bc1_varid, &planck_bc1)))
       ERR(retval);
-    if ((retval = nc_inq_varid(ncid, "planck_bc2", &varid)))
+    if ((retval = nc_inq_varid(ncid, "planck_bc2", &bc2_varid)))
       ERR(retval);
-    if ((retval = nc_get_var_float(ncid, varid, &planck_bc2)))
+    if ((retval = nc_get_var_float(ncid, bc2_varid, &planck_bc2)))
       ERR(retval);
-    printf("Planck %g %g %g %g\n", planck_fk1, planck_fk2,
-           planck_bc1, planck_bc2);
+    printf("Planck %g %g %g %g\n", planck_fk1, planck_fk2, planck_bc1,
+           planck_bc2);
   } else if (datanc->band_id >= 1) {
-    if ((retval = nc_inq_varid(ncid, "kappa0", &varid)))
+    int kappa0_varid;
+    if ((retval = nc_inq_varid(ncid, "kappa0", &kappa0_varid)))
       ERR(retval);
-    if ((retval = nc_get_var_float(ncid, varid, &kappa0)))
+    if ((retval = nc_get_var_float(ncid, kappa0_varid, &kappa0)))
       ERR(retval);
     printf("Kappa0 %g\n", kappa0);
   }
@@ -128,16 +135,16 @@ int load_nc_sf(const char *filename, char *variable, DataNC *datanc) {
   float fmax = -fmin;
   unsigned nondatas = 0;
   unsigned inan = 0;
-  datanc->base.data_in = malloc(sizeof(float)*datanc->base.size);
+  datanc->base.data_in = malloc(sizeof(float) * datanc->base.size);
   for (int i = 0; i < datanc->base.size; i++)
     if (datatmp[i] != fillvalue) {
       float f;
       float rad = scale_factor * datatmp[i] + add_offset;
       if (datanc->band_id > 6 && datanc->band_id < 17) {
-        f = (planck_fk2 / (log((planck_fk1 / rad) + 1)) -
-                   planck_bc1) / planck_bc2;
+        f = (planck_fk2 / (log((planck_fk1 / rad) + 1)) - planck_bc1) /
+            planck_bc2;
       } else {
-        f = kappa0*rad;
+        f = kappa0 * rad;
       }
       if (f > fmax)
         fmax = f;
@@ -152,7 +159,8 @@ int load_nc_sf(const char *filename, char *variable, DataNC *datanc) {
     }
   datanc->base.fmin = fmin;
   datanc->base.fmax = fmax;
-  printf("min %g max %g Non datas %u %g %u\n", fmin, fmax, nondatas, NonData, inan);
+  printf("min %g max %g Non datas %u %g %u\n", fmin, fmax, nondatas, NonData,
+         inan);
   free(datatmp);
 
   printf("Exito decodificando %s!\n", filename);
