@@ -3,6 +3,7 @@
  * Labotatorio Nacional de Observación de la Tierra, UNAM
  */
 #include "datanc.h"
+#include "logger.h"
 #include <math.h>
 #include <netcdf.h>
 #include <omp.h>
@@ -14,11 +15,11 @@
 #define ERRCODE 2
 #define ERR(e)                                                                 \
   {                                                                            \
-    printf("Error: %s\n", nc_strerror(e));                                     \
+    LOG_ERROR("NetCDF error: %s", nc_strerror(e));                            \
     return (ERRCODE);                                                          \
   }
 #define WRN(e)                                                                 \
-  { printf("Warning: %s\n", nc_strerror(e)); }
+  { LOG_WARN("NetCDF warning: %s", nc_strerror(e)); }
 
 
 // Carga un conjunto de datos de NetCDF y lo pone en una estructura DataNC
@@ -42,8 +43,8 @@ int load_nc_sf(const char *filename, char *variable, DataNC *datanc) {
   if ((retval = nc_inq_dimlen(ncid, yid, &datanc->base.height)))
     ERR(retval);
   datanc->base.size = datanc->base.width * datanc->base.height;
-  printf("Dimensiones x %lu y %lu  size %lu\n", datanc->base.width,
-         datanc->base.height, datanc->base.size);
+  LOG_INFO("NetCDF dimensions: %lux%lu (total: %lu)", datanc->base.width,
+           datanc->base.height, datanc->base.size);
 
   // Obtenemos el id de la variable
   int rad_varid;
@@ -59,11 +60,15 @@ int load_nc_sf(const char *filename, char *variable, DataNC *datanc) {
   short fillvalue;
   if ((retval = nc_get_att_short(ncid, rad_varid, "_FillValue", &fillvalue)))
     WRN(retval);
-  printf("Scale %g Offset %g Fill value %d\n", scale_factor, add_offset,
-         fillvalue);
+  LOG_DEBUG("NetCDF scaling: factor=%g, offset=%g, fill_value=%d", 
+            scale_factor, add_offset, fillvalue);
 
   // Recupera los datos
   short *datatmp = malloc(sizeof(short) * datanc->base.size);
+  if (datatmp == NULL) {
+    LOG_FATAL("Failed to allocate memory for NetCDF data");
+    return ERRCODE;
+  }
   if ((retval = nc_get_var_short(ncid, rad_varid, datatmp)))
     ERR(retval);
 
@@ -93,7 +98,7 @@ int load_nc_sf(const char *filename, char *variable, DataNC *datanc) {
     ERR(retval);
   if ((retval = nc_get_var_ubyte(ncid, band_id_varid, &datanc->band_id)))
     ERR(retval);
-  printf("banda %d\n", datanc->band_id);
+  LOG_DEBUG("NetCDF band ID: %d", datanc->band_id);
 
   // Obtiene los parámetros de Planck o Kappa0
   float planck_fk1, planck_fk2, planck_bc1, planck_bc2, kappa0;
@@ -159,8 +164,8 @@ int load_nc_sf(const char *filename, char *variable, DataNC *datanc) {
     }
   datanc->base.fmin = fmin;
   datanc->base.fmax = fmax;
-  printf("min %g max %g Non datas %u %g %u\n", fmin, fmax, nondatas, NonData,
-         inan);
+  LOG_INFO("Data range: min=%g, max=%g, NonData=%g, invalid_count=%u", 
+           fmin, fmax, NonData, inan);
   free(datatmp);
 
   printf("Exito decodificando %s!\n", filename);
