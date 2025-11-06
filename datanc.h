@@ -30,6 +30,14 @@ typedef struct {
  // return data.data_in[ii];
 //}
 
+// Constructor: creates a new DataF structure with allocated memory
+// Returns initialized DataF on success, or DataF with NULL data_in on failure
+DataF dataf_create(size_t width, size_t height);
+
+// Destructor: safely frees memory allocated for DataF
+// Safe to call with NULL data_in pointer
+void dataf_destroy(DataF *data);
+
 // Simple downsampling selecting points.
 DataF downsample_simple(DataF datanc_big, int factor);
 

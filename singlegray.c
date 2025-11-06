@@ -12,11 +12,13 @@
 
 
 ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha) {
-  ImageData imout;
-  imout.bpp = (use_alpha) ? 2: 1;
-  imout.width = c01.width;
-  imout.height = c01.height;
-  imout.data = malloc(imout.bpp * c01.size);
+  unsigned int bpp = (use_alpha) ? 2 : 1;
+  ImageData imout = image_create(c01.width, c01.height, bpp);
+  
+  // Check if allocation was successful
+  if (imout.data == NULL) {
+    return imout; // Return empty image on allocation failure
+  }
 
   double start = omp_get_wtime();
 

@@ -59,11 +59,11 @@ int main(int argc, char *argv[]) {
   load_nc_sf(fnc01, "Rad", &c01);
   if (scale < 0) {
     DataF aux = downsample_boxfilter(c01.base, -scale);
-    free(c01.base.data_in);
+    dataf_destroy(&c01.base);
     c01.base = aux;
   } else if (scale > 1) {
     DataF aux = upsample_bilinear(c01.base, scale);
-    free(c01.base.data_in);
+    dataf_destroy(&c01.base);
     c01.base = aux;
   }
   ImageData imout = create_single_gray(c01.base, invert_values, use_alpha);
@@ -72,6 +72,10 @@ int main(int argc, char *argv[]) {
   if (apply_histogram)
     image_apply_histogram(imout);
   write_image_png(outfn, &imout);
+
+  // Free all memory
+  dataf_destroy(&c01.base);
+  image_destroy(&imout);
 
   return 0;
 }

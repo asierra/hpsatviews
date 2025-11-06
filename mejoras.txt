@@ -1,0 +1,105 @@
+Lista de Mejoras Prioritarias para el Proyecto HPSATVIEWS
+
+🔴 ALTA PRIORIDAD - Seguridad y Robustez
+
+1. "Implementa verificación exhaustiva de retorno de malloc() y gestión
+de errores de memoria"
+
+Múltiples malloc() sin verificar retorno (reader_nc.c, image.c,
+datanc.c, writer_png.c)
+
+Añadir verificaciones y liberación segura en casos de error
+
+Implementar funciones wrapper para gestión de memoria segura
+
+
+2. "Refactoriza las macros ERR() y WRN() para usar fprintf(stderr) y
+códigos de error consistentes"
+
+Macros usan printf() en lugar de stderr para errores
+Códigos de error hardcodeados e inconsistentes
+Implementar sistema de logging estructurado
+
+3. "Elimina todas las variables globales y convierte a parámetros de función"
+
+Variables globales: id[13], fnc01, fnc02, fnc03, fnc13, NonData
+Hace el código no thread-safe y difícil de mantener
+Encapsular en estructuras o pasar como parámetros
+
+🟠 PRIORIDAD MEDIA - Calidad de Código
+
+4. "Implementa guards de inclusión consistentes en todos los headers"
+
+args.h usa args_h mientras otros usan _NAME_H_
+Estandarizar formato: #ifndef HPSATVIEWS_MODULE_H_
+
+5. "Añade declaraciones const para parámetros de solo lectura"
+
+Funciones como load_nc_sf() no declaran const char* para filename
+Mejora la intención del código y optimización del compilador
+
+6. "Refactoriza printf() de debug por sistema de logging condicional"
+
+Múltiples printf() comentados y activos mezclados
+Implementar macros de debug: DEBUG_PRINT(level, format, ...)
+
+7. "Convierte magic numbers en constantes nombradas"
+
+Números como 2166136261u, 16777619, dimensiones hardcodeadas
+Definir en header con nombres descriptivos
+
+🟡 PRIORIDAD NORMAL - Mejores Prácticas
+
+8. "Añade documentación doxygen a todas las funciones públicas"
+
+Solo algunas funciones tienen comentarios básicos
+Documentar parámetros, valores de retorno y ejemplos de uso
+
+9. "Implementa verificación de bounds en accesos a arrays"
+
+Accesos como data[ii] sin verificar límites
+Añadir asserts o verificaciones en modo debug
+
+10. "Normaliza el manejo de strings con funciones seguras"
+
+Usar strncpy(), strncat() en lugar de versiones no seguras
+Implementar funciones wrapper para manipulación segura
+
+11. "Refactoriza funciones largas en funciones más pequeñas y específicas"
+
+load_nc_sf() y main() tienen demasiadas responsabilidades
+Aplicar principio de responsabilidad única
+
+🔵 PRIORIDAD BAJA - Optimización y Modernización
+
+12. "Añade soporte para compilación con AddressSanitizer y Valgrind"
+
+Modificar Makefile para targets de debug con sanitizers
+Detectar leaks de memoria y buffer overflows
+
+13. "Implementa cache-friendly data layout para procesamiento paralelo"
+
+Reorganizar estructuras para mejor localidad de memoria
+Considerar padding y alineación para SIMD
+
+14. "Añade target de tests unitarios en Makefile"
+
+Implementar framework de testing simple
+Tests para funciones críticas de procesamiento
+
+15. "Moderniza el parser de argumentos con validación robusta"
+
+El parser args.c es extenso pero podría ser más robusto
+Añadir validación de tipos y rangos
+
+🟢 FUTURO - Funcionalidades
+
+16. "Implementa manejo de diferentes formatos de entrada NetCDF"
+
+Código muy específico para GOES L1b
+Generalizar para otros satelites/formatos
+
+17. "Añade soporte para procesamiento por chunks grandes de datos"
+
+Para datasets que no caben en memoria
+Implementar streaming processing

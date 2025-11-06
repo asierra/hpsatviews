@@ -6,6 +6,7 @@
  */
 #include "reader_nc.h"
 #include "writer_png.h"
+#include "image.h"
 #include <dirent.h>
 #include <libgen.h>
 #include <stdio.h>
@@ -107,25 +108,25 @@ int main(int argc, char *argv[]) {
   if (downsample) {
     // Iguala los tamaños a la resolución mínima
     aux = downsample_boxfilter(c01.base, 2);
-    free(c01.base.data_in);
+    dataf_destroy(&c01.base);
     c01.base = aux;
     aux = downsample_boxfilter(c02.base, 4);
-    free(c02.base.data_in);
+    dataf_destroy(&c02.base);
     c02.base = aux;
     aux = downsample_boxfilter(c03.base, 2);
-    free(c03.base.data_in);
+    dataf_destroy(&c03.base);
     c03.base = aux;
     compute_navigation_nc(fnc13, &navla, &navlo);
   } else {
     // Iguala los tamaños a la resolución máxima
     aux = upsample_bilinear(c01.base, 2);
-    free(c01.base.data_in);
+    dataf_destroy(&c01.base);
     c01.base = aux;
     aux = upsample_bilinear(c13.base, 4);
-    free(c13.base.data_in);
+    dataf_destroy(&c13.base);
     c13.base = aux;
     aux = upsample_bilinear(c03.base, 2);
-    free(c03.base.data_in);
+    dataf_destroy(&c03.base);
     c03.base = aux;
     compute_navigation_nc(fnc02, &navla, &navlo);
   }
@@ -146,14 +147,22 @@ int main(int argc, char *argv[]) {
   else {
     ImageData blend = blend_images(nocturna, diurna, mask);
     write_image_png("out.png", &blend);
+    image_destroy(&blend); // Free the blended image
   }
   // Free all memory
-  free(c01.base.data_in);
-  free(c02.base.data_in);
-  free(c03.base.data_in);
-  free(c13.base.data_in);
-  free(navla.data_in);
-  free(navlo.data_in);
+  dataf_destroy(&c01.base);
+  dataf_destroy(&c02.base);
+  dataf_destroy(&c03.base);
+  dataf_destroy(&c13.base);
+  dataf_destroy(&navla);
+  dataf_destroy(&navlo);
+  
+  // Free image data (this was a memory leak before!)
+  image_destroy(&diurna);
+  image_destroy(&nocturna);
+  image_destroy(&mask);
+  
+  // Free filename strings
   free(fnc01);
   free(fnc02);
   free(fnc03);

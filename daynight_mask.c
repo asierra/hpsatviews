@@ -129,11 +129,12 @@ double sun_zenith_angle(float la, float lo, DataNC datanc) {
 // All data structures must be of the same dimensions, or the result will be wrong.
 ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo, 
     float *dnratio, float max_temp) {
-  ImageData imout;
-  imout.bpp = 1;
-  imout.width = navla.width;
-  imout.height = navla.height;
-  imout.data = malloc(imout.bpp * navla.size);
+  ImageData imout = image_create(navla.width, navla.height, 1);
+  
+  // Check if allocation was successful
+  if (imout.data == NULL) {
+    return imout; // Return empty image on allocation failure
+  }
 
   unsigned int day, nite;
   day = nite = 0;

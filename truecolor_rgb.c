@@ -12,11 +12,12 @@
 #include "image.h"
 
 ImageData create_truecolor_rgb(DataNC c01, DataNC c02, DataNC c03) {
-  ImageData imout;
-  imout.bpp = 3;
-  imout.width = c01.base.width;
-  imout.height = c01.base.height;
-  imout.data = malloc(imout.bpp * c01.base.size);
+  ImageData imout = image_create(c01.base.width, c01.base.height, 3);
+  
+  // Check if allocation was successful
+  if (imout.data == NULL) {
+    return imout; // Return empty image on allocation failure
+  }
 
   double start = omp_get_wtime();
 

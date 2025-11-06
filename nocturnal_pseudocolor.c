@@ -16,11 +16,12 @@
 #include "paleta.h"
 
 ImageData create_nocturnal_pseudocolor(DataNC datanc) {
-  ImageData imout;
-  imout.bpp = 3;
-  imout.width = datanc.base.width;
-  imout.height = datanc.base.height;
-  imout.data = malloc(imout.bpp * datanc.base.size);
+  ImageData imout = image_create(datanc.base.width, datanc.base.height, 3);
+  
+  // Check if allocation was successful
+  if (imout.data == NULL) {
+    return imout; // Return empty image on allocation failure
+  }
 
   float tmin = 1e10, tmax = -1e10;
 

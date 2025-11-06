@@ -14,6 +14,14 @@ typedef struct {
 } ImageData;
 
 
+// Constructor: creates a new ImageData structure with allocated memory
+// Returns initialized ImageData on success, or ImageData with NULL data on failure
+ImageData image_create(unsigned int width, unsigned int height, unsigned int bpp);
+
+// Destructor: safely frees memory allocated for ImageData
+// Safe to call with NULL data pointer
+void image_destroy(ImageData *image);
+
 // Creates a new image from an original image.
 ImageData copy_image(ImageData orig);
 

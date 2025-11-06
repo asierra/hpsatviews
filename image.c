@@ -10,29 +10,83 @@
 #include "image.h"
 
 
+// Constructor for ImageData structure
+ImageData image_create(unsigned int width, unsigned int height, unsigned int bpp) {
+    ImageData image;
+    
+    // Initialize all fields
+    image.width = width;
+    image.height = height;
+    image.bpp = bpp;
+    
+    // Validate bpp parameter
+    if (bpp < 1 || bpp > 4) {
+        image.data = NULL;
+        image.width = 0;
+        image.height = 0;
+        image.bpp = 0;
+        return image;
+    }
+    
+    // Calculate total size needed
+    size_t total_size = (size_t)width * height * bpp;
+    
+    // Allocate memory with error checking
+    if (total_size > 0) {
+        image.data = malloc(total_size);
+        if (image.data == NULL) {
+            // On allocation failure, reset all fields
+            image.width = 0;
+            image.height = 0;
+            image.bpp = 0;
+        }
+    } else {
+        image.data = NULL;
+    }
+    
+    return image;
+}
+
+// Destructor for ImageData structure
+void image_destroy(ImageData *image) {
+    if (image != NULL) {
+        if (image->data != NULL) {
+            free(image->data);
+            image->data = NULL;
+        }
+        // Reset all fields to safe values
+        image->width = 0;
+        image->height = 0;
+        image->bpp = 0;
+    }
+}
+
+
 ImageData copy_image(ImageData orig) {
   size_t size = orig.width * orig.height;
-  ImageData imout;
-  imout.bpp = orig.bpp;
-  imout.width = orig.width;
-  imout.height = orig.height;
-  imout.data = malloc(imout.bpp * size);
-  memcpy(imout.data, orig.data, size);
+  ImageData imout = image_create(orig.width, orig.height, orig.bpp);
+  
+  // Check if allocation was successful
+  if (imout.data != NULL && orig.data != NULL) {
+    memcpy(imout.data, orig.data, size * orig.bpp);
+  }
+  
   return imout;
 }
 
 
 ImageData blend_images(ImageData bg, ImageData fg, ImageData mask) {
   size_t size = bg.width * bg.height;
-  ImageData imout;
-  imout.bpp = bg.bpp;
-  imout.width = bg.width;
-  imout.height = bg.height;
-  imout.data = malloc(imout.bpp * size);
+  ImageData imout = image_create(bg.width, bg.height, bg.bpp);
+  
+  // Check if allocation was successful
+  if (imout.data == NULL) {
+    return imout; // Return empty image on allocation failure
+  }
 
   double start = omp_get_wtime();
 
-#pragma omp parallel for shared(bg, front, mask)
+#pragma omp parallel for shared(bg, fg, mask, imout)
   for (int i = 0; i < size; i++) {
     int p = i * bg.bpp;
     int pm = i * mask.bpp;
