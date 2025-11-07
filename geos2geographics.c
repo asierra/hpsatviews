@@ -134,6 +134,60 @@ DataF remap_using_lut(DataF datag, const GeographicGrid* grid, DataF navla, Data
     return forward_reproject(datag, navla, navlo, grid);
 }
 
+int geographics(const char* input_file) {
+     DataNC dc;
+    if (load_nc_sf(input_file, "Rad", &dc) != 0) return -1;
+    LOG_INFO("Loaded NetCDF data: %u x %u pixels", dc.base.width, dc.base.height);
+
+    DataF navlo, navla;
+    if (compute_navigation_nc(input_file, &navla, &navlo) != 0) return -1;
+    LOG_INFO("Navigation data computed successfully");
+    LOG_INFO("Navigation extent: lat[%.3f, %.3f], lon[%.3f, %.3f]", navla.fmin, navla.fmax, navlo.fmin, navlo.fmax);
+
+    // 60% size of original
+    size_t width=navlo.width*0.6, height=navla.height*0.6;
+    LOG_INFO("Output size %lu x %lu, original %lu x %lu", width, height,  navlo.width, navla.height);
+
+    // Create grid and perform the reprojection)
+    DataF datagg = dataf_create(width, height);
+    LOG_INFO("datagg creado");
+
+    #pragma omp parallel for collapse(2)
+    for (unsigned y = 0; y < dc.base.height; y++) {
+        for (unsigned x = 0; x < dc.base.width; x++) {
+            unsigned i = y * dc.base.width + x;
+            float lo = navlo.data_in[i];
+            float la = navla.data_in[i];
+            float f = dc.base.data_in[i];
+            if (lo != NonData && la != NonData && f != NonData) {
+                // Mapea la latitud y longitud a las coordenadas de la rejilla de salida
+                int ix = (int)(((lo - navlo.fmin) / (navlo.fmax - navlo.fmin)) * (width - 1));
+                int iy = (int)(((la - navla.fmin) / (navla.fmax - navla.fmin)) * (height - 1));
+
+                // Calcula el índice lineal para el array de destino
+                size_t j = iy * width + ix;
+                datagg.data_in[j] = f;
+            }
+        }
+    }
+    datagg.fmin = dc.base.fmin;
+    datagg.fmax = dc.base.fmax;
+
+    ImageData imout = create_single_gray(datagg, true, true);
+    const char *outfn = "geographic_reprojection.png";
+    if (write_image_png(outfn, &imout) == 0) {
+        LOG_INFO("Output saved to: %s", outfn);
+    }
+
+    // Clean up
+    dataf_destroy(&dc.base);
+    dataf_destroy(&datagg);
+    dataf_destroy(&navla);
+    dataf_destroy(&navlo);
+    image_destroy(&imout);
+
+    return 0;
+}
 
 int main(int argc, char *argv[]) {
     logger_init(LOG_INFO);
@@ -144,7 +198,9 @@ int main(int argc, char *argv[]) {
 
     const char *fnc = argv[1];
     LOG_INFO("Processing file: %s", fnc);
-
+    return geographics(fnc);
+}  
+/*
     DataNC dc;
     if (load_nc_sf(fnc, "Rad", &dc) != 0) return -1;
     LOG_INFO("Loaded NetCDF data: %u x %u pixels", dc.base.width, dc.base.height);
@@ -203,4 +259,4 @@ int main(int argc, char *argv[]) {
     image_destroy(&imout);
 
     return 0;
-}
+}*/
