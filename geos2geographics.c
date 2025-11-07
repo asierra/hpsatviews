@@ -24,7 +24,7 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha);
 
 
 // Creates the target g
-int geographics(const char* input_file) {
+int geos2geographics(const char* input_file) {
      DataNC dc;
     if (load_nc_sf(input_file, "Rad", &dc) != 0) return -1;
     LOG_INFO("Loaded NetCDF data: %u x %u pixels", dc.base.width, dc.base.height);
@@ -150,5 +150,5 @@ int main(int argc, char *argv[]) {
 
     const char *fnc = argv[1];
     LOG_INFO("Processing file: %s", fnc);
-    return geographics(fnc);
+    return geos2geographics(fnc);
 }
