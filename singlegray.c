@@ -22,7 +22,8 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha) {
 
   double start = omp_get_wtime();
 
-#pragma omp parallel for shared(c01, imout)
+#pragma omp parallel for
+for (unsigned i = 0; i < c01.size; i++) {
   float dd = c01.fmax - c01.fmin;
   for (int y = 0; y < imout.height; y++) {
     for (int x = 0; x < imout.width; x++) {
@@ -43,6 +44,7 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha) {
         imout.data[po + 1] = a;
     }
   }
+}
 
   double end = omp_get_wtime();
   printf("Tiempo Single Gray %lf\n", end - start);

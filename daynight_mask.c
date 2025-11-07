@@ -141,7 +141,7 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo,
 
   double start = omp_get_wtime();
 
-#pragma omp parallel for shared(datanc, data)
+#pragma omp parallel for shared(datanc, navla, navlo, imout) reduction(+:day,nite)
   for (int y = 0; y < navla.height; y++) {
     for (int x = 0; x < navla.width; x++) {
       int i = y * navla.width + x;

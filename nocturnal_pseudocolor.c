@@ -27,7 +27,7 @@ ImageData create_nocturnal_pseudocolor(DataNC datanc) {
 
   double start = omp_get_wtime();
 
-#pragma omp parallel for shared(datanc, mout.data)
+#pragma omp parallel for shared(datanc, imout)
   for (int y = 0; y < imout.height; y++) {
     for (int x = 0; x < imout.width; x++) {
       int i = y * imout.width + x;
