@@ -4,6 +4,7 @@
  */
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <omp.h>
 #include <math.h>
 
@@ -56,6 +57,59 @@ void dataf_destroy(DataF *data) {
     }
 }
 
+/**
+ * @brief Creates a deep copy of a DataF structure.
+ * 
+ * This function allocates new memory for both the structure and its data buffer,
+ * then copies the content from the source. The caller is responsible for freeing
+ * the returned pointer using dataf_destroy().
+ * 
+ * @param data A pointer to the constant DataF structure to be copied.
+ * @return A pointer to the newly created DataF copy, or NULL if memory
+ *         allocation fails or the source is NULL.
+ */
+DataF dataf_copy(const DataF *data) {
+    if (data == NULL) {
+        return dataf_create(0, 0); // Return an empty but valid DataF
+    }
+
+    // Create a new DataF struct on the stack
+    DataF copy = dataf_create(data->width, data->height);
+    if (copy.data_in == NULL && data->size > 0) {
+        return copy; // Allocation failed, return empty struct
+    }
+
+    // Copy scalar members
+    copy.fmin = data->fmin;
+    copy.fmax = data->fmax;
+
+    if (data->size > 0 && data->data_in != NULL) {
+        memcpy(copy.data_in, data->data_in, sizeof(float) * data->size);
+    }
+
+    return copy;
+}
+
+/**
+ * @brief Fills the data buffer of a DataF structure with a specific value.
+ * 
+ * This function iterates through the entire data_in buffer and sets each
+ * element to the provided floating-point value. It is parallelized with OpenMP
+ * for efficiency on large datasets.
+ * 
+ * @param data A pointer to the DataF structure to be filled.
+ * @param value The float value to fill the buffer with.
+ */
+void dataf_fill(DataF *data, float value) {
+    if (data == NULL || data->data_in == NULL || data->size == 0) {
+        return; // Nothing to fill
+    }
+
+    #pragma omp parallel for
+    for (size_t i = 0; i < data->size; i++) {
+        data->data_in[i] = value;
+    }
+}
 
 DataF downsample_simple(DataF datanc_big, int factor)
 {
@@ -167,4 +221,3 @@ DataF upsample_bilinear(DataF datanc_small, int factor)
 
   return datanc;
 }
-

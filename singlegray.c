@@ -5,6 +5,7 @@
  */
 #include "datanc.h"
 #include "image.h"
+#include "logger.h"
 #include <omp.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -15,16 +16,15 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha) {
   unsigned int bpp = (use_alpha) ? 2 : 1;
   ImageData imout = image_create(c01.width, c01.height, bpp);
   
-  // Check if allocation was successful
   if (imout.data == NULL) {
-    return imout; // Return empty image on allocation failure
+    LOG_ERROR("No fue posible apartar memoria para la imagen en singlegray.");
+    return imout;
   }
 
   double start = omp_get_wtime();
-
-#pragma omp parallel for
-for (unsigned i = 0; i < c01.size; i++) {
+  LOG_INFO("Iniciando loop singlegray c01.size %lu iw %lu ih %lu", c01.size, imout.width, imout.height);
   float dd = c01.fmax - c01.fmin;
+  #pragma omp parallel for
   for (int y = 0; y < imout.height; y++) {
     for (int x = 0; x < imout.width; x++) {
       int i = y * imout.width + x;
@@ -44,9 +44,7 @@ for (unsigned i = 0; i < c01.size; i++) {
         imout.data[po + 1] = a;
     }
   }
-}
-
   double end = omp_get_wtime();
-  printf("Tiempo Single Gray %lf\n", end - start);
+  LOG_INFO("Tiempo Single Gray %lf", end - start);
   return imout;
 }

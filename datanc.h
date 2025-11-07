@@ -38,6 +38,10 @@ DataF dataf_create(size_t width, size_t height);
 // Safe to call with NULL data_in pointer
 void dataf_destroy(DataF *data);
 
+DataF dataf_copy(const DataF *data);
+
+void dataf_fill(DataF *data, float value);
+
 // Simple downsampling selecting points.
 DataF downsample_simple(DataF datanc_big, int factor);
 
