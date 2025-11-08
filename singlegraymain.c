@@ -5,6 +5,7 @@
  */
 #include "args.h"
 #include "reader_nc.h"
+#include "reader_cpt.h"
 #include "writer_png.h"
 #include <ctype.h>
 #include <stdbool.h>
@@ -18,13 +19,15 @@ int main(int argc, char *argv[]) {
   bool invert_values = false;
   bool apply_histogram = false;
   bool use_alpha = false;
+  bool use_palette = false;
   float gamma = 0;
   int scale = 1;
+  ColorArray *color_array = NULL;
 
   ArgParser *parser = ap_new_parser();
   ap_set_helptext(parser,
                   "Usanza: singlegray [-i (invertir)] [-h (usar histograma)] "
-                  "[-g gamma] [-s scale] [-a (alpha)] <Archivo NetCDF ABI L1b>");
+                  "[-g gamma] [-s scale] [-a (alpha)] [-c cpt] <Archivo NetCDF ABI L1b>");
   ap_set_version(parser, "1.0");
   ap_add_str_opt(parser, "out o", "out.png");
   ap_add_dbl_opt(parser, "gamma g", 1);
@@ -32,6 +35,7 @@ int main(int argc, char *argv[]) {
   ap_add_flag(parser, "invert i");
   ap_add_flag(parser, "alpha a");
   ap_add_int_opt(parser, "scale s", 1);
+  ap_add_str_opt(parser, "cpt c", "phase.cpt");
 
   if (!ap_parse(parser, argc, argv)) {
     exit(1);
@@ -53,6 +57,13 @@ int main(int argc, char *argv[]) {
   if (ap_found(parser, "scale"))
     scale = ap_get_int_value(parser, "scale");
   printf("escala %d\n", scale);
+  if (ap_found(parser, "cpt")) {
+    char *cptfn = ap_get_str_value(parser, "cpt");
+    CPTData* cptdata =read_cpt_file(cptfn);
+    use_palette = true;
+    color_array = cpt_to_color_array(cptdata);
+    free_cpt_data(cptdata);
+  }
   ap_free(parser);
 
   DataNC c01;
@@ -71,11 +82,17 @@ int main(int argc, char *argv[]) {
     image_apply_gamma(imout, gamma);
   if (apply_histogram)
     image_apply_histogram(imout);
-  write_image_png(outfn, &imout);
+
+  if (use_palette && color_array)
+    write_image_png_palette(outfn, &imout, color_array);
+  else
+    write_image_png(outfn, &imout);
 
   // Free all memory
   dataf_destroy(&c01.base);
   image_destroy(&imout);
+  if (color_array)
+    free(color_array);
 
   return 0;
 }

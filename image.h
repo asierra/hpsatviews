@@ -5,6 +5,7 @@
 #ifndef HPSATVIEWS_IMAGE_H_
 #define HPSATVIEWS_IMAGE_H_
 
+#include <stdint.h>
 
 // Estructura para guardar datos de una imagen
 typedef struct {
@@ -12,6 +13,15 @@ typedef struct {
   unsigned int bpp; // Bytes per pixel: 1 = gray, 2 = gray+a, 3 = rgb, 4 = rgba
   unsigned char *data;
 } ImageData;
+
+typedef struct {
+    uint8_t r, g, b;
+} Color;
+
+typedef struct {
+    unsigned length;
+    Color colors[];  // Arreglo flexible (C99/C11)
+} ColorArray;
 
 
 // Constructor: creates a new ImageData structure with allocated memory

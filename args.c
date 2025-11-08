@@ -1122,17 +1122,14 @@ static void ap_handle_equals_opt(ArgParser* parser, const char* prefix, const ch
     bool found = map_get(parser->option_map, name, (void**)&option);
 
     if (!found) {
-        free(array);
         exit_with_error("%s%s is not a recognised option name", prefix, name);
     }
 
     if (option->type == OPT_FLAG) {
-        free(array);
         exit_with_error("flag %s%s does not accept an argument", prefix, name);
     }
 
     if (strlen(value) == 0) {
-        free(array);
         exit_with_error("missing argument for %s%s", prefix, name);
     }
 

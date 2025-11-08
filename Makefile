@@ -1,10 +1,10 @@
 CC=gcc
-CFLAGS=-g -I. -Wall -std=c99 -fopenmp
+CFLAGS=-g -I. -Wall -std=c11 -fopenmp
 LDFLAGS=-lm -lnetcdf -lpng -fopenmp
 
 DEPS = datanc.h  image.h  reader_nc.h  writer_png.h  logger.h
 LIBOBJS = truecolor_rgb.o reader_nc.o writer_png.o singlegray.o \
-	nocturnal_pseudocolor.o daynight_mask.o image.o datanc.o logger.o
+	nocturnal_pseudocolor.o daynight_mask.o image.o datanc.o logger.o reader_cpt.o
 OBJ = main.o 
 
 %.o: %.c $(DEPS)
@@ -18,6 +18,9 @@ singlegray: singlegraymain.o libhpsatviews.a args.o
 
 geos2geographics: geos2geographics.o libhpsatviews.a args.o
 	$(CC) -o $@ $^ $(LDFLAGS)
+
+cpt_reader: reader_cpt.c
+	$(CC) -o $@ $< $(CFLAGS) -DCPT_READER_MAIN
 
 .PHONY: clean
 
