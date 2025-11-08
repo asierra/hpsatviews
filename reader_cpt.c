@@ -4,8 +4,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <assert.h>
 
 #include "reader_cpt.h"
+
+// Ensure the color entries array has an even size for range processing.
+static_assert(MAX_COLOR_ENTRIES % 2 == 0, "MAX_COLOR_ENTRIES must be an even number.");
 
 
 ColorArray* cpt_to_color_array(CPTData* cpt) {

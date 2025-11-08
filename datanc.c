@@ -132,6 +132,7 @@ DataF downsample_simple(DataF datanc_big, int factor)
       datanc.data_in[is] = datanc_big.data_in[j*datanc_big.width + i];
     }
   double end = omp_get_wtime();
+  printf("Tiempo downsampling simple %lf\n", end - start);
   return datanc;
 }
 

@@ -7,6 +7,7 @@
 #include <ctype.h>
 #include <stdarg.h>
 #include <stdint.h>
+#include <stdnoreturn.h>
 #include <assert.h>
 #include "args.h"
 
@@ -17,7 +18,7 @@
 
 
 // Prints a message to stderr and exits with a non-zero status code.
-static void exit_with_error(const char* format_string, ...) {
+_Noreturn static void exit_with_error(const char* format_string, ...) {
     fprintf(stderr, "error: ");
 
     va_list args;
