@@ -82,7 +82,7 @@ ChannelInfo* channelset_find(ChannelSet* set, const char* channel_name) {
 }
 
 
-ImageData create_truecolor_rgb(DataNC B, DataNC R, DataNC NiR);
+ImageData create_truecolor_rgb(DataF B, DataF R, DataF NiR);
 
 ImageData create_nocturnal_pseudocolor(DataNC datanc);
 
@@ -222,7 +222,7 @@ int truecolornight(const char* input_file) {
   }
   
   // Create images
-  ImageData diurna = create_truecolor_rgb(c01, c02, c03);
+  ImageData diurna = create_truecolor_rgb(c01.base, c02.base, c03.base);
   image_apply_histogram(diurna);
   ImageData nocturna = create_nocturnal_pseudocolor(c13);
 

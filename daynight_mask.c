@@ -11,7 +11,8 @@
 #include "image.h" 
 
 
-double sun_zenith_angle(float la, float lo, DataNC datanc) {
+double sun_zenith_angle(float la, float lo, DataNC datanc, 
+                        double *zenith_out, double *azimuth_out) {
   // input data:
   double UT;
   int Day;
@@ -109,11 +110,11 @@ double sun_zenith_angle(float la, float lo, DataNC datanc) {
   cp = sqrt((1 - sp * sp));
   sd = sin(Declination);
   cd = sqrt(1 - sd * sd);
-  //sH = sin(HourAngle);
+  double sH = sin(HourAngle);
   cH = cos(HourAngle);
   se0 = sp * sd + cp * cd * cH;
   ep = asin(se0) - 4.26e-5 * sqrt(1.0 - se0 * se0);
-  //Azimuth = atan2(sH, cH * sp - sd * cp / cd);
+  double Azimuth = atan2(sH, cH * sp - sd * cp / cd);
 
   if (ep > 0.0)
     De = (0.08422 * Pressure) /
@@ -122,6 +123,9 @@ double sun_zenith_angle(float la, float lo, DataNC datanc) {
     De = 0.0;
 
   Zenith = PIM - ep - De;
+  
+  *zenith_out = Zenith * 180.0 / M_PI; // Devolver en grados
+  *azimuth_out = Azimuth * 180.0 / M_PI; // Devolver en grados
 
   return Zenith;
 }
@@ -152,7 +156,8 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo,
       float la = navla.data_in[i];
       float lo = navlo.data_in[i];
       float temp = datanc.base.data_in[i];
-      double sza = sun_zenith_angle(la, lo, datanc) * 180 / M_PI;
+      double zenith_out, azimuth_out;
+      double sza = sun_zenith_angle(la, lo, datanc, &zenith_out, &azimuth_out) * 180 / M_PI;
       if (sza > 88.0) {
         w = 1;
         nite++;
