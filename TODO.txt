@@ -38,3 +38,12 @@ Wed Sep 24 09:50:52 AM CST 2025
 Poder leer L2 para generar grises.
 
 
+Mon Nov 10 09:34:03 PM CST 2025
+
+Ya podemos leer L2.  Problemas con paletas, acomodar el primer valor a
+N o B y ajustar el número de grises de acuerdo al tamaño de la paleta.
+Por lo pronto, que funcione con los 255 preestablecidos en singlegray.
+Considerar casos como fase de nube (5 valores discretos) o mask (binario).
+Los valores usualmente están normalizados de 0 a 1 pero a veces usan
+valores reales como irterm.cpt que usa valores en K. Debe ser posible
+usarlos normalizados (por omisión) o ajustados a la tabla en el CPT.

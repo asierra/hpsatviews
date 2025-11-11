@@ -23,6 +23,17 @@ typedef struct {
     Color colors[];  // Arreglo flexible (C99/C11)
 } ColorArray;
 
+static inline ColorArray *color_array_create(unsigned size) {
+  ColorArray *color_array;
+  color_array = malloc(sizeof(ColorArray) + sizeof(Color) * size);
+  color_array->length = size;
+  return color_array;
+}
+
+static inline void color_array_destroy(ColorArray *array) {
+  if (array)
+    free(array);
+}
 
 // Constructor: creates a new ImageData structure with allocated memory
 // Returns initialized ImageData on success, or ImageData with NULL data on failure

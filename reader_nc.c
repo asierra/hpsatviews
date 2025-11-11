@@ -15,12 +15,13 @@
 #define ERRCODE 2
 #define ERR(e)                                                                 \
   {                                                                            \
-    LOG_ERROR("NetCDF error: %s", nc_strerror(e));                            \
+    LOG_ERROR("NetCDF error: %s", nc_strerror(e));                             \
     return (ERRCODE);                                                          \
   }
 #define WRN(e)                                                                 \
-  { LOG_WARN("NetCDF warning: %s", nc_strerror(e)); }
-
+  {                                                                            \
+    LOG_WARN("NetCDF warning: %s", nc_strerror(e));                            \
+  }
 
 // Carga un conjunto de datos de NetCDF y lo pone en una estructura DataNC
 // Específico para datos L1b de GOES
@@ -53,15 +54,16 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
 
   // Obtiene el factor de escala y offset de la variable y el fillvalue
   float scale_factor, add_offset;
-  if ((retval = nc_get_att_float(ncid, rad_varid, "scale_factor", &scale_factor)))
+  if ((retval =
+           nc_get_att_float(ncid, rad_varid, "scale_factor", &scale_factor)))
     WRN(retval);
   if ((retval = nc_get_att_float(ncid, rad_varid, "add_offset", &add_offset)))
     WRN(retval);
   short fillvalue;
   if ((retval = nc_get_att_short(ncid, rad_varid, "_FillValue", &fillvalue)))
     WRN(retval);
-  LOG_DEBUG("NetCDF scaling: factor=%g, offset=%g, fill_value=%d", 
-            scale_factor, add_offset, fillvalue);
+  LOG_INFO("NetCDF scaling: factor=%g, offset=%g, fill_value=%d", scale_factor,
+           add_offset, fillvalue);
 
   // Recupera los datos
   short *datatmp = malloc(sizeof(short) * datanc->base.size);
@@ -93,42 +95,48 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
   datanc->sec = ts.tm_sec;
   // printf("Fecha %d %d %d\n", datanc->year, datanc->mon, datanc->day);
 
-  int band_id_varid;
-  if ((retval = nc_inq_varid(ncid, "band_id", &band_id_varid)))
-    ERR(retval);
-  if ((retval = nc_get_var_ubyte(ncid, band_id_varid, &datanc->band_id)))
-    ERR(retval);
-  LOG_DEBUG("NetCDF band ID: %d", datanc->band_id);
-
-  // Obtiene los parámetros de Planck o Kappa0
+  // Only if L1b
   float planck_fk1, planck_fk2, planck_bc1, planck_bc2, kappa0;
-  if (datanc->band_id > 6) {
-    int fk1_varid, fk2_varid, bc1_varid, bc2_varid;
-    if ((retval = nc_inq_varid(ncid, "planck_fk1", &fk1_varid)))
+  if (strcmp(variable, "Rad") == 0) {
+
+    int band_id_varid;
+    if ((retval = nc_inq_varid(ncid, "band_id", &band_id_varid)))
       ERR(retval);
-    if ((retval = nc_get_var_float(ncid, fk1_varid, &planck_fk1)))
+    if ((retval = nc_get_var_ubyte(ncid, band_id_varid, &datanc->band_id)))
       ERR(retval);
-    if ((retval = nc_inq_varid(ncid, "planck_fk2", &fk2_varid)))
-      ERR(retval);
-    if ((retval = nc_get_var_float(ncid, fk2_varid, &planck_fk2)))
-      ERR(retval);
-    if ((retval = nc_inq_varid(ncid, "planck_bc1", &bc1_varid)))
-      ERR(retval);
-    if ((retval = nc_get_var_float(ncid, bc1_varid, &planck_bc1)))
-      ERR(retval);
-    if ((retval = nc_inq_varid(ncid, "planck_bc2", &bc2_varid)))
-      ERR(retval);
-    if ((retval = nc_get_var_float(ncid, bc2_varid, &planck_bc2)))
-      ERR(retval);
-    printf("Planck %g %g %g %g\n", planck_fk1, planck_fk2, planck_bc1,
-           planck_bc2);
-  } else if (datanc->band_id >= 1) {
-    int kappa0_varid;
-    if ((retval = nc_inq_varid(ncid, "kappa0", &kappa0_varid)))
-      ERR(retval);
-    if ((retval = nc_get_var_float(ncid, kappa0_varid, &kappa0)))
-      ERR(retval);
-    printf("Kappa0 %g\n", kappa0);
+    LOG_DEBUG("NetCDF band ID: %d", datanc->band_id);
+
+    // Obtiene los parámetros de Planck o Kappa0
+    if (datanc->band_id > 6) {
+      int fk1_varid, fk2_varid, bc1_varid, bc2_varid;
+      if ((retval = nc_inq_varid(ncid, "planck_fk1", &fk1_varid)))
+        ERR(retval);
+      if ((retval = nc_get_var_float(ncid, fk1_varid, &planck_fk1)))
+        ERR(retval);
+      if ((retval = nc_inq_varid(ncid, "planck_fk2", &fk2_varid)))
+        ERR(retval);
+      if ((retval = nc_get_var_float(ncid, fk2_varid, &planck_fk2)))
+        ERR(retval);
+      if ((retval = nc_inq_varid(ncid, "planck_bc1", &bc1_varid)))
+        ERR(retval);
+      if ((retval = nc_get_var_float(ncid, bc1_varid, &planck_bc1)))
+        ERR(retval);
+      if ((retval = nc_inq_varid(ncid, "planck_bc2", &bc2_varid)))
+        ERR(retval);
+      if ((retval = nc_get_var_float(ncid, bc2_varid, &planck_bc2)))
+        ERR(retval);
+      printf("Planck %g %g %g %g\n", planck_fk1, planck_fk2, planck_bc1,
+             planck_bc2);
+    } else if (datanc->band_id >= 1) {
+      int kappa0_varid;
+      if ((retval = nc_inq_varid(ncid, "kappa0", &kappa0_varid)))
+        ERR(retval);
+      if ((retval = nc_get_var_float(ncid, kappa0_varid, &kappa0)))
+        ERR(retval);
+      printf("Kappa0 %g\n", kappa0);
+    }
+  } else {
+    datanc->band_id = 0;
   }
 
   if ((retval = nc_close(ncid)))
@@ -145,17 +153,18 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
     if (datatmp[i] != fillvalue) {
       float f;
       float rad = scale_factor * datatmp[i] + add_offset;
-      if (datanc->band_id > 6 && datanc->band_id < 17) {
-        f = (planck_fk2 / (log((planck_fk1 / rad) + 1)) - planck_bc1) /
-            planck_bc2;
-      } else {
-        f = kappa0 * rad;
-      }
+      if (datanc->band_id > 0) {
+        if (datanc->band_id > 6 && datanc->band_id < 17) {
+          f = (planck_fk2 / (log((planck_fk1 / rad) + 1)) - planck_bc1) /
+              planck_bc2;
+        } else 
+          f = kappa0 * rad;
+      } else 
+        f = rad;
       if (f > fmax)
         fmax = f;
-      if (f < fmin) {
+      if (f < fmin) 
         fmin = f;
-      }
       datanc->base.data_in[i] = f;
     } else {
       datanc->base.data_in[i] = NonData;
@@ -164,8 +173,8 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
     }
   datanc->base.fmin = fmin;
   datanc->base.fmax = fmax;
-  LOG_INFO("Data range: min=%g, max=%g, NonData=%g, invalid_count=%u", 
-           fmin, fmax, NonData, inan);
+  LOG_INFO("Data range: min=%g, max=%g, NonData=%g, invalid_count=%u", fmin,
+           fmax, NonData, inan);
   free(datatmp);
 
   printf("Exito decodificando %s!\n", filename);
@@ -217,27 +226,26 @@ float hsat, sm_maj, sm_min, lambda_0, H;
 
 void compute_lalo(float x, float y, float *la, float *lo) {
   double snx, sny, csx, csy, sx, sy, sz, rs, a, b, c;
-  double sm_maj2 = sm_maj*sm_maj;
-  double sm_min2 = sm_min*sm_min;
+  double sm_maj2 = sm_maj * sm_maj;
+  double sm_min2 = sm_min * sm_min;
 
   snx = sin(x);
   csx = cos(x);
   sny = sin(y);
   csy = cos(y);
-  a = snx*snx + csx*csx * (csy*csy + sm_maj2*sny*sny/sm_min2);
-  b = -2.0*H*csx*csy;
-  c = H*H - sm_maj2;
-  rs = (-b - sqrt(b*b - 4.0*a*c)) / (2.0*a);
-  sx = rs*csx*csy;
-  sy = -rs*snx;
-  sz = rs*csx*sny;
+  a = snx * snx + csx * csx * (csy * csy + sm_maj2 * sny * sny / sm_min2);
+  b = -2.0 * H * csx * csy;
+  c = H * H - sm_maj2;
+  rs = (-b - sqrt(b * b - 4.0 * a * c)) / (2.0 * a);
+  sx = rs * csx * csy;
+  sy = -rs * snx;
+  sz = rs * csx * sny;
 
   *la = (float)(atan2(sm_maj2 * sz,
                       sm_min2 * sqrt(((H - sx) * (H - sx)) + (sy * sy))) *
                 rad2deg);
-  *lo = (float)((lambda_0 - atan2(sy, H - sx))*rad2deg);
+  *lo = (float)((lambda_0 - atan2(sy, H - sx)) * rad2deg);
 }
-
 
 int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
   int ncid, varid;
@@ -261,8 +269,8 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
   navlo->width = navla->width;
   navlo->height = navla->height;
   navlo->size = navla->size;
-  //printf("Dimensiones x %lu y %lu total %lu\n", navla->width, navla->height,
-  //       navla->size);
+  // printf("Dimensiones x %lu y %lu total %lu\n", navla->width, navla->height,
+  //        navla->size);
 
   if ((retval = nc_inq_varid(ncid, "goes_imager_projection", &varid)))
     ERR(retval);
@@ -279,7 +287,7 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
     WRN(retval);
   H = sm_maj + hsat;
   lambda_0 = lo_proj_orig / rad2deg;
-  //printf("hsat %g %g %g %g %g\n", hsat, sm_maj, sm_min, lo_proj_orig, H);
+  // printf("hsat %g %g %g %g %g\n", hsat, sm_maj, sm_min, lo_proj_orig, H);
 
   // Obtiene el factor de escala y offset de la variable
   float x_sf, y_sf, x_ao, y_ao;
@@ -297,7 +305,7 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
   navlo->data_in = malloc(sizeof(float) * navlo->size);
 
   int k = 0;
-  float lomin=1e10, lamin=1e10, lomax=-lomin, lamax=-lamin;
+  float lomin = 1e10, lamin = 1e10, lomax = -lomin, lamax = -lamin;
   for (int j = 0; j < navla->height; j++) {
     float y = j * y_sf + y_ao;
     for (int i = 0; i < navla->width; i++) {
@@ -305,26 +313,26 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
       float x = i * x_sf + x_ao;
       compute_lalo(x, y, &la, &lo);
       if (isnan(la) || isnan(lo)) {
-        //printf("Is nan %g\n", la);
+        // printf("Is nan %g\n", la);
         navla->data_in[k] = NonData;
         navlo->data_in[k] = NonData;
       } else {
-      if (la < lamin)
-        lamin = la;
-      if (la > lamax)
-        lamax = la;
-      if (lo < lomin)
-        lomin = lo;
-      if (lo > lomax)
-        lomax = lo;
-      navla->data_in[k] = la;
-      navlo->data_in[k] = lo;
+        if (la < lamin)
+          lamin = la;
+        if (la > lamax)
+          lamax = la;
+        if (lo < lomin)
+          lomin = lo;
+        if (lo > lomax)
+          lomax = lo;
+        navla->data_in[k] = la;
+        navlo->data_in[k] = lo;
       }
       k++;
     }
-    navla->fmin = lamin; 
+    navla->fmin = lamin;
     navla->fmax = lamax;
-    navlo->fmin = lomin; 
+    navlo->fmin = lomin;
     navlo->fmax = lomax;
   }
   printf("corners %g %g  %g %g\n", lomin, lamin, lomax, lamax);

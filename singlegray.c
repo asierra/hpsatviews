@@ -22,7 +22,7 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha) {
   }
 
   double start = omp_get_wtime();
-  LOG_INFO("Iniciando loop singlegray c01.size %lu iw %lu ih %lu", c01.size, imout.width, imout.height);
+  LOG_INFO("Iniciando loop singlegray iw %lu ih %lu min %g max %g", imout.width, imout.height, c01.fmin, c01.fmax);
   float dd = c01.fmax - c01.fmin;
   #pragma omp parallel for
   for (int y = 0; y < imout.height; y++) {

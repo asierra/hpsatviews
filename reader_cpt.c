@@ -5,7 +5,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <assert.h>
-
+#include "logger.h"
 #include "reader_cpt.h"
 
 // Ensure the color entries array has an even size for range processing.
@@ -21,11 +21,10 @@ ColorArray* cpt_to_color_array(CPTData* cpt) {
     unsigned int palette_size = 256;
 
     // Asigna memoria para la estructura ColorArray y el arreglo flexible de colores
-    ColorArray* color_array = malloc(sizeof(ColorArray) + sizeof(Color) * palette_size);
+    ColorArray* color_array = color_array_create(palette_size);
     if (!color_array) {
         return NULL;
     }
-    color_array->length = palette_size;
 
     // Obtiene el rango de valores del CPT
     float min_val = cpt->entries[0].value;

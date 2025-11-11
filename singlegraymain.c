@@ -4,15 +4,48 @@
  * Labotatorio Nacional de Observación de la Tierra, UNAM
  */
 #include "args.h"
+#include "logger.h"
 #include "reader_nc.h"
 #include "reader_cpt.h"
 #include "writer_png.h"
-#include <ctype.h>
+#include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha);
+
+bool strinstr(const char *main_str, const char *sub) {
+    if (main_str == NULL || sub == NULL) {
+        return false; // Handle null pointers
+    }
+
+    size_t main_len = strlen(main_str);
+    size_t sub_len = strlen(sub);
+
+    if (sub_len == 0) {
+        return true; // An empty string is always considered a substring
+    }
+    if (sub_len > main_len) {
+        return false; // Substring cannot be longer than the main string
+    }
+
+    // Iterate through the main string
+    for (size_t i = 0; i <= main_len - sub_len; i++) {
+        bool match = true;
+        // Compare potential substring
+        for (size_t j = 0; j < sub_len; j++) {
+            if (main_str[i + j] != sub[j]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) {
+            return true; // Substring found
+        }
+    }
+    return false; // Substring not found
+}
 
 int main(int argc, char *argv[]) {
   char *fnc01, *outfn;
@@ -59,15 +92,23 @@ int main(int argc, char *argv[]) {
   printf("escala %d\n", scale);
   if (ap_found(parser, "cpt")) {
     char *cptfn = ap_get_str_value(parser, "cpt");
-    CPTData* cptdata =read_cpt_file(cptfn);
+    CPTData* cptdata = read_cpt_file(cptfn);
     use_palette = true;
     color_array = cpt_to_color_array(cptdata);
     free_cpt_data(cptdata);
   }
   ap_free(parser);
 
+  logger_init(LOG_DEBUG);
   DataNC c01;
-  load_nc_sf(fnc01, "Rad", &c01);
+  char *varname;
+  if (strinstr(fnc01, "L1b"))
+    varname = "Rad";
+  else if (strinstr(fnc01, "LST"))
+    varname = "LST";
+  else if (strinstr(fnc01, "CTP"))
+    varname = "PRES";
+  load_nc_sf(fnc01, varname, &c01);
   if (scale < 0) {
     DataF aux = downsample_boxfilter(c01.base, -scale);
     dataf_destroy(&c01.base);
@@ -91,8 +132,7 @@ int main(int argc, char *argv[]) {
   // Free all memory
   dataf_destroy(&c01.base);
   image_destroy(&imout);
-  if (color_array)
-    free(color_array);
+  color_array_destroy(color_array);
 
   return 0;
 }
