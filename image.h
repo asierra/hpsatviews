@@ -20,8 +20,13 @@ typedef struct {
 
 typedef struct {
     unsigned length;
-    Color colors[];  // Arreglo flexible (C99/C11)
+    Color colors[]; 
 } ColorArray;
+
+typedef struct {
+    unsigned length;
+    uint8_t transp[]; 
+} TranspArray;
 
 static inline ColorArray *color_array_create(unsigned size) {
   ColorArray *color_array;

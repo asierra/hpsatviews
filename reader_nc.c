@@ -342,3 +342,68 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
   printf("Exito creando navegación con %s!\n", filename);
   return 0;
 }
+
+// AÑADIR ESTA FUNCIÓN A reader_nc.c
+
+/*
+ * Carga una variable 2D genérica de un NetCDF en una estructura DataF.
+ * Asume que las dimensiones son [y, x] o [height, width].
+ */
+DataF dataf_load_from_netcdf(const char *filename, const char *varname) {
+    DataF data = {0}; // Inicializa la estructura a cero
+    int ncid, retval, varid, ndims;
+    int dimids[NC_MAX_VAR_DIMS];
+    size_t height, width;
+
+    if ((retval = nc_open(filename, NC_NOWRITE, &ncid))) {
+        LOG_ERROR("NetCDF error abriendo %s: %s", filename, nc_strerror(retval));
+        return data; // Retorna estructura vacía
+    }
+
+    if ((retval = nc_inq_varid(ncid, varname, &varid))) {
+        LOG_ERROR("No se encontró la variable '%s' en %s: %s", varname, filename, nc_strerror(retval));
+        nc_close(ncid);
+        return data;
+    }
+
+    if ((retval = nc_inq_varndims(ncid, varid, &ndims))) {
+        LOG_ERROR("Error al leer ndims para %s: %s", varname, nc_strerror(retval));
+        nc_close(ncid);
+        return data;
+    }
+
+    if (ndims != 2) {
+        LOG_ERROR("La variable '%s' no es 2D (tiene %d dims).", varname, ndims);
+        nc_close(ncid);
+        return data;
+    }
+
+    if ((retval = nc_inq_vardimid(ncid, varid, dimids))) {
+        LOG_ERROR("Error al leer dimids para %s: %s", varname, nc_strerror(retval));
+        nc_close(ncid);
+        return data;
+    }
+
+    // Asume que las dimensiones son [y, x]
+    if ((retval = nc_inq_dimlen(ncid, dimids[0], &height))) { /*...*/ }
+    if ((retval = nc_inq_dimlen(ncid, dimids[1], &width))) { /*...*/ }
+
+    // Crear la estructura DataF
+    data = dataf_create(width, height);
+    if (data.data_in == NULL) {
+        LOG_FATAL("Fallo de memoria al crear DataF para %s", varname);
+        nc_close(ncid);
+        return data;
+    }
+
+    // Leer los datos
+    if ((retval = nc_get_var_float(ncid, varid, data.data_in))) {
+        LOG_ERROR("Error al leer datos de '%s': %s", varname, nc_strerror(retval));
+        dataf_destroy(&data); // Libera memoria si la lectura falla
+    }
+
+    // TODO: Leer NonData/_FillValue y fmin/fmax si es necesario
+
+    nc_close(ncid);
+    return data;
+}

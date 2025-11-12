@@ -1,3 +1,8 @@
+/* To define the colormap for a pseudocolor image, we use GPT from GMT.
+ * 
+ * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Labotatorio Nacional de Observación de la Tierra, UNAM
+ */
 // https://docs.generic-mapping-tools.org/dev/reference/features.html#color-palette-tables
 
 #include <stdio.h>
@@ -12,6 +17,9 @@
 static_assert(MAX_COLOR_ENTRIES % 2 == 0, "MAX_COLOR_ENTRIES must be an even number.");
 
 
+// If the CPT is normalized, we use all the colors 
+// Otherwise if CPT has limits and we use them, we adjust for
+// 0 = B, 255 or all from values > max = F, NonData = N
 ColorArray* cpt_to_color_array(CPTData* cpt) {
     if (!cpt || cpt->entry_count < 2) {
         return NULL;

@@ -33,7 +33,7 @@ typedef struct {
 void write_png_file(const char *filename, png_t *pngt);
 
 int write_image_png_palette(const char *filename, ImageData *image, ColorArray *palette) {
-  if (image->bpp != 1) {
+  if (image->bpp > 1) {
     LOG_ERROR("Solo imágenes monocromáticas sin alpha pueden tener paleta.");
     return 1; 
   }
@@ -42,7 +42,6 @@ int write_image_png_palette(const char *filename, ImageData *image, ColorArray *
   mipng.width = image->width;
   mipng.height = image->height;
   mipng.color_type = PNG_COLOR_TYPE_PALETTE;
-  
   mipng.bit_depth = 8;
   mipng.row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * mipng.height);
   for (int y = 0; y < mipng.height; y++) {

@@ -17,4 +17,6 @@ int load_nc_float(const char *filename, DataF *datanc, const char *variable);
 // From L1b file compute local navigation
 int compute_navigation_nc(const char *GOES_L1b_filename, DataF *navla, DataF *navlo);
 
+DataF dataf_load_from_netcdf(const char *filename, const char *varname);
+
 #endif /* HPSATVIEWS_READER_NC_H_ */

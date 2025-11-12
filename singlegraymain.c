@@ -106,6 +106,8 @@ int main(int argc, char *argv[]) {
     varname = "Rad";
   else if (strinstr(fnc01, "LST"))
     varname = "LST";
+  else if (strinstr(fnc01, "ACTP"))
+    varname = "Phase";
   else if (strinstr(fnc01, "CTP"))
     varname = "PRES";
   load_nc_sf(fnc01, varname, &c01);
