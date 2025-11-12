@@ -80,15 +80,15 @@ bool parse_special_color(const char* line, CPTData* cpt) {
     if (sscanf(line, " %c %hhu %hhu %hhu", &type, &color.r, &color.g, &color.b) == 4) {
         switch (type) {
             case 'F':
-                cpt->foreground.color = color;
+                cpt->foreground = color;
                 cpt->has_foreground = true;
                 break;
             case 'B':
-                cpt->background.color = color;
+                cpt->background = color;
                 cpt->has_background = true;
                 break;
             case 'N':
-                cpt->nan_color.color = color;
+                cpt->nan_color = color;
                 cpt->has_nan_color = true;
                 break;
             default:
@@ -185,23 +185,23 @@ void print_cpt_info(const CPTData* cpt) {
     
     if (cpt->has_foreground) {
         printf("Foreground: %u/%u/%u\n", 
-               cpt->foreground.color.r, 
-               cpt->foreground.color.g, 
-               cpt->foreground.color.b);
+               cpt->foreground.r, 
+               cpt->foreground.g, 
+               cpt->foreground.b);
     }
     
     if (cpt->has_background) {
         printf("Background: %u/%u/%u\n", 
-               cpt->background.color.r, 
-               cpt->background.color.g, 
-               cpt->background.color.b);
+               cpt->background.r, 
+               cpt->background.g, 
+               cpt->background.b);
     }
     
     if (cpt->has_nan_color) {
         printf("NaN Color: %u/%u/%u\n", 
-               cpt->nan_color.color.r, 
-               cpt->nan_color.color.g, 
-               cpt->nan_color.color.b);
+               cpt->nan_color.r, 
+               cpt->nan_color.g, 
+               cpt->nan_color.b);
     }
     
     printf("\nTabla de colores:\n");
@@ -226,12 +226,12 @@ Color get_color_for_value(const CPTData* cpt, double value) {
     
     // Valor menor que el mínimo
     if (value < cpt->entries[0].value) {
-        return cpt->has_background ? cpt->background.color : result;
+        return cpt->has_background ? cpt->background : result;
     }
     
     // Valor mayor que el máximo
     if (value > cpt->entries[cpt->entry_count - 1].value) {
-        return cpt->has_foreground ? cpt->foreground.color : result;
+        return cpt->has_foreground ? cpt->foreground : result;
     }
     
     // Buscar el intervalo correcto

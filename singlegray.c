@@ -6,14 +6,20 @@
 #include "datanc.h"
 #include "image.h"
 #include "logger.h"
+#include "reader_cpt.h"
 #include <omp.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 
-ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha) {
-  unsigned int bpp = (use_alpha) ? 2 : 1;
+ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha, const CPTData* cpt) {
+  unsigned int bpp = (use_alpha && cpt==NULL) ? 2 : 1;
+
+  // If cpt != NULL usaremos r = 0 para B y r =  255 para F, además de que ajustaremos los valores al tamaño de la paleta, que debe 
+  if (cpt!=NULL) {
+
+  }
   ImageData imout = image_create(c01.width, c01.height, bpp);
   
   if (imout.data == NULL) {

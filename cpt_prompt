@@ -1,0 +1,11 @@
+En cpt_to_color_array, el valor inicial de palette_size debe ser igual al número total de colores que tiene cpt más uno, cpt->entry_count+1. 
+
+Si cpt->has_background, palette_size++ y el primer color debe ser cpt->background
+Si cpt->has_nan_color, palette_size++ y el último color debe ser cpt->nan_color
+
+y para cumplir con que palette_size sea uno de 2, 4, 16, o 256, si palette_size es menor que cualquiera de estos valores, hay que hacer que palette_size y los demás colores deberan ser 
+cpt->foreground. Por ejemplo, si después de las anteriores operaciones tenemos un palette_size==12, hacemos palette_size=16 y rellenamos los colores que faltan con 
+cpt->foreground y siempre el último debe ser cpt->nan_color en caso de que cpt->has_nan_color sea verdadero.
+
+
+

@@ -38,6 +38,8 @@ cpt_reader
 *.pdf
 *.png
 *.jpg
+*.cpt
+rayleigh_correction
 *~
 
 

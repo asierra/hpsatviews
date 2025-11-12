@@ -68,7 +68,7 @@ int main(int argc, char *argv[]) {
   ap_add_flag(parser, "invert i");
   ap_add_flag(parser, "alpha a");
   ap_add_int_opt(parser, "scale s", 1);
-  ap_add_str_opt(parser, "cpt c", "phase.cpt");
+  ap_add_str_opt(parser, "cpt p", "phase.cpt");
 
   if (!ap_parse(parser, argc, argv)) {
     exit(1);

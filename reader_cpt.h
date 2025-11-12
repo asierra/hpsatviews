@@ -12,9 +12,10 @@ typedef struct {
 
 typedef struct {
     char name[MAX_LINE_LENGTH];
-    ColorEntry foreground;
-    ColorEntry background;
-    ColorEntry nan_color;
+    Color foreground;
+    Color background;
+    Color nan_color;
+    // Must be 2, 4, 16, or 256
     int entry_count;
     ColorEntry entries[MAX_COLOR_ENTRIES];
     bool has_foreground;

@@ -47,3 +47,12 @@ Considerar casos como fase de nube (5 valores discretos) o mask (binario).
 Los valores usualmente están normalizados de 0 a 1 pero a veces usan
 valores reales como irterm.cpt que usa valores en K. Debe ser posible
 usarlos normalizados (por omisión) o ajustados a la tabla en el CPT.
+
+
+Wed Nov 12 02:26:15 PM CST 2025
+
+Leer datos que no sean float, por ejemplo fase de nube es byte.
+Conviene dejarlo como float o crear una malla byte?
+Completar el tema de paletas, que en datos discretos como fase de
+nube, los colores deben corresponder específicamente a valores
+numéricos.
