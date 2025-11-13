@@ -7,6 +7,7 @@
 #include <math.h>
 #include <netcdf.h>
 #include <omp.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -66,12 +67,19 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
            add_offset, fillvalue);
 
   // Recupera los datos
-  short *datatmp = malloc(sizeof(short) * datanc->base.size);
+
+  // Primero verificar el tipo de datos
+  nc_type var_type;
+  if ((retval = nc_inq_vartype(ncid, rad_varid, &var_type)))
+    ERR(retval);
+
+  size_t type_size = (var_type == NC_BYTE) ? sizeof(signed char) : sizeof(short);
+  void *datatmp = malloc(type_size * datanc->base.size);
   if (datatmp == NULL) {
     LOG_FATAL("Failed to allocate memory for NetCDF data");
     return ERRCODE;
   }
-  if ((retval = nc_get_var_short(ncid, rad_varid, datatmp)))
+  if ((retval = nc_get_var(ncid, rad_varid, datatmp))) // Lectura genérica
     ERR(retval);
 
   // Obtenemos el tiempo
@@ -93,7 +101,6 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
   datanc->hour = ts.tm_hour;
   datanc->min = ts.tm_min;
   datanc->sec = ts.tm_sec;
-  // printf("Fecha %d %d %d\n", datanc->year, datanc->mon, datanc->day);
 
   // Only if L1b
   float planck_fk1, planck_fk2, planck_bc1, planck_bc2, kappa0;
@@ -148,29 +155,63 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
   float fmax = -fmin;
   unsigned nondatas = 0;
   unsigned inan = 0;
-  datanc->base.data_in = malloc(sizeof(float) * datanc->base.size);
-  for (int i = 0; i < datanc->base.size; i++)
-    if (datatmp[i] != fillvalue) {
-      float f;
-      float rad = scale_factor * datatmp[i] + add_offset;
-      if (datanc->band_id > 0) {
-        if (datanc->band_id > 6 && datanc->band_id < 17) {
-          f = (planck_fk2 / (log((planck_fk1 / rad) + 1)) - planck_bc1) /
-              planck_bc2;
-        } else 
-          f = kappa0 * rad;
-      } else 
-        f = rad;
-      if (f > fmax)
-        fmax = f;
-      if (f < fmin) 
-        fmin = f;
-      datanc->base.data_in[i] = f;
-    } else {
-      datanc->base.data_in[i] = NonData;
-      inan = i;
-      nondatas++;
+
+  if (var_type == NC_BYTE) {
+    // --- RUTA PARA DATOS TIPO BYTE (ej. Cloud Phase) ---
+    datanc->base.type = DATA_TYPE_UINT8;
+    datanc->base.data_in = malloc(sizeof(uint8_t) * datanc->base.size);
+    if (datanc->base.data_in == NULL) {
+      LOG_FATAL("Memory allocation failed for byte data buffer");
+      free(datatmp);
+      return ERRCODE;
     }
+    uint8_t *dest_buffer = (uint8_t *)datanc->base.data_in;
+    signed char *src_buffer = (signed char *)datatmp;
+
+    for (size_t i = 0; i < datanc->base.size; i++) {
+      if (src_buffer[i] != (signed char)fillvalue) {
+        dest_buffer[i] = (uint8_t)src_buffer[i];
+      } else {
+        dest_buffer[i] = 255; // Usar un valor consistente para datos inválidos en bytes
+        nondatas++;
+      }
+    }
+  } else {
+    // --- RUTA PARA DATOS TIPO SHORT (ej. Radiancia) ---
+    datanc->base.type = DATA_TYPE_FLOAT;
+    datanc->base.data_in = malloc(sizeof(float) * datanc->base.size);
+    if (datanc->base.data_in == NULL) {
+      LOG_FATAL("Memory allocation failed for float data buffer");
+      free(datatmp);
+      return ERRCODE;
+    }
+    float *dest_buffer = (float *)datanc->base.data_in;
+    short *src_buffer = (short *)datatmp;
+
+    for (size_t i = 0; i < datanc->base.size; i++) {
+      if (src_buffer[i] != fillvalue) {
+        float f;
+        float rad = scale_factor * src_buffer[i] + add_offset;
+        if (datanc->band_id > 0) {
+          if (datanc->band_id > 6 && datanc->band_id < 17) { // Bandas térmicas
+            f = (planck_fk2 / (log((planck_fk1 / rad) + 1)) - planck_bc1) /
+                planck_bc2;
+          } else { // Bandas visibles/NIR
+            f = kappa0 * rad;
+          }
+        } else { // Variables L2 que no son de radiancia (ej. LST)
+          f = rad;
+        }
+        if (f > fmax) fmax = f;
+        if (f < fmin) fmin = f;
+        dest_buffer[i] = f;
+      } else {
+        dest_buffer[i] = NonData;
+        inan = i;
+        nondatas++;
+      }
+    }
+  }
   datanc->base.fmin = fmin;
   datanc->base.fmax = fmax;
   LOG_INFO("Data range: min=%g, max=%g, NonData=%g, invalid_count=%u", fmin,
@@ -269,7 +310,8 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
   navlo->width = navla->width;
   navlo->height = navla->height;
   navlo->size = navla->size;
-  // printf("Dimensiones x %lu y %lu total %lu\n", navla->width, navla->height,
+  // printf("Dimensiones x %lu y %lu total %lu\n", navla->width,
+  // navla->height,
   //        navla->size);
 
   if ((retval = nc_inq_varid(ncid, "goes_imager_projection", &varid)))
@@ -306,6 +348,8 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
 
   int k = 0;
   float lomin = 1e10, lamin = 1e10, lomax = -lomin, lamax = -lamin;
+  float *navla_data_in = (float *)navla->data_in;
+  float *navlo_data_in = (float *)navlo->data_in;
   for (int j = 0; j < navla->height; j++) {
     float y = j * y_sf + y_ao;
     for (int i = 0; i < navla->width; i++) {
@@ -314,8 +358,8 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
       compute_lalo(x, y, &la, &lo);
       if (isnan(la) || isnan(lo)) {
         // printf("Is nan %g\n", la);
-        navla->data_in[k] = NonData;
-        navlo->data_in[k] = NonData;
+        navla_data_in[k] = NonData;
+        navlo_data_in[k] = NonData;
       } else {
         if (la < lamin)
           lamin = la;
@@ -325,8 +369,8 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
           lomin = lo;
         if (lo > lomax)
           lomax = lo;
-        navla->data_in[k] = la;
-        navlo->data_in[k] = lo;
+        navla_data_in[k] = la;
+        navlo_data_in[k] = lo;
       }
       k++;
     }
@@ -343,67 +387,68 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
   return 0;
 }
 
-// AÑADIR ESTA FUNCIÓN A reader_nc.c
-
 /*
  * Carga una variable 2D genérica de un NetCDF en una estructura DataF.
  * Asume que las dimensiones son [y, x] o [height, width].
  */
 DataF dataf_load_from_netcdf(const char *filename, const char *varname) {
-    DataF data = {0}; // Inicializa la estructura a cero
-    int ncid, retval, varid, ndims;
-    int dimids[NC_MAX_VAR_DIMS];
-    size_t height, width;
+  DataF data = {0}; // Inicializa la estructura a cero
+  int ncid, retval, varid, ndims;
+  int dimids[NC_MAX_VAR_DIMS];
+  size_t height, width;
 
-    if ((retval = nc_open(filename, NC_NOWRITE, &ncid))) {
-        LOG_ERROR("NetCDF error abriendo %s: %s", filename, nc_strerror(retval));
-        return data; // Retorna estructura vacía
-    }
+  if ((retval = nc_open(filename, NC_NOWRITE, &ncid))) {
+    LOG_ERROR("NetCDF error abriendo %s: %s", filename, nc_strerror(retval));
+    return data; // Retorna estructura vacía
+  }
 
-    if ((retval = nc_inq_varid(ncid, varname, &varid))) {
-        LOG_ERROR("No se encontró la variable '%s' en %s: %s", varname, filename, nc_strerror(retval));
-        nc_close(ncid);
-        return data;
-    }
-
-    if ((retval = nc_inq_varndims(ncid, varid, &ndims))) {
-        LOG_ERROR("Error al leer ndims para %s: %s", varname, nc_strerror(retval));
-        nc_close(ncid);
-        return data;
-    }
-
-    if (ndims != 2) {
-        LOG_ERROR("La variable '%s' no es 2D (tiene %d dims).", varname, ndims);
-        nc_close(ncid);
-        return data;
-    }
-
-    if ((retval = nc_inq_vardimid(ncid, varid, dimids))) {
-        LOG_ERROR("Error al leer dimids para %s: %s", varname, nc_strerror(retval));
-        nc_close(ncid);
-        return data;
-    }
-
-    // Asume que las dimensiones son [y, x]
-    if ((retval = nc_inq_dimlen(ncid, dimids[0], &height))) { /*...*/ }
-    if ((retval = nc_inq_dimlen(ncid, dimids[1], &width))) { /*...*/ }
-
-    // Crear la estructura DataF
-    data = dataf_create(width, height);
-    if (data.data_in == NULL) {
-        LOG_FATAL("Fallo de memoria al crear DataF para %s", varname);
-        nc_close(ncid);
-        return data;
-    }
-
-    // Leer los datos
-    if ((retval = nc_get_var_float(ncid, varid, data.data_in))) {
-        LOG_ERROR("Error al leer datos de '%s': %s", varname, nc_strerror(retval));
-        dataf_destroy(&data); // Libera memoria si la lectura falla
-    }
-
-    // TODO: Leer NonData/_FillValue y fmin/fmax si es necesario
-
+  if ((retval = nc_inq_varid(ncid, varname, &varid))) {
+    LOG_ERROR("No se encontró la variable '%s' en %s: %s", varname, filename,
+              nc_strerror(retval));
     nc_close(ncid);
     return data;
+  }
+
+  if ((retval = nc_inq_varndims(ncid, varid, &ndims))) {
+    LOG_ERROR("Error al leer ndims para %s: %s", varname, nc_strerror(retval));
+    nc_close(ncid);
+    return data;
+  }
+
+  if (ndims != 2) {
+    LOG_ERROR("La variable '%s' no es 2D (tiene %d dims).", varname, ndims);
+    nc_close(ncid);
+    return data;
+  }
+
+  if ((retval = nc_inq_vardimid(ncid, varid, dimids))) {
+    LOG_ERROR("Error al leer dimids para %s: %s", varname, nc_strerror(retval));
+    nc_close(ncid);
+    return data;
+  }
+
+  // Asume que las dimensiones son [y, x]
+  if ((retval = nc_inq_dimlen(ncid, dimids[0], &height))) { /*...*/
+  }
+  if ((retval = nc_inq_dimlen(ncid, dimids[1], &width))) { /*...*/
+  }
+
+  // Crear la estructura DataF
+  data = dataf_create(width, height, DATA_TYPE_FLOAT);
+  if (data.data_in == NULL) {
+    LOG_FATAL("Fallo de memoria al crear DataF para %s", varname);
+    nc_close(ncid);
+    return data;
+  }
+
+  // Leer los datos
+  if ((retval = nc_get_var_float(ncid, varid, data.data_in))) {
+    LOG_ERROR("Error al leer datos de '%s': %s", varname, nc_strerror(retval));
+    dataf_destroy(&data); // Libera memoria si la lectura falla
+  }
+
+  // TODO: Leer NonData/_FillValue y fmin/fmax si es necesario
+
+  nc_close(ncid);
+  return data;
 }

@@ -13,7 +13,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha);
+//ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha);
+ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha, const CPTData* cpt);
 
 bool strinstr(const char *main_str, const char *sub) {
     if (main_str == NULL || sub == NULL) {
@@ -90,12 +91,12 @@ int main(int argc, char *argv[]) {
   if (ap_found(parser, "scale"))
     scale = ap_get_int_value(parser, "scale");
   printf("escala %d\n", scale);
+  CPTData* cptdata = NULL;
   if (ap_found(parser, "cpt")) {
     char *cptfn = ap_get_str_value(parser, "cpt");
-    CPTData* cptdata = read_cpt_file(cptfn);
+    cptdata = read_cpt_file(cptfn);
     use_palette = true;
     color_array = cpt_to_color_array(cptdata);
-    free_cpt_data(cptdata);
   }
   ap_free(parser);
 
@@ -120,7 +121,7 @@ int main(int argc, char *argv[]) {
     dataf_destroy(&c01.base);
     c01.base = aux;
   }
-  ImageData imout = create_single_gray(c01.base, invert_values, use_alpha);
+  ImageData imout = create_single_gray(c01.base, invert_values, use_alpha, cptdata);
   if (gamma != 0)
     image_apply_gamma(imout, gamma);
   if (apply_histogram)
@@ -132,6 +133,7 @@ int main(int argc, char *argv[]) {
     write_image_png(outfn, &imout);
 
   // Free all memory
+  free_cpt_data(cptdata);
   dataf_destroy(&c01.base);
   image_destroy(&imout);
   color_array_destroy(color_array);

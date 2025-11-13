@@ -144,8 +144,12 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo,
   day = nite = 0;
 
   double start = omp_get_wtime();
+  float *navla_data_in = (float*)navla.data_in;
+  float *navlo_data_in = (float*)navlo.data_in;
+  float *datanc_base_data_in = (float*)datanc.base.data_in;
+  unsigned char *imout_data = imout.data;
 
-#pragma omp parallel for shared(datanc, navla, navlo, imout) reduction(+:day,nite)
+#pragma omp parallel for shared(datanc, navla_data_in, navlo_data_in, datanc_base_data_in, imout_data) reduction(+:day,nite)
   for (int y = 0; y < navla.height; y++) {
     for (int x = 0; x < navla.width; x++) {
       int i = y * navla.width + x;
@@ -153,9 +157,9 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo,
 
       // Para la penumbra, usa geometría solar
       float w = 0;
-      float la = navla.data_in[i];
-      float lo = navlo.data_in[i];
-      float temp = datanc.base.data_in[i];
+      float la = navla_data_in[i];
+      float lo = navlo_data_in[i];
+      float temp = datanc_base_data_in[i];
       double zenith_out, azimuth_out;
       double sza = sun_zenith_angle(la, lo, datanc, &zenith_out, &azimuth_out) * 180 / M_PI;
       if (sza > 88.0) {
@@ -175,7 +179,7 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo,
       if (temp < max_temp) {
         w = 1;
       }
-      imout.data[po] = (unsigned char)(255 * w);
+      imout_data[po] = (unsigned char)(255 * w);
     }
   }
   *dnratio = (nite==0) ? 100: 100.0*day/navla.size;

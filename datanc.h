@@ -9,11 +9,17 @@
 
 extern float NonData;
 
-// Like a numpy array to store 2D gridded floating point data
+typedef enum {
+    DATA_TYPE_FLOAT,
+    DATA_TYPE_UINT8
+} DataType;
+
+// Like a numpy array to store 2D gridded floating point data, or sometimes, byte data
 typedef struct {
   size_t width, height;
   size_t size;
-  float *data_in;
+  void *data_in;
+  DataType type;
   float fmin, fmax;
 } DataF;
 
@@ -32,7 +38,7 @@ typedef struct {
 
 // Constructor: creates a new DataF structure with allocated memory
 // Returns initialized DataF on success, or DataF with NULL data_in on failure
-DataF dataf_create(size_t width, size_t height);
+DataF dataf_create(size_t width, size_t height, DataType t);
 
 // Destructor: safely frees memory allocated for DataF
 // Safe to call with NULL data_in pointer

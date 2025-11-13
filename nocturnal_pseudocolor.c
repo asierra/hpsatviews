@@ -26,8 +26,9 @@ ImageData create_nocturnal_pseudocolor(DataNC datanc) {
   float tmin = 1e10, tmax = -1e10;
 
   double start = omp_get_wtime();
+  float *datanc_base_data_in = (float*)datanc.base.data_in;
 
-#pragma omp parallel for shared(datanc, imout)
+#pragma omp parallel for shared(datanc_base_data_in, imout)
   for (int y = 0; y < imout.height; y++) {
     for (int x = 0; x < imout.width; x++) {
       int i = y * imout.width + x;
@@ -35,8 +36,8 @@ ImageData create_nocturnal_pseudocolor(DataNC datanc) {
       unsigned char r, g, b;
 
       r = g = b = 0;
-      if (datanc.base.data_in[i] != NonData) {
-        float f = datanc.base.data_in[i];
+      if (datanc_base_data_in[i] != NonData) {
+        float f = datanc_base_data_in[i];
         if (f < tmin)
           tmin = f;
         if (f > tmax)
