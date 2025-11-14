@@ -25,12 +25,13 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha, const
   double start = omp_get_wtime();
   LOG_INFO("Iniciando loop singlegray iw %lu ih %lu min %g max %g", imout.width, imout.height, c01.fmin, c01.fmax);
 
+  uint8_t last_color = (cpt && cpt->has_nan_color) ? cpt->num_colors-1: 255;
   #pragma omp parallel for
   for (int y = 0; y < imout.height; y++) {
     for (int x = 0; x < imout.width; x++) {
       int i = y * imout.width + x;
       int po = i * imout.bpp;
-      unsigned char r = 0, a = 0;
+      uint8_t r = 0, a = 0;
 
       if (c01.type == DATA_TYPE_FLOAT) {
         float *data_in_f = (float*)c01.data_in;
@@ -41,18 +42,21 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha, const
             f = (c01.fmax - data_in_f[i]) / dd;
           else
             f = (data_in_f[i] - c01.fmin) / dd;
-          r = (unsigned char)(255.0 * f);
+          r = (unsigned char)(last_color * f);
           a = 255;
+        } else if (cpt && cpt->has_nan_color)  {
+          // último color de la paleta es para NaN
+          r = last_color;
         }
       } else { // Asumimos DATA_TYPE_INT8
         int8_t *data_in_b = (int8_t*)c01.data_in;
         // Para bytes con signo, el valor -128 es nuestro NonData
         if (data_in_b[i] != -128) {
-          r = (char)data_in_b[i];
+          r = (uint8_t)data_in_b[i];
           a = 255;
         } else if (cpt && cpt->has_nan_color)  {
           // último color de la paleta es para NaN
-          r = (char)(cpt->num_colors-1);
+          r = last_color;
         }
       }
 
