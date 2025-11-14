@@ -11,7 +11,7 @@ extern float NonData;
 
 typedef enum {
     DATA_TYPE_FLOAT,
-    DATA_TYPE_UINT8
+    DATA_TYPE_INT8
 } DataType;
 
 // Like a numpy array to store 2D gridded floating point data, or sometimes, byte data

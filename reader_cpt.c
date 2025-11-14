@@ -19,34 +19,71 @@ static_assert(MAX_COLOR_ENTRIES % 2 == 0, "MAX_COLOR_ENTRIES must be an even num
 
 // If the CPT is normalized, we use all the colors 
 // Otherwise if CPT has limits and we use them, we adjust for
-// 0 = B, 255 or all from values > max = F, NonData = N
+// 0 = B, num_colors-1 = N, num_colors-2 = F
 ColorArray* cpt_to_color_array(CPTData* cpt) {
     if (!cpt || cpt->entry_count < 2) {
         return NULL;
     }
 
-    // Define el tamaño de la paleta (256 colores es estándar para PNG con paleta)
-    unsigned int palette_size = 256;
+    unsigned int base_color_count;
+    if (cpt->is_discrete) {
+        base_color_count = cpt->entry_count;
+    } else {
+        // For continuous CPTs, we interpolate to a base of 256 colors.
+        base_color_count = 256;
+    }
 
-    // Asigna memoria para la estructura ColorArray y el arreglo flexible de colores
+    unsigned int total_colors = base_color_count;
+    //if (cpt->has_background) total_colors++;
+    if (cpt->has_foreground) total_colors++;
+    if (cpt->has_nan_color) total_colors++;
+
+    // Adjust palette size to the next valid size (2, 4, 16, 256)
+    unsigned int palette_size;
+    if (total_colors <= 2) palette_size = 2;
+    else if (total_colors <= 4) palette_size = 4;
+    else if (total_colors <= 16) palette_size = 16;
+    else palette_size = 256;
+
+    cpt->num_colors = palette_size;
+
     ColorArray* color_array = color_array_create(palette_size);
     if (!color_array) {
         return NULL;
     }
 
-    // Obtiene el rango de valores del CPT
-    float min_val = cpt->entries[0].value;
-    float max_val = cpt->entries[cpt->entry_count - 1].value;
-    float range = max_val - min_val;
-
-    // Genera la paleta de 256 colores interpolando desde el CPT
+    // Fill with a default color (background or black)
+    Color default_color;
+    if (cpt->has_foreground) {
+        default_color = cpt->foreground;
+    } else {
+        default_color = cpt->has_background ? cpt->background : (Color){0, 0, 0};
+    }
     for (unsigned int i = 0; i < palette_size; i++) {
-        // Calcula el valor actual en el rango del CPT
-        float value = min_val + (range * i) / (palette_size - 1);
-        // Obtiene el color interpolado para ese valor
-        color_array->colors[i] = get_color_for_value(cpt, value);
+        color_array->colors[i] = default_color;
     }
 
+    if (cpt->is_discrete) {
+        for (unsigned int i = 0; i < cpt->entry_count && i < palette_size; i++) {
+            color_array->colors[i] = cpt->entries[i].color;
+        }
+    } else { // Continuous
+        float min_val = cpt->entries[0].value;
+        float max_val = cpt->entries[cpt->entry_count - 1].value;
+        float range = max_val - min_val;
+        unsigned int colors_to_generate = (range > 0) ? base_color_count : 1;
+
+        for (unsigned int i = 0; i < colors_to_generate && i < palette_size; i++) {
+            float value = min_val + (range * i) / (colors_to_generate - 1);
+            color_array->colors[i] = get_color_for_value(cpt, value);
+        }
+    }
+
+    //if (cpt->has_background) color_array->colors[0] = cpt->background;
+    if (cpt->has_nan_color) color_array->colors[palette_size - 1] = cpt->nan_color;
+    if (cpt->has_foreground) color_array->colors[palette_size - 2] = cpt->foreground;
+
+    printf("colores paleta %d %d\n", palette_size, color_array->length);
     return color_array;
 }
 
@@ -119,6 +156,7 @@ CPTData* read_cpt_file(const char* filename) {
     cpt->has_foreground = false;
     cpt->has_background = false;
     cpt->has_nan_color = false;
+    cpt->is_discrete = false; // Assume continuous until a discrete line is found
     strcpy(cpt->name, filename);
     
     char line[MAX_LINE_LENGTH];
@@ -145,11 +183,13 @@ CPTData* read_cpt_file(const char* filename) {
                        &entry2.value, &entry2.color.r, &entry2.color.g, &entry2.color.b);
 
         if (result == 8) { // Full format line
+            cpt->is_discrete = false; // It's a continuous CPT
             if (cpt->entry_count < MAX_COLOR_ENTRIES - 2) {
                 cpt->entries[cpt->entry_count++] = entry1;
                 cpt->entries[cpt->entry_count++] = entry2;
             }
         } else if (result >= 4) { // Short format line
+            cpt->is_discrete = true; // It's a discrete CPT
             if (cpt->entry_count > 0 && cpt->entry_count < MAX_COLOR_ENTRIES - 1) {
                 cpt->entries[cpt->entry_count - 1].value = entry1.value;
             }
@@ -164,12 +204,15 @@ CPTData* read_cpt_file(const char* filename) {
     }
     
     fclose(file);
-
-    // If the last entry is a single point, duplicate it to form a valid final range.
-    if (cpt->entry_count > 0 && cpt->entry_count % 2 != 0) {
-        cpt->entries[cpt->entry_count] = cpt->entries[cpt->entry_count - 1];
-        cpt->entry_count++;
+    
+    // For continuous CPTs, ensure ranges are valid.
+    if (!cpt->is_discrete) {
+        if (cpt->entry_count > 0 && cpt->entry_count % 2 != 0) {
+            cpt->entries[cpt->entry_count] = cpt->entries[cpt->entry_count - 1];
+            cpt->entry_count++;
+        }
     }
+
     return cpt;
 }
 

@@ -158,21 +158,22 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
 
   if (var_type == NC_BYTE) {
     // --- RUTA PARA DATOS TIPO BYTE (ej. Cloud Phase) ---
-    datanc->base.type = DATA_TYPE_UINT8;
-    datanc->base.data_in = malloc(sizeof(uint8_t) * datanc->base.size);
+    datanc->base.type = DATA_TYPE_INT8;
+    datanc->base.data_in = malloc(sizeof(int8_t) * datanc->base.size);
     if (datanc->base.data_in == NULL) {
       LOG_FATAL("Memory allocation failed for byte data buffer");
       free(datatmp);
       return ERRCODE;
     }
-    uint8_t *dest_buffer = (uint8_t *)datanc->base.data_in;
+    int8_t *dest_buffer = (int8_t *)datanc->base.data_in;
     signed char *src_buffer = (signed char *)datatmp;
 
     for (size_t i = 0; i < datanc->base.size; i++) {
       if (src_buffer[i] != (signed char)fillvalue) {
-        dest_buffer[i] = (uint8_t)src_buffer[i];
+        dest_buffer[i] = (int8_t)src_buffer[i];
       } else {
-        dest_buffer[i] = 255; // Usar un valor consistente para datos inválidos en bytes
+        // Usar -128 como valor NonData para int8_t
+        dest_buffer[i] = -128;
         nondatas++;
       }
     }

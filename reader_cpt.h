@@ -16,11 +16,13 @@ typedef struct {
     Color background;
     Color nan_color;
     // Must be 2, 4, 16, or 256
+    int num_colors;
     int entry_count;
     ColorEntry entries[MAX_COLOR_ENTRIES];
     bool has_foreground;
     bool has_background;
     bool has_nan_color;
+    bool is_discrete;
 } CPTData;
 
 CPTData* read_cpt_file(const char* filename);

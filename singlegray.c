@@ -16,12 +16,7 @@
 ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha, const CPTData* cpt) {
   unsigned int bpp = (use_alpha && cpt==NULL) ? 2 : 1;
 
-  // If cpt != NULL usaremos r = 0 para B y r =  255 para F, además de que ajustaremos los valores al tamaño de la paleta, que debe 
-  if (cpt!=NULL) {
-
-  }
   ImageData imout = image_create(c01.width, c01.height, bpp);
-  
   if (imout.data == NULL) {
     LOG_ERROR("No fue posible apartar memoria para la imagen en singlegray.");
     return imout;
@@ -49,12 +44,15 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha, const
           r = (unsigned char)(255.0 * f);
           a = 255;
         }
-      } else { // Asumimos DATA_TYPE_UINT8
-        uint8_t *data_in_b = (uint8_t*)c01.data_in;
-        // Para bytes, el valor 255 es nuestro NonData
-        if (data_in_b[i] != 255) {
-          r = data_in_b[i];
+      } else { // Asumimos DATA_TYPE_INT8
+        int8_t *data_in_b = (int8_t*)c01.data_in;
+        // Para bytes con signo, el valor -128 es nuestro NonData
+        if (data_in_b[i] != -128) {
+          r = (char)data_in_b[i];
           a = 255;
+        } else if (cpt && cpt->has_nan_color)  {
+          // último color de la paleta es para NaN
+          r = (char)(cpt->num_colors-1);
         }
       }
 

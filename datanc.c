@@ -29,8 +29,8 @@ DataF dataf_create(size_t width, size_t height, DataType t) {
     if (data.size > 0) {
         if (t==DATA_TYPE_FLOAT)
           data.data_in = malloc(sizeof(float) * data.size);
-        else if (t==DATA_TYPE_UINT8)
-          data.data_in = malloc(sizeof(uint8_t) * data.size);
+        else if (t==DATA_TYPE_INT8)
+          data.data_in = malloc(sizeof(int8_t) * data.size);
         if (data.data_in==NULL) {
             data.size = 0;
             data.width = 0;
