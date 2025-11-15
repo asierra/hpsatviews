@@ -1,7 +1,6 @@
 # High Performance Satellite Views (HPSATVIEWS)
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![C99](https://img.shields.io/badge/C-C99-blue.svg)](https://en.wikipedia.org/wiki/C99)
 [![C11](https://img.shields.io/badge/C-C11-blue.svg)](https://en.wikipedia.org/wiki/C11)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](#building)
 
@@ -28,7 +27,6 @@ HPSATVIEWS es una aplicación de alto rendimiento controlada por línea de coman
 
 ### Rendimiento
 - ⚡ **Ultra rápido**: Procesamiento en fracciones de segundo
-- 🔧 **Optimizado**: Código C99 compilado nativamente
 - 🔧 **Optimizado**: Código C11 compilado nativamente
 - 🧵 **Paralelización**: Soporte OpenMP para procesamiento multi-core
 - 💾 **Eficiente**: Gestión de memoria optimizada sin memory leaks
@@ -45,7 +43,6 @@ HPSATVIEWS es una aplicación de alto rendimiento controlada por línea de coman
 ## 📋 Requisitos del Sistema
 
 ### Dependencias Requeridas
-- **Compilador C99** (GCC recomendado)
 - **Compilador C11** (GCC recomendado)
 - **libnetcdf-dev** - Lectura de archivos NetCDF GOES L1b
 - **libpng-dev** - Generación de imágenes PNG
@@ -101,7 +98,7 @@ El programa ahora funciona con un único ejecutable `hpsatviews` y subcomandos: 
 
 ### Generar Imagen RGB (Color Verdadero + Composición Día/Noche)
 ```bash
-./hpsatviews rgb -o truecolor_comp.png /ruta/a/archivo_GOES_L1b_C02.nc
+./hpsatviews rgb -o truecolor_comp.png /ruta/a/archivo_GOES_L1b_C01.nc
 ```
 
 **Genera:**
@@ -112,7 +109,7 @@ El programa ahora funciona con un único ejecutable `hpsatviews` y subcomandos: 
 
 ### Imagen en Escala de Grises
 ```bash
-./singlegray archivo_GOES_L1b.nc -o salida.png
+./hpsatviews singlegray archivo_GOES_L1b.nc -o salida.png
 ```
 
 **Opciones disponibles:**
@@ -169,8 +166,6 @@ OR_ABI-L1b-RadC13_G16_s20242501800_e20242501809_c20242501815.nc
 ```bash
 make                    # Construir todo
 make clean             # Limpiar archivos objeto
-make truecolornight    # Programa principal
-make singlegray        # Utilidad escala de grises
 make libhpsatviews.a   # Solo la biblioteca
 ```
 
