@@ -2,17 +2,18 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![C99](https://img.shields.io/badge/C-C99-blue.svg)](https://en.wikipedia.org/wiki/C99)
+[![C11](https://img.shields.io/badge/C-C11-blue.svg)](https://en.wikipedia.org/wiki/C11)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](#building)
 
 **Fast, reliable satellite image processing for GOES family satellites**
 
 ## Abstract
 
-HPSATVIEWS is a high-performance satellite image processing library and application suite designed for real-time operational visualization of GOES family satellite data. The system generates true color daytime images, infrared nighttime visualizations with meteorological colormaps, and intelligent day/night composites. Built in modern C99, it processes satellite data in fractions of a second compared to minutes required by Python-based alternatives, making it ideal for operational meteorological applications.
+HPSATVIEWS is a high-performance, command-line driven application for processing GOES satellite data. It provides a suite of tools to generate various imaging products, including true-color RGB composites with day/night blending, single-channel grayscale images, and pseudocolor visualizations using custom palettes. Built in modern C11 with OpenMP support, it offers ultra-fast, modular, and scalable processing, making it ideal for operational meteorology and research.
 
 ## Resumen
 
-HPSATVIEWS es un sistema de procesamiento de imágenes satelitales de alto rendimiento diseñado para la familia de satélites GOES. Genera imágenes a color real para el día, visualizaciones infrarrojas nocturnas con mapas de color meteorológicos, y composiciones inteligentes día/noche. Desarrollado en C99 moderno, procesa datos satelitales en fracciones de segundo comparado con los minutos requeridos por herramientas basadas en Python.
+HPSATVIEWS es una aplicación de alto rendimiento controlada por línea de comandos para el procesamiento de datos del satélite GOES. Proporciona un conjunto de herramientas para generar diversos productos, incluyendo compuestos RGB de color verdadero con mezcla día/noche, imágenes de un solo canal en escala de grises y visualizaciones en pseudocolor con paletas personalizadas. Desarrollado en C11 moderno con soporte para OpenMP, ofrece un procesamiento ultra-rápido, modular y escalable, ideal para la meteorología operacional y la investigación.
 
 ---
 
@@ -28,6 +29,7 @@ HPSATVIEWS es un sistema de procesamiento de imágenes satelitales de alto rendi
 ### Rendimiento
 - ⚡ **Ultra rápido**: Procesamiento en fracciones de segundo
 - 🔧 **Optimizado**: Código C99 compilado nativamente
+- 🔧 **Optimizado**: Código C11 compilado nativamente
 - 🧵 **Paralelización**: Soporte OpenMP para procesamiento multi-core
 - 💾 **Eficiente**: Gestión de memoria optimizada sin memory leaks
 
@@ -44,6 +46,7 @@ HPSATVIEWS es un sistema de procesamiento de imágenes satelitales de alto rendi
 
 ### Dependencias Requeridas
 - **Compilador C99** (GCC recomendado)
+- **Compilador C11** (GCC recomendado)
 - **libnetcdf-dev** - Lectura de archivos NetCDF GOES L1b
 - **libpng-dev** - Generación de imágenes PNG
 - **libm** - Funciones matemáticas
@@ -259,7 +262,7 @@ Las contribuciones son bienvenidas. Por favor:
 5. Crear Pull Request
 
 ### Estándares de Código
-- **C99** estándar
+- **C11** estándar
 - **Logging estructurado** para debugging
 - **Gestión de memoria** robusta con constructores/destructores
 - **Sin variables globales** (thread-safe)
