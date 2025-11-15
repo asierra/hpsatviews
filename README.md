@@ -92,11 +92,13 @@ make
 
 ---
 
-## 🚀 Uso Rápido
+## 🚀 Uso
 
-### Procesamiento Completo (True Color + Infrarrojo + Composición)
+El programa ahora funciona con un único ejecutable `hpsatviews` y subcomandos: `rgb`, `pseudocolor`, y `singlegray`.
+
+### Generar Imagen RGB (Color Verdadero + Composición Día/Noche)
 ```bash
-./truecolornight /ruta/a/archivo_GOES_L1b.nc
+./hpsatviews rgb -o truecolor_comp.png /ruta/a/archivo_GOES_L1b_C02.nc
 ```
 
 **Genera:**
@@ -299,4 +301,3 @@ Consulta el archivo [LICENSE](LICENSE) para más detalles.
 ---
 
 *HPSATVIEWS - Procesamiento satelital de alta velocidad para meteorología operacional*
-
