@@ -30,10 +30,7 @@
 *.exe
 *.out
 *.app
-truecolornight
-singlegray
-geos2geographics
-cpt_reader
+hpsatviews
 .DS_Store
 *.pdf
 *.png

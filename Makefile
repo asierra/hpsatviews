@@ -2,31 +2,40 @@ CC=gcc
 CFLAGS=-g -I. -Wall -std=c11 -fopenmp
 LDFLAGS=-lm -lnetcdf -lpng -fopenmp
 
-DEPS = datanc.h  image.h  reader_nc.h  writer_png.h  logger.h
-LIBOBJS = truecolor_rgb.o reader_nc.o writer_png.o singlegray.o \
-	nocturnal_pseudocolor.o daynight_mask.o image.o datanc.o logger.o reader_cpt.o
-OBJ = main.o 
+# Nombre del ejecutable final
+TARGET = hpsatviews
+
+# Archivos de cabecera. La regla de compilación depende de ellos.
+DEPS = args.h datanc.h image.h logger.h processing.h reader_cpt.h \
+       reader_nc.h reprojection.h rgb.h writer_png.h
+
+# Archivos objeto a compilar.
+# Se incluyen los nuevos módulos y se eliminan los 'main' antiguos.
+OBJS = main.o \
+       rgb.o \
+       processing.o \
+       reprojection.o \
+       args.o \
+       datanc.o \
+       daynight_mask.o \
+       image.o \
+       logger.o \
+       nocturnal_pseudocolor.o \
+       reader_cpt.o \
+       reader_nc.o \
+       singlegray.o \
+       truecolor_rgb.o \
+       writer_png.o
+
+.PHONY: all clean
+
+all: $(TARGET)
 
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)
 
-truecolornight: $(OBJ) libhpsatviews.a
+$(TARGET): $(OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
-
-singlegray: singlegraymain.o libhpsatviews.a args.o
-	$(CC) -o $@ $^ $(LDFLAGS)
-
-geos2geographics: geos2geographics.o libhpsatviews.a args.o
-	$(CC) -o $@ $^ $(LDFLAGS)
-
-cpt_reader: reader_cpt.c
-	$(CC) -o $@ $< $(CFLAGS) -DCPT_READER_MAIN
-
-.PHONY: clean
-
-libhpsatviews.a: $(LIBOBJS)
-	rm -f libhpsatviews.a
-	ar scr libhpsatviews.a $(LIBOBJS)
 
 clean:
-	rm -f *.o *~ truecolornight
+	rm -f *.o *~ $(TARGET)
