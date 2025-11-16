@@ -30,7 +30,7 @@ DataF reproject_to_geographics(const DataF* source_data, const char* nav_referen
     DataF navla, navlo;
     if (compute_navigation_nc(nav_reference_file, &navla, &navlo) != 0) {
         LOG_ERROR("Fallo al calcular la navegación para la reproyección.");
-        return dataf_create(0, 0, DATA_TYPE_FLOAT); // Retorna estructura vacía
+        return dataf_create(0, 0); // Retorna estructura vacía
     }
     LOG_INFO("Datos de navegación calculados. Extensión: lat[%.3f, %.3f], lon[%.3f, %.3f]", navla.fmin, navla.fmax, navlo.fmin, navlo.fmax);
     // Devolver los límites geográficos calculados
@@ -44,22 +44,16 @@ DataF reproject_to_geographics(const DataF* source_data, const char* nav_referen
     size_t height = navla.height * 0.7;
     LOG_INFO("Tamaño de salida: %zu x %zu", width, height);
 
-    DataF datagg = dataf_create(width, height, source_data->type);
+    DataF datagg = dataf_create(width, height);
     dataf_fill(&datagg, NonData);
-
-    // Cast void pointers to float pointers before the loop for safety and clarity
-    float* navlo_data = (float*)navlo.data_in;
-    float* navla_data = (float*)navla.data_in;
-    float* source_data_ptr = (float*)source_data->data_in;
-    float* datagg_data = (float*)datagg.data_in;
 
     #pragma omp parallel for collapse(2)
     for (unsigned y = 0; y < source_data->height; y++) {
         for (unsigned x = 0; x < source_data->width; x++) {
             unsigned i = y * source_data->width + x;
-            float lo = navlo_data[i];
-            float la = navla_data[i];
-            float f = source_data_ptr[i];
+            float lo = navlo.data_in[i];
+            float la = navla.data_in[i];
+            float f = source_data->data_in[i];
             if (lo != NonData && la != NonData && f != NonData) {
                 int ix = (int)(((lo - navlo.fmin) / (navlo.fmax - navlo.fmin)) * (width - 1));
                 int iy = (int)(((navla.fmax - la) / (navla.fmax - navla.fmin)) * (height - 1));
@@ -68,7 +62,7 @@ DataF reproject_to_geographics(const DataF* source_data, const char* nav_referen
                     size_t j = (size_t)iy * width + (size_t)ix;
                     // OMP atomic needs a direct memory reference of a known type
                     #pragma omp atomic write
-                    datagg_data[j] = f;
+                    datagg.data_in[j] = f;
                 }
             }
         }
@@ -85,10 +79,6 @@ DataF reproject_to_geographics(const DataF* source_data, const char* nav_referen
     //    memcpy(datagg_filled.data_in, datagg.data_in, datagg.size * sizeof(float));
     //}
 
-    // Cast pointers for the gap-filling loop
-    float* datagg_original_data = (float*)datagg.data_in;
-    float* datagg_filled_data = (float*)datagg_filled.data_in;
-
     const int dx[] = {0, 0, -1, 1};
     const int dy[] = {-1, 1, 0, 0};
     const int num_neighbors = 4;
@@ -97,7 +87,7 @@ DataF reproject_to_geographics(const DataF* source_data, const char* nav_referen
     for (size_t y = 0; y < height; y++) {
         for (size_t x = 0; x < width; x++) {
             size_t idx = y * width + x;
-            if (isnan(datagg_original_data[idx])) {
+            if (isnan(datagg.data_in[idx])) {
                 float sum = 0.0f;
                 int count = 0;
                 for (int k = 0; k < num_neighbors; k++) {
@@ -105,7 +95,7 @@ DataF reproject_to_geographics(const DataF* source_data, const char* nav_referen
                     int ny = (int)y + dy[k];
                     if (nx >= 0 && nx < (int)width && ny >= 0 && ny < (int)height) {
                         size_t n_idx = (size_t)ny * width + (size_t)nx;
-                        float n_val = datagg_original_data[n_idx];
+                        float n_val = datagg.data_in[n_idx];
                         if (!isnan(n_val)) {
                             sum += n_val;
                             count++;
@@ -113,7 +103,7 @@ DataF reproject_to_geographics(const DataF* source_data, const char* nav_referen
                     }
                 }
                 if (count > 0) {
-                    datagg_filled_data[idx] = sum / (float)count;
+                    datagg_filled.data_in[idx] = sum / (float)count;
                 }
             }
         }

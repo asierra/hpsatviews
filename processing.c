@@ -19,6 +19,7 @@
 #include <stdlib.h>
 
 ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha, const CPTData* cpt);
+ImageData create_single_grayb(DataB c01, bool invert_value, bool use_alpha, const CPTData* cpt);
 
 bool strinstr(const char *main_str, const char *sub) {
     return (main_str && sub && strstr(main_str, sub));
@@ -75,31 +76,43 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     else if (strinstr(fnc01, "ACTP")) varname = "Phase";
     else if (strinstr(fnc01, "CTP")) varname = "PRES";
     if (load_nc_sf(fnc01, varname, &c01) != 0) {
-        LOG_ERROR("No se pudo cargar el archivo: %s", fnc01);
+        LOG_ERROR("No se pudo cargar el archivo NetCDF: %s", fnc01);
         free_cpt_data(cptdata);
         color_array_destroy(color_array);
         return -1;
     }
 
-    if (do_reprojection) {
-        DataF reprojected_data = reproject_to_geographics(&c01.base, fnc01, NULL, NULL, NULL, NULL);
-        if (reprojected_data.data_in) {
-            dataf_destroy(&c01.base);
-            c01.base = reprojected_data;
+    ImageData imout;
+
+    if (c01.is_float) {
+        // --- RUTA PARA DATOS FLOAT ---
+        if (do_reprojection) {
+            DataF reprojected_data = reproject_to_geographics(&c01.fdata, fnc01, NULL, NULL, NULL, NULL);
+            if (reprojected_data.data_in) {
+                dataf_destroy(&c01.fdata);
+                c01.fdata = reprojected_data;
+            }
         }
+
+        if (scale < 0) {
+            DataF aux = downsample_boxfilter(c01.fdata, -scale);
+            dataf_destroy(&c01.fdata);
+            c01.fdata = aux;
+        } else if (scale > 1) {
+            DataF aux = upsample_bilinear(c01.fdata, scale);
+            dataf_destroy(&c01.fdata);
+            c01.fdata = aux;
+        }
+
+        imout = create_single_gray(c01.fdata, invert_values, use_alpha, cptdata);
+    } else {
+        // --- RUTA PARA DATOS BYTE ---
+        if (do_reprojection || scale != 1) {
+            LOG_WARN("La reproyección y el escalado aún no están implementados para datos de tipo byte. Se ignorarán estas opciones.");
+        }
+        imout = create_single_grayb(c01.bdata, invert_values, use_alpha, cptdata);
     }
 
-    if (scale < 0) {
-        DataF aux = downsample_boxfilter(c01.base, -scale);
-        dataf_destroy(&c01.base);
-        c01.base = aux;
-    } else if (scale > 1) {
-        DataF aux = upsample_bilinear(c01.base, scale);
-        dataf_destroy(&c01.base);
-        c01.base = aux;
-    }
-
-    ImageData imout = create_single_gray(c01.base, invert_values, use_alpha, cptdata);
     if (gamma != 1.0) image_apply_gamma(imout, gamma);
     if (apply_histogram) image_apply_histogram(imout);
 
@@ -112,7 +125,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     LOG_INFO("Imagen guardada en: %s", outfn);
 
     free_cpt_data(cptdata);
-    dataf_destroy(&c01.base);
+    datanc_destroy(&c01);
     image_destroy(&imout);
     color_array_destroy(color_array);
 

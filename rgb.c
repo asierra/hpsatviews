@@ -151,7 +151,6 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
 
     // Determinar los canales requeridos según el modo
     const char* required_channels_all[] = {"C01", "C02", "C03", "C13"};
-    const char* required_channels_day[] = {"C01", "C02", "C03", "C13"}; // C13 para referencia
     const char* required_channels_night[] = {"C13"};
     
     ChannelSet* channels = NULL;
@@ -201,9 +200,9 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
     load_nc_sf(c13_info->filename, var_name, &c13);
 
     // Iguala los tamaños a la resolución mínima (la de C13)
-    if (c01_info) { aux = downsample_boxfilter(c01.base, 2); dataf_destroy(&c01.base); c01.base = aux; }
-    if (c02_info) { aux = downsample_boxfilter(c02.base, 4); dataf_destroy(&c02.base); c02.base = aux; }
-    if (c03_info) { aux = downsample_boxfilter(c03.base, 2); dataf_destroy(&c03.base); c03.base = aux; }
+    if (c01_info) { aux = downsample_boxfilter(c01.fdata, 2); dataf_destroy(&c01.fdata); c01.fdata = aux; }
+    if (c02_info) { aux = downsample_boxfilter(c02.fdata, 4); dataf_destroy(&c02.fdata); c02.fdata = aux; }
+    if (c03_info) { aux = downsample_boxfilter(c03.fdata, 2); dataf_destroy(&c03.fdata); c03.fdata = aux; }
     compute_navigation_nc(c13_info->filename, &navla, &navlo);
     
     if (do_reprojection) {
@@ -212,24 +211,24 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
         float lon_min, lon_max, lat_min, lat_max;
 
         // Reproyectar los datos de imagen. La primera llamada obtiene los límites geográficos.
-        if (c01_info) { DataF repro_c01 = reproject_to_geographics(&c01.base, nav_ref, &lon_min, &lon_max, &lat_min, &lat_max); dataf_destroy(&c01.base); c01.base = repro_c01; }
-        if (c02_info) { DataF repro_c02 = reproject_to_geographics(&c02.base, nav_ref, NULL, NULL, NULL, NULL); dataf_destroy(&c02.base); c02.base = repro_c02; }
-        if (c03_info) { DataF repro_c03 = reproject_to_geographics(&c03.base, nav_ref, NULL, NULL, NULL, NULL); dataf_destroy(&c03.base); c03.base = repro_c03; }
-        DataF repro_c13 = reproject_to_geographics(&c13.base, nav_ref, NULL, NULL, NULL, NULL);
+        if (c01_info) { DataF repro_c01 = reproject_to_geographics(&c01.fdata, nav_ref, &lon_min, &lon_max, &lat_min, &lat_max); dataf_destroy(&c01.fdata); c01.fdata = repro_c01; }
+        if (c02_info) { DataF repro_c02 = reproject_to_geographics(&c02.fdata, nav_ref, NULL, NULL, NULL, NULL); dataf_destroy(&c02.fdata); c02.fdata = repro_c02; }
+        if (c03_info) { DataF repro_c03 = reproject_to_geographics(&c03.fdata, nav_ref, NULL, NULL, NULL, NULL); dataf_destroy(&c03.fdata); c03.fdata = repro_c03; }
+        DataF repro_c13 = reproject_to_geographics(&c13.fdata, nav_ref, NULL, NULL, NULL, NULL);
 
         // Si no se reproyectó c01, necesitamos obtener los límites desde c13
         if (!c01_info) {
-            repro_c13 = reproject_to_geographics(&c13.base, nav_ref, &lon_min, &lon_max, &lat_min, &lat_max);
+            repro_c13 = reproject_to_geographics(&c13.fdata, nav_ref, &lon_min, &lon_max, &lat_min, &lat_max);
         }
-        dataf_destroy(&c13.base); c13.base = repro_c13;
+        dataf_destroy(&c13.fdata); c13.fdata = repro_c13;
 
         // Liberar la navegación original (geostacionaria)
         dataf_destroy(&navla);
         dataf_destroy(&navlo);
 
         // Crear la nueva navegación directamente sobre la malla geográfica, sin reproyectar.
-        size_t final_width = c01_info ? c01.base.width : c13.base.width;
-        size_t final_height = c01_info ? c01.base.height : c13.base.height;
+        size_t final_width = c01_info ? c01.fdata.width : c13.fdata.width;
+        size_t final_height = c01_info ? c01.fdata.height : c13.fdata.height;
         LOG_INFO("Creando navegación para la malla geográfica final...");
         create_navigation_from_reprojected_bounds(&navla, &navlo, final_width, final_height, lon_min, lon_max, lat_min, lat_max);
 
@@ -240,7 +239,7 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
 
     if (strcmp(mode, "truecolor") == 0) {
         LOG_INFO("Generando imagen en modo 'truecolor'...");
-        ImageData diurna = create_truecolor_rgb(c01.base, c02.base, c03.base);
+        ImageData diurna = create_truecolor_rgb(c01.fdata, c02.fdata, c03.fdata);
         image_apply_histogram(diurna);
         if (gamma != 1.0) image_apply_gamma(diurna, gamma);
         write_image_png(out_filename, &diurna);
@@ -255,7 +254,7 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
 
     } else { // Modo "composite" (default)
         LOG_INFO("Generando imagen en modo 'composite'...");
-        ImageData diurna = create_truecolor_rgb(c01.base, c02.base, c03.base);
+        ImageData diurna = create_truecolor_rgb(c01.fdata, c02.fdata, c03.fdata);
         image_apply_histogram(diurna);
         ImageData nocturna = create_nocturnal_pseudocolor(c13);
 
@@ -273,7 +272,10 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
     }
     LOG_INFO("Imagen RGB guardada en: %s", out_filename);
 
-    dataf_destroy(&c01.base); dataf_destroy(&c02.base); dataf_destroy(&c03.base); dataf_destroy(&c13.base);
+    if (c01_info) datanc_destroy(&c01);
+    if (c02_info) datanc_destroy(&c02);
+    if (c03_info) datanc_destroy(&c03);
+    datanc_destroy(&c13);
     dataf_destroy(&navla); dataf_destroy(&navlo);
     channelset_destroy(channels);
     return 0;

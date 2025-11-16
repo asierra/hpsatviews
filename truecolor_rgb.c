@@ -22,10 +22,7 @@ ImageData create_truecolor_rgb(DataF c01, DataF c02, DataF c03) {
   }
 
   double start = omp_get_wtime();
-  float *c01_data_in = (float*)c01.data_in;
-  float *c02_data_in = (float*)c02.data_in;
-  float *c03_data_in = (float*)c03.data_in;
-#pragma omp parallel for shared(c01_data_in, c02_data_in, c03_data_in, imout)
+#pragma omp parallel for
   for (int y = 0; y < imout.height; y++) {
     for (int x = 0; x < imout.width; x++) {
       int i = y * imout.width + x;
@@ -33,10 +30,10 @@ ImageData create_truecolor_rgb(DataF c01, DataF c02, DataF c03) {
       unsigned char r, g, b;
 
       r = g = b = 0;
-      if (c01_data_in[i] != NonData) {
-        float c01f = c01_data_in[i];
-        float c02f = c02_data_in[i];
-        float c03f = c03_data_in[i];
+      if (c01.data_in[i] != NonData) {
+        float c01f = c01.data_in[i];
+        float c02f = c02.data_in[i];
+        float c03f = c03.data_in[i];
 
         if (c01f == NonData || c02f == NonData || c03f == NonData) {
           imout.data[po] = 0;     // R

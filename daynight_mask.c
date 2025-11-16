@@ -144,12 +144,13 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo,
   day = nite = 0;
 
   double start = omp_get_wtime();
-  float *navla_data_in = (float*)navla.data_in;
-  float *navlo_data_in = (float*)navlo.data_in;
-  float *datanc_base_data_in = (float*)datanc.base.data_in;
+  // Since we refactored DataF to always use float*, we no longer need casts.
+  float *navla_data = navla.data_in;
+  float *navlo_data = navlo.data_in;
+  float *temp_data = datanc.fdata.data_in; // Corrected from .base to .fdata
   unsigned char *imout_data = imout.data;
 
-#pragma omp parallel for shared(datanc, navla_data_in, navlo_data_in, datanc_base_data_in, imout_data) reduction(+:day,nite)
+#pragma omp parallel for shared(datanc, navla_data, navlo_data, temp_data, imout_data) reduction(+:day,nite)
   for (int y = 0; y < navla.height; y++) {
     for (int x = 0; x < navla.width; x++) {
       int i = y * navla.width + x;
@@ -157,9 +158,9 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo,
 
       // Para la penumbra, usa geometría solar
       float w = 0;
-      float la = navla_data_in[i];
-      float lo = navlo_data_in[i];
-      float temp = datanc_base_data_in[i];
+      float la = navla_data[i];
+      float lo = navlo_data[i];
+      float temp = temp_data[i];
       double zenith_out, azimuth_out;
       double sza = sun_zenith_angle(la, lo, datanc, &zenith_out, &azimuth_out) * 180 / M_PI;
       if (sza > 88.0) {

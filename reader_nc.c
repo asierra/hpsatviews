@@ -40,13 +40,12 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
     ERR(retval);
 
   // Recuperamos las dimensiones de los datos
-  if ((retval = nc_inq_dimlen(ncid, xid, &datanc->base.width)))
-    ERR(retval);
-  if ((retval = nc_inq_dimlen(ncid, yid, &datanc->base.height)))
-    ERR(retval);
-  datanc->base.size = datanc->base.width * datanc->base.height;
-  LOG_INFO("NetCDF dimensions: %lux%lu (total: %lu)", datanc->base.width,
-           datanc->base.height, datanc->base.size);
+  size_t width, height, total_size;
+  if ((retval = nc_inq_dimlen(ncid, xid, &width))) ERR(retval);
+  if ((retval = nc_inq_dimlen(ncid, yid, &height))) ERR(retval);
+  total_size = width * height;
+  LOG_INFO("NetCDF dimensions: %lux%lu (total: %lu)", width,
+           height, total_size);
 
   // Obtenemos el id de la variable
   int rad_varid;
@@ -74,7 +73,7 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
     ERR(retval);
 
   size_t type_size = (var_type == NC_BYTE) ? sizeof(signed char) : sizeof(short);
-  void *datatmp = malloc(type_size * datanc->base.size);
+  void *datatmp = malloc(type_size * total_size);
   if (datatmp == NULL) {
     LOG_FATAL("Failed to allocate memory for NetCDF data");
     return ERRCODE;
@@ -154,42 +153,39 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
   float fmin = 1e20;
   float fmax = -fmin;
   unsigned nondatas = 0;
-  unsigned inan = 0;
 
   if (var_type == NC_BYTE) {
     // --- RUTA PARA DATOS TIPO BYTE (ej. Cloud Phase) ---
-    datanc->base.type = DATA_TYPE_INT8;
-    datanc->base.data_in = malloc(sizeof(int8_t) * datanc->base.size);
-    if (datanc->base.data_in == NULL) {
+    datanc->is_float = false;
+    datanc->bdata = datab_create(width, height);
+    if (datanc->bdata.data_in == NULL) {
       LOG_FATAL("Memory allocation failed for byte data buffer");
       free(datatmp);
       return ERRCODE;
     }
-    int8_t *dest_buffer = (int8_t *)datanc->base.data_in;
     signed char *src_buffer = (signed char *)datatmp;
 
-    for (size_t i = 0; i < datanc->base.size; i++) {
+    for (size_t i = 0; i < total_size; i++) {
       if (src_buffer[i] != (signed char)fillvalue) {
-        dest_buffer[i] = (int8_t)src_buffer[i];
+        datanc->bdata.data_in[i] = (int8_t)src_buffer[i];
       } else {
         // Usar -128 como valor NonData para int8_t
-        dest_buffer[i] = -128;
+        datanc->bdata.data_in[i] = -128;
         nondatas++;
       }
     }
   } else {
     // --- RUTA PARA DATOS TIPO SHORT (ej. Radiancia) ---
-    datanc->base.type = DATA_TYPE_FLOAT;
-    datanc->base.data_in = malloc(sizeof(float) * datanc->base.size);
-    if (datanc->base.data_in == NULL) {
+    datanc->is_float = true;
+    datanc->fdata = dataf_create(width, height);
+    if (datanc->fdata.data_in == NULL) {
       LOG_FATAL("Memory allocation failed for float data buffer");
       free(datatmp);
       return ERRCODE;
     }
-    float *dest_buffer = (float *)datanc->base.data_in;
     short *src_buffer = (short *)datatmp;
 
-    for (size_t i = 0; i < datanc->base.size; i++) {
+    for (size_t i = 0; i < total_size; i++) {
       if (src_buffer[i] != fillvalue) {
         float f;
         float rad = scale_factor * src_buffer[i] + add_offset;
@@ -205,18 +201,17 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
         }
         if (f > fmax) fmax = f;
         if (f < fmin) fmin = f;
-        dest_buffer[i] = f;
+        datanc->fdata.data_in[i] = f;
       } else {
-        dest_buffer[i] = NonData;
-        inan = i;
+        datanc->fdata.data_in[i] = NonData;
         nondatas++;
       }
     }
+    datanc->fdata.fmin = fmin;
+    datanc->fdata.fmax = fmax;
+    LOG_INFO("Data range: min=%g, max=%g, NonData=%g, invalid_count=%u", fmin,
+             fmax, NonData, nondatas);
   }
-  datanc->base.fmin = fmin;
-  datanc->base.fmax = fmax;
-  LOG_INFO("Data range: min=%g, max=%g, NonData=%g, invalid_count=%u", fmin,
-           fmax, NonData, inan);
   free(datatmp);
 
   printf("Exito decodificando %s!\n", filename);
@@ -250,7 +245,7 @@ int load_nc_float(const char *filename, DataF *datanc, const char *variable) {
     ERR(retval);
 
   // Apartamos memoria para los datos
-  datanc->data_in = malloc(sizeof(float) * datanc->size);
+  datanc->data_in = malloc(sizeof(float) * datanc->size); // This function seems unused, but let's fix it.
 
   // Recupera los datos
   if ((retval = nc_get_var_float(ncid, varid, datanc->data_in)))
@@ -303,10 +298,10 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
     ERR(retval);
 
   // Recuperamos las dimensiones de los datos
-  if ((retval = nc_inq_dimlen(ncid, xid, &navla->width)))
-    ERR(retval);
-  if ((retval = nc_inq_dimlen(ncid, yid, &navla->height)))
-    ERR(retval);
+  size_t width, height;
+  if ((retval = nc_inq_dimlen(ncid, xid, &width))) ERR(retval);
+  if ((retval = nc_inq_dimlen(ncid, yid, &height))) ERR(retval);
+  *navla = dataf_create(width, height);
   navla->size = navla->width * navla->height;
   navlo->width = navla->width;
   navlo->height = navla->height;
@@ -344,13 +339,10 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
     WRN(retval);
 
   // Apartamos memoria para los datos
-  navla->data_in = malloc(sizeof(float) * navla->size);
-  navlo->data_in = malloc(sizeof(float) * navlo->size);
+  *navlo = dataf_create(width, height);
 
   int k = 0;
   float lomin = 1e10, lamin = 1e10, lomax = -lomin, lamax = -lamin;
-  float *navla_data_in = (float *)navla->data_in;
-  float *navlo_data_in = (float *)navlo->data_in;
   for (int j = 0; j < navla->height; j++) {
     float y = j * y_sf + y_ao;
     for (int i = 0; i < navla->width; i++) {
@@ -359,8 +351,8 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
       compute_lalo(x, y, &la, &lo);
       if (isnan(la) || isnan(lo)) {
         // printf("Is nan %g\n", la);
-        navla_data_in[k] = NonData;
-        navlo_data_in[k] = NonData;
+        navla->data_in[k] = NonData;
+        navlo->data_in[k] = NonData;
       } else {
         if (la < lamin)
           lamin = la;
@@ -370,8 +362,8 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
           lomin = lo;
         if (lo > lomax)
           lomax = lo;
-        navla_data_in[k] = la;
-        navlo_data_in[k] = lo;
+        navla->data_in[k] = la;
+        navlo->data_in[k] = lo;
       }
       k++;
     }
@@ -406,8 +398,8 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
  * @return 0 en éxito.
  */
 int create_navigation_from_reprojected_bounds(DataF *navla, DataF *navlo, size_t width, size_t height, float lon_min, float lon_max, float lat_min, float lat_max) {
-    *navla = dataf_create(width, height, DATA_TYPE_FLOAT);
-    *navlo = dataf_create(width, height, DATA_TYPE_FLOAT);
+    *navla = dataf_create(width, height);
+    *navlo = dataf_create(width, height);
     if (navla->data_in == NULL || navlo->data_in == NULL) {
         LOG_FATAL("Fallo de memoria al crear mallas de navegación para datos reproyectados.");
         return -1;
@@ -416,16 +408,12 @@ int create_navigation_from_reprojected_bounds(DataF *navla, DataF *navlo, size_t
     float lat_range = lat_max - lat_min;
     float lon_range = lon_max - lon_min;
 
-    // Cast de los punteros void* a float* antes del bucle para un acceso seguro.
-    float* navlo_data = (float*)navlo->data_in;
-    float* navla_data = (float*)navla->data_in;
-
     #pragma omp parallel for collapse(2)
     for (size_t y = 0; y < height; y++) {
         for (size_t x = 0; x < width; x++) {
             size_t i = y * width + x;
-            navlo_data[i] = lon_min + ( (float)x / (float)(width - 1) ) * lon_range;
-            navla_data[i] = lat_max - ( (float)y / (float)(height - 1) ) * lat_range;
+            navlo->data_in[i] = lon_min + ( (float)x / (float)(width - 1) ) * lon_range;
+            navla->data_in[i] = lat_max - ( (float)y / (float)(height - 1) ) * lat_range;
         }
     }
     navla->fmin = lat_min; navla->fmax = lat_max;
@@ -480,7 +468,7 @@ DataF dataf_load_from_netcdf(const char *filename, const char *varname) {
   }
 
   // Crear la estructura DataF
-  data = dataf_create(width, height, DATA_TYPE_FLOAT);
+  data = dataf_create(width, height);
   if (data.data_in == NULL) {
     LOG_FATAL("Fallo de memoria al crear DataF para %s", varname);
     nc_close(ncid);

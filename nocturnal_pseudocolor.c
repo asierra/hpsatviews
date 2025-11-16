@@ -14,9 +14,16 @@
 #include "datanc.h"
 #include "image.h"
 #include "paleta.h"
+#include "logger.h"
 
 ImageData create_nocturnal_pseudocolor(DataNC datanc) {
-  ImageData imout = image_create(datanc.base.width, datanc.base.height, 3);
+  // Asegurarnos de que estamos trabajando con datos float.
+  if (!datanc.is_float) {
+    LOG_ERROR("create_nocturnal_pseudocolor requiere datos de punto flotante (float).");
+    return image_create(0, 0, 0);
+  }
+
+  ImageData imout = image_create(datanc.fdata.width, datanc.fdata.height, 3);
   
   // Check if allocation was successful
   if (imout.data == NULL) {
@@ -26,9 +33,9 @@ ImageData create_nocturnal_pseudocolor(DataNC datanc) {
   float tmin = 1e10, tmax = -1e10;
 
   double start = omp_get_wtime();
-  float *datanc_base_data_in = (float*)datanc.base.data_in;
+  float *temp_data = datanc.fdata.data_in;
 
-#pragma omp parallel for shared(datanc_base_data_in, imout)
+#pragma omp parallel for shared(temp_data, imout) reduction(min:tmin) reduction(max:tmax)
   for (int y = 0; y < imout.height; y++) {
     for (int x = 0; x < imout.width; x++) {
       int i = y * imout.width + x;
@@ -36,8 +43,8 @@ ImageData create_nocturnal_pseudocolor(DataNC datanc) {
       unsigned char r, g, b;
 
       r = g = b = 0;
-      if (datanc_base_data_in[i] != NonData) {
-        float f = datanc_base_data_in[i];
+      if (temp_data[i] != NonData) {
+        float f = temp_data[i];
         if (f < tmin)
           tmin = f;
         if (f > tmax)
