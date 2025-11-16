@@ -70,7 +70,8 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     
     DataNC c01;
     char *varname = "Rad"; // Default
-    if (strinstr(fnc01, "LST")) varname = "LST";
+    if (strinstr(fnc01, "CMIP")) varname = "CMI";
+    else if (strinstr(fnc01, "LST")) varname = "LST";
     else if (strinstr(fnc01, "ACTP")) varname = "Phase";
     else if (strinstr(fnc01, "CTP")) varname = "PRES";
     if (load_nc_sf(fnc01, varname, &c01) != 0) {
