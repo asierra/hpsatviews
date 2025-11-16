@@ -55,23 +55,24 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
 
     CPTData* cptdata = NULL;
     ColorArray *color_array = NULL;
-    if (ap_found(parser, "cpt")) {
-        char *cptfn = ap_get_str_value(parser, "cpt");
-        cptdata = read_cpt_file(cptfn);
-        if (cptdata) {
-            color_array = cpt_to_color_array(cptdata);
-        } else {
-            LOG_ERROR("No se pudo cargar el archivo de paleta: %s", cptfn);
-            return -1;
+    if (is_pseudocolor) {
+        if (ap_found(parser, "cpt")) {
+            char *cptfn = ap_get_str_value(parser, "cpt");
+            cptdata = read_cpt_file(cptfn);
+            if (cptdata) {
+                color_array = cpt_to_color_array(cptdata);
+            } else {
+                LOG_ERROR("No se pudo cargar el archivo de paleta: %s", cptfn);
+                return -1;
+            }
         }
     }
-
+    
     DataNC c01;
     char *varname = "Rad"; // Default
     if (strinstr(fnc01, "LST")) varname = "LST";
     else if (strinstr(fnc01, "ACTP")) varname = "Phase";
     else if (strinstr(fnc01, "CTP")) varname = "PRES";
-
     if (load_nc_sf(fnc01, varname, &c01) != 0) {
         LOG_ERROR("No se pudo cargar el archivo: %s", fnc01);
         free_cpt_data(cptdata);
@@ -80,7 +81,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     }
 
     if (do_reprojection) {
-        DataF reprojected_data = reproject_to_geographics(&c01.base, fnc01);
+        DataF reprojected_data = reproject_to_geographics(&c01.base, fnc01, NULL, NULL, NULL, NULL);
         if (reprojected_data.data_in) {
             dataf_destroy(&c01.base);
             c01.base = reprojected_data;

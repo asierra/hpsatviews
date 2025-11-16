@@ -19,9 +19,12 @@
  * @param nav_reference_file A NetCDF file path used to compute the navigation grid (lat/lon).
  * @return A new DataF structure containing the reprojected and gap-filled data.
  *         The caller is responsible for freeing this structure with dataf_destroy().
- *         Returns an empty DataF on failure.
+ *         Returns an empty DataF on failure. The out_* parameters will contain the
+ *         geographic bounds of the reprojected grid.
  */
-DataF reproject_to_geographics(const DataF* source_data, const char* nav_reference_file) {
+DataF reproject_to_geographics(const DataF* source_data, const char* nav_reference_file,
+                               float* out_lon_min, float* out_lon_max,
+                               float* out_lat_min, float* out_lat_max) {
     LOG_INFO("Iniciando reproyección a geográficas...");
 
     DataF navla, navlo;
@@ -30,6 +33,11 @@ DataF reproject_to_geographics(const DataF* source_data, const char* nav_referen
         return dataf_create(0, 0, DATA_TYPE_FLOAT); // Retorna estructura vacía
     }
     LOG_INFO("Datos de navegación calculados. Extensión: lat[%.3f, %.3f], lon[%.3f, %.3f]", navla.fmin, navla.fmax, navlo.fmin, navlo.fmax);
+    // Devolver los límites geográficos calculados
+    if (out_lon_min) *out_lon_min = navlo.fmin;
+    if (out_lon_max) *out_lon_max = navlo.fmax;
+    if (out_lat_min) *out_lat_min = navla.fmin;
+    if (out_lat_max) *out_lat_max = navla.fmax;
 
     // Usar 70% del tamaño original para la salida
     size_t width = navlo.width * 0.7;
@@ -71,6 +79,11 @@ DataF reproject_to_geographics(const DataF* source_data, const char* nav_referen
 
     LOG_INFO("Iniciando relleno de huecos (interpolación de vecinos)...");
     DataF datagg_filled = dataf_copy(&datagg);
+    // ¡ERROR CRÍTICO CORREGIDO AQUÍ!
+    // dataf_copy solo asigna memoria, no copia el contenido. Debemos copiarlo manualmente.
+    //if (datagg_filled.data_in != NULL) {
+    //    memcpy(datagg_filled.data_in, datagg.data_in, datagg.size * sizeof(float));
+    //}
 
     // Cast pointers for the gap-filling loop
     float* datagg_original_data = (float*)datagg.data_in;

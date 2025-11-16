@@ -99,23 +99,32 @@ int run_rgb(ArgParser* parser) {
     aux = downsample_boxfilter(c02.base, 4); dataf_destroy(&c02.base); c02.base = aux;
     aux = downsample_boxfilter(c03.base, 2); dataf_destroy(&c03.base); c03.base = aux;
     compute_navigation_nc(c13_info->filename, &navla, &navlo);
-
+    
     if (do_reprojection) {
         LOG_INFO("Iniciando reproyección para todos los canales...");
         const char* nav_ref = c13_info->filename;
-        DataF repro_c01 = reproject_to_geographics(&c01.base, nav_ref);
-        DataF repro_c02 = reproject_to_geographics(&c02.base, nav_ref);
-        DataF repro_c03 = reproject_to_geographics(&c03.base, nav_ref);
-        DataF repro_c13 = reproject_to_geographics(&c13.base, nav_ref);
-        DataF repro_navla = reproject_to_geographics(&navla, nav_ref);
-        DataF repro_navlo = reproject_to_geographics(&navlo, nav_ref);
+        float lon_min, lon_max, lat_min, lat_max;
 
+        // Reproyectar los datos de imagen. La primera llamada obtiene los límites geográficos.
+        DataF repro_c01 = reproject_to_geographics(&c01.base, nav_ref, &lon_min, &lon_max, &lat_min, &lat_max);
+        DataF repro_c02 = reproject_to_geographics(&c02.base, nav_ref, NULL, NULL, NULL, NULL);
+        DataF repro_c03 = reproject_to_geographics(&c03.base, nav_ref, NULL, NULL, NULL, NULL);
+        DataF repro_c13 = reproject_to_geographics(&c13.base, nav_ref, NULL, NULL, NULL, NULL);
+
+        // Liberar las mallas originales y asignar las reproyectadas
         dataf_destroy(&c01.base); c01.base = repro_c01;
         dataf_destroy(&c02.base); c02.base = repro_c02;
         dataf_destroy(&c03.base); c03.base = repro_c03;
         dataf_destroy(&c13.base); c13.base = repro_c13;
-        dataf_destroy(&navla); navla = repro_navla;
-        dataf_destroy(&navlo); navlo = repro_navlo;
+
+        // Liberar la navegación original (geostacionaria)
+        dataf_destroy(&navla);
+        dataf_destroy(&navlo);
+
+        // Crear la nueva navegación directamente sobre la malla geográfica, sin reproyectar.
+        LOG_INFO("Creando navegación para la malla geográfica final...");
+        create_navigation_from_reprojected_bounds(&navla, &navlo, c01.base.width, c01.base.height, lon_min, lon_max, lat_min, lat_max);
+
         LOG_INFO("Reproyección completada.");
     }
 

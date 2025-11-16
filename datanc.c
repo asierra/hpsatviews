@@ -71,7 +71,7 @@ void dataf_destroy(DataF *data) {
  *         allocation fails or the source is NULL.
  */
 DataF dataf_copy(const DataF *data) {
-    if (data == NULL) {
+    if (data == NULL || data->data_in == NULL) {
         return dataf_create(0, 0, DATA_TYPE_FLOAT); // Return an empty but valid DataF
     }
 
@@ -84,6 +84,16 @@ DataF dataf_copy(const DataF *data) {
     // Copy scalar members
     copy.fmin = data->fmin;
     copy.fmax = data->fmax;
+    copy.type = data->type;
+
+    // Copia el buffer de datos, manejando los diferentes tipos de datos.
+    size_t bytes_to_copy;
+    if (data->type == DATA_TYPE_FLOAT) {
+        bytes_to_copy = data->size * sizeof(float);
+    } else { // DATA_TYPE_INT8
+        bytes_to_copy = data->size * sizeof(int8_t);
+    }
+    memcpy(copy.data_in, data->data_in, bytes_to_copy);
 
     return copy;
 }

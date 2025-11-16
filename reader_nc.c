@@ -388,6 +388,51 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
   return 0;
 }
 
+/**
+ * @brief Crea mallas de navegación (lat/lon) para una cuadrícula geográfica ya existente.
+ *
+ * En lugar de calcular desde coordenadas geostacionarias, esta función genera las mallas
+ * de latitud y longitud por interpolación lineal simple, basándose en los límites
+ * geográficos conocidos de la cuadrícula. Es mucho más eficiente para datos ya reproyectados.
+ *
+ * @param navla Puntero a la estructura DataF para la latitud de salida.
+ * @param navlo Puntero a la estructura DataF para la longitud de salida.
+ * @param width Ancho de la cuadrícula geográfica.
+ * @param height Alto de la cuadrícula geográfica.
+ * @param lon_min Longitud mínima.
+ * @param lon_max Longitud máxima.
+ * @param lat_min Latitud mínima.
+ * @param lat_max Latitud máxima.
+ * @return 0 en éxito.
+ */
+int create_navigation_from_reprojected_bounds(DataF *navla, DataF *navlo, size_t width, size_t height, float lon_min, float lon_max, float lat_min, float lat_max) {
+    *navla = dataf_create(width, height, DATA_TYPE_FLOAT);
+    *navlo = dataf_create(width, height, DATA_TYPE_FLOAT);
+    if (navla->data_in == NULL || navlo->data_in == NULL) {
+        LOG_FATAL("Fallo de memoria al crear mallas de navegación para datos reproyectados.");
+        return -1;
+    }
+
+    float lat_range = lat_max - lat_min;
+    float lon_range = lon_max - lon_min;
+
+    // Cast de los punteros void* a float* antes del bucle para un acceso seguro.
+    float* navlo_data = (float*)navlo->data_in;
+    float* navla_data = (float*)navla->data_in;
+
+    #pragma omp parallel for collapse(2)
+    for (size_t y = 0; y < height; y++) {
+        for (size_t x = 0; x < width; x++) {
+            size_t i = y * width + x;
+            navlo_data[i] = lon_min + ( (float)x / (float)(width - 1) ) * lon_range;
+            navla_data[i] = lat_max - ( (float)y / (float)(height - 1) ) * lat_range;
+        }
+    }
+    navla->fmin = lat_min; navla->fmax = lat_max;
+    navlo->fmin = lon_min; navlo->fmax = lon_max;
+    return 0;
+}
+
 /*
  * Carga una variable 2D genérica de un NetCDF en una estructura DataF.
  * Asume que las dimensiones son [y, x] o [height, width].
