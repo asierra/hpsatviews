@@ -8,22 +8,27 @@
 
 ## Abstract
 
-HPSATVIEWS is a high-performance, command-line driven application for processing GOES satellite data. It provides a suite of tools to generate various imaging products, including true-color RGB composites with day/night blending, single-channel grayscale images, and pseudocolor visualizations using custom palettes. Built in modern C11 with OpenMP support, it offers ultra-fast, modular, and scalable processing, making it ideal for operational meteorology and research.
+HPSATVIEWS is a high-performance, command-line driven application for processing GOES satellite data (L1b and L2). It provides a suite of tools to generate various imaging products, including true-color RGB composites, standard scientific products (`ash`, `airmass`, `so2`), single-channel grayscale images, and pseudocolor visualizations. Built in modern C11 with OpenMP support, it offers ultra-fast, modular, and scalable processing, making it ideal for operational meteorology and research.
 
 ## Resumen
 
-HPSATVIEWS es una aplicación de alto rendimiento controlada por línea de comandos para el procesamiento de datos del satélite GOES. Proporciona un conjunto de herramientas para generar diversos productos, incluyendo compuestos RGB de color verdadero con mezcla día/noche, imágenes de un solo canal en escala de grises y visualizaciones en pseudocolor con paletas personalizadas. Desarrollado en C11 moderno con soporte para OpenMP, ofrece un procesamiento ultra-rápido, modular y escalable, ideal para la meteorología operacional y la investigación.
+HPSATVIEWS es una aplicación de alto rendimiento controlada por línea de comandos para el procesamiento de datos del satélite GOES (L1b y L2). Proporciona un conjunto de herramientas para generar diversos productos, incluyendo compuestos RGB de color verdadero, productos científicos estándar (`ash`, `airmass`, `so2`), imágenes de un solo canal en escala de grises y visualizaciones en pseudocolor. Desarrollado en C11 moderno con soporte para OpenMP, ofrece un procesamiento ultra-rápido, modular y escalable, ideal para la meteorología operacional y la investigación.
 
 ---
 
 ## 🚀 Características Principales
 
 ### Procesamiento de Imágenes
-- **Imágenes True Color RGB** - Combinación automática de canales C01, C02, C03
-- **Visualización Infrarroja Nocturna** - Pseudocolor meteorológico del canal C13
-- **Composición Día/Noche** - Mezcla inteligente basada en geometría solar
+- **Compuestos RGB Avanzados**:
+  - `truecolor`: Color verdadero diurno con canal verde sintético.
+  - `ash`: Detección de ceniza volcánica.
+  - `airmass`: Clasificación de masas de aire.
+  - `so2`: Detección de dióxido de azufre.
+  - `night`: Visualización infrarroja nocturna.
+  - `composite`: Mezcla inteligente día/noche de `truecolor` y `night`.
 - **Mejora de Histograma** - Optimización automática de contraste
 - **Corrección Gamma** - Control de luminosidad configurable
+- **Reproyección Geográfica** - Conversión de la proyección nativa a un mapa geográfico (lat/lon).
 
 ### Rendimiento
 - ⚡ **Ultra rápido**: Procesamiento en fracciones de segundo
@@ -33,7 +38,7 @@ HPSATVIEWS es una aplicación de alto rendimiento controlada por línea de coman
 
 ### Arquitectura de Software
 - 🏗️ **Modular**: Arquitectura limpia con separación de responsabilidades
-- 🔒 **Thread-safe**: Sin variables globales, preparado para paralelización
+- 🔒 **Seguro en Hilos**: Sin variables globales, preparado para paralelización
 - 📊 **Logging estructurado**: Sistema completo de debugging y monitoring
 - 🛡️ **Gestión de memoria robusta**: Constructores/destructores automáticos
 - 🧪 **Testeable**: Funciones aisladas y reutilizables
@@ -92,13 +97,17 @@ make
 
 ---
 
-## 🚀 Uso
+## 🚀 Uso (Ejemplos)
 
-El programa ahora funciona con un único ejecutable `hpsatviews` y subcomandos: `rgb`, `pseudocolor`, y `singlegray`.
+El programa funciona con un único ejecutable `hpsatviews` y tres subcomandos principales: `rgb`, `pseudocolor` y `singlegray`.
 
-### Generar Imagen RGB (Color Verdadero + Composición Día/Noche)
+### Comando `rgb`
+
+Genera compuestos RGB a partir de múltiples canales. El archivo de entrada puede ser cualquier canal (L1b o L2) del instante de tiempo deseado; el programa encontrará los demás automáticamente.
+
+**Compuesto Día/Noche (por defecto):**
 ```bash
-./hpsatviews rgb -o truecolor_comp.png /ruta/a/archivo_GOES_L1b_C01.nc
+./hpsatviews rgb -o composite.png /ruta/a/OR_ABI-L1b-RadF-M6C02_G16...
 ```
 
 **Genera:**

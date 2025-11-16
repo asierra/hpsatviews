@@ -11,6 +11,14 @@
 
 extern float NonData;
 
+// Enum for arithmetic operations
+typedef enum {
+    OP_ADD,
+    OP_SUB,
+    OP_MUL,
+    OP_DIV
+} Operation;
+
 // A 2D grid structure for floating-point data.
 typedef struct {
   size_t width, height;
@@ -66,6 +74,11 @@ DataF upsample_bilinear(DataF datanc_big, int factor);
 // --- Funciones para DataB ---
 DataB datab_create(size_t width, size_t height);
 void datab_destroy(DataB *data);
+
+// --- Funciones de operaciones aritméticas para DataF ---
+DataF dataf_op_dataf(const DataF* a, const DataF* b, Operation op);
+DataF dataf_op_scalar(const DataF* a, float scalar, Operation op, bool scalar_first);
+void dataf_invert(DataF* a);
 
 // --- Funciones de utilidad para DataNC ---
 void datanc_destroy(DataNC *datanc);

@@ -6,6 +6,7 @@
 #define HPSATVIEWS_IMAGE_H_
 
 #include <stdint.h>
+#include <stdlib.h>
 
 // Estructura para guardar datos de una imagen
 typedef struct {

@@ -9,6 +9,7 @@
 #include "writer_png.h"
 #include "image.h"
 #include "logger.h"
+#include "datanc.h"
 #include "reprojection.h"
 #include <dirent.h>
 #include <libgen.h>
@@ -31,6 +32,72 @@ typedef struct {
 // --- Prototipos de funciones internas ---
 ImageData create_truecolor_rgb(DataF B, DataF R, DataF NiR);
 ImageData create_nocturnal_pseudocolor(DataNC datanc);
+
+/**
+ * @brief Normaliza un DataF a un buffer de 8 bits (0-255).
+ *
+ * @param data Puntero al DataF de entrada.
+ * @param min_val El valor de los datos que se mapeará a 0.
+ * @param max_val El valor de los datos que se mapeará a 255.
+ * @return Un puntero a un nuevo buffer de `unsigned char`. El llamador es responsable de liberarlo.
+ */
+static unsigned char* normalize_to_u8(const DataF* data, float min_val, float max_val) {
+    unsigned char* buffer = malloc(data->size * sizeof(unsigned char));
+    if (!buffer) {
+        LOG_FATAL("Fallo de memoria al normalizar canal a 8-bit.");
+        return NULL;
+    }
+
+    float range = max_val - min_val;
+    if (range < 1e-9) range = 1.0f; // Evitar división por cero.
+
+    #pragma omp parallel for
+    for (size_t i = 0; i < data->size; i++) {
+        float val = data->data_in[i];
+        if (val == NonData) {
+            buffer[i] = 0;
+        } else {
+            float normalized = (val - min_val) / range;
+            if (normalized < 0.0f) normalized = 0.0f;
+            if (normalized > 1.0f) normalized = 1.0f;
+            buffer[i] = (unsigned char)(normalized * 255.0f);
+        }
+    }
+    return buffer;
+}
+
+/**
+ * @brief Crea una imagen RGB a partir de tres bandas DataF con escalado personalizado.
+ *
+ * @return Una nueva estructura ImageData.
+ */
+ImageData create_multiband_rgb(const DataF* r_ch, const DataF* g_ch, const DataF* b_ch,
+                               float r_min, float r_max, float g_min, float g_max,
+                               float b_min, float b_max) {
+    if (r_ch->size != g_ch->size || r_ch->size != b_ch->size) {
+        LOG_ERROR("Las dimensiones de las bandas de entrada para RGB no coinciden.");
+        return image_create(0, 0, 0);
+    }
+
+    ImageData imout = image_create(r_ch->width, r_ch->height, 3);
+    if (imout.data == NULL) return imout;
+
+    unsigned char* r_norm = normalize_to_u8(r_ch, r_min, r_max);
+    unsigned char* g_norm = normalize_to_u8(g_ch, g_min, g_max);
+    unsigned char* b_norm = normalize_to_u8(b_ch, b_min, b_max);
+
+    size_t num_pixels = imout.width * imout.height;
+    #pragma omp parallel for
+    for (size_t i = 0; i < num_pixels; i++) {
+        imout.data[i * 3]     = r_norm[i];
+        imout.data[i * 3 + 1] = g_norm[i];
+        imout.data[i * 3 + 2] = b_norm[i];
+    }
+
+    free(r_norm); free(g_norm); free(b_norm);
+    return imout;
+}
+
 ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo, float *dnratio, float max_tmp);
 ChannelSet* channelset_create(const char* channel_names[], int count);
 void channelset_destroy(ChannelSet* set);
@@ -150,15 +217,27 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
     bool is_l2_product = (strstr(basenm, "CMIP") != NULL);
 
     // Determinar los canales requeridos según el modo
-    const char* required_channels_all[] = {"C01", "C02", "C03", "C13"};
-    const char* required_channels_night[] = {"C13"};
-    
     ChannelSet* channels = NULL;
-    if (strcmp(mode, "night") == 0) {
-        channels = channelset_create(required_channels_night, 1);
-    } else { // "composite" y "truecolor" necesitan los 4 (C13 como referencia)
-        channels = channelset_create(required_channels_all, 4);
+    if (strcmp(mode, "composite") == 0 || strcmp(mode, "truecolor") == 0) {
+        const char* required[] = {"C01", "C02", "C03", "C13"};
+        channels = channelset_create(required, 4);
+    } else if (strcmp(mode, "night") == 0) {
+        const char* required[] = {"C13"};
+        channels = channelset_create(required, 1);
+    } else if (strcmp(mode, "ash") == 0) {
+        const char* required[] = {"C11", "C13", "C14", "C15"};
+        channels = channelset_create(required, 4);
+    } else if (strcmp(mode, "airmass") == 0) {
+        const char* required[] = {"C08", "C10", "C12", "C13"};
+        channels = channelset_create(required, 4);
+    } else if (strcmp(mode, "so2") == 0) {
+        const char* required[] = {"C09", "C10", "C11", "C13"};
+        channels = channelset_create(required, 4);
+    } else {
+        LOG_ERROR("Modo '%s' no reconocido. Modos válidos: composite, truecolor, night, ash, airmass, so2.", mode);
+        return -1;
     }
+
     if (!channels) {
         LOG_FATAL("Error: No se pudo crear el conjunto de canales.");
         return -1;
@@ -176,59 +255,71 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
         return -1;
     }
 
-    ChannelInfo* c01_info = NULL, *c02_info = NULL, *c03_info = NULL, *c13_info = NULL;
+    // Punteros para todos los canales posibles
+    ChannelInfo* c_info[17] = {NULL}; // Índices 1-16
     for (int i = 0; i < channels->count; i++) {
         if (channels->channels[i].filename == NULL) {
             LOG_ERROR("Archivo faltante para el canal %s con ID %s en el directorio %s", channels->channels[i].name, channels->id_signature, dirnm);
             channelset_destroy(channels);
             return -1;
         }
-        if (strcmp(channels->channels[i].name, "C01") == 0) c01_info = &channels->channels[i];
-        if (strcmp(channels->channels[i].name, "C02") == 0) c02_info = &channels->channels[i];
-        if (strcmp(channels->channels[i].name, "C03") == 0) c03_info = &channels->channels[i];
-        if (strcmp(channels->channels[i].name, "C13") == 0) c13_info = &channels->channels[i];
+        // Extraer el número de canal para un acceso genérico
+        int channel_num = atoi(channels->channels[i].name + 1);
+        if (channel_num > 0 && channel_num <= 16) {
+            c_info[channel_num] = &channels->channels[i];
+        }
     }
 
-    DataNC c01, c02, c03, c13;
+    DataNC c[17]; // Array para almacenar los datos de los canales
     DataF aux, navlo, navla;
     const char* var_name = is_l2_product ? "CMI" : "Rad";
 
     // Cargar solo los canales necesarios
-    if (c01_info) load_nc_sf(c01_info->filename, var_name, &c01);
-    if (c02_info) load_nc_sf(c02_info->filename, var_name, &c02);
-    if (c03_info) load_nc_sf(c03_info->filename, var_name, &c03);
-    load_nc_sf(c13_info->filename, var_name, &c13);
+    for (int i = 1; i <= 16; i++) {
+        if (c_info[i]) {
+            load_nc_sf(c_info[i]->filename, var_name, &c[i]);
+        }
+    }
 
     // Iguala los tamaños a la resolución mínima (la de C13)
-    if (c01_info) { aux = downsample_boxfilter(c01.fdata, 2); dataf_destroy(&c01.fdata); c01.fdata = aux; }
-    if (c02_info) { aux = downsample_boxfilter(c02.fdata, 4); dataf_destroy(&c02.fdata); c02.fdata = aux; }
-    if (c03_info) { aux = downsample_boxfilter(c03.fdata, 2); dataf_destroy(&c03.fdata); c03.fdata = aux; }
-    compute_navigation_nc(c13_info->filename, &navla, &navlo);
+    // El canal de referencia para la navegación y resolución es el de mayor número presente
+    int ref_ch_idx = 0;
+    for (int i = 16; i > 0; i--) { if (c_info[i]) { ref_ch_idx = i; break; } }
+    if (ref_ch_idx == 0) { LOG_ERROR("No se encontró ningún canal de referencia."); return -1; }
+
+    if (c_info[1]) { aux = downsample_boxfilter(c[1].fdata, 2); dataf_destroy(&c[1].fdata); c[1].fdata = aux; }
+    if (c_info[2]) { aux = downsample_boxfilter(c[2].fdata, 4); dataf_destroy(&c[2].fdata); c[2].fdata = aux; }
+    if (c_info[3]) { aux = downsample_boxfilter(c[3].fdata, 2); dataf_destroy(&c[3].fdata); c[3].fdata = aux; }
+    compute_navigation_nc(c_info[ref_ch_idx]->filename, &navla, &navlo);
     
     if (do_reprojection) {
         LOG_INFO("Iniciando reproyección para todos los canales...");
-        const char* nav_ref = c13_info->filename;
+        const char* nav_ref = c_info[ref_ch_idx]->filename;
         float lon_min, lon_max, lat_min, lat_max;
 
         // Reproyectar los datos de imagen. La primera llamada obtiene los límites geográficos.
-        if (c01_info) { DataF repro_c01 = reproject_to_geographics(&c01.fdata, nav_ref, &lon_min, &lon_max, &lat_min, &lat_max); dataf_destroy(&c01.fdata); c01.fdata = repro_c01; }
-        if (c02_info) { DataF repro_c02 = reproject_to_geographics(&c02.fdata, nav_ref, NULL, NULL, NULL, NULL); dataf_destroy(&c02.fdata); c02.fdata = repro_c02; }
-        if (c03_info) { DataF repro_c03 = reproject_to_geographics(&c03.fdata, nav_ref, NULL, NULL, NULL, NULL); dataf_destroy(&c03.fdata); c03.fdata = repro_c03; }
-        DataF repro_c13 = reproject_to_geographics(&c13.fdata, nav_ref, NULL, NULL, NULL, NULL);
-
-        // Si no se reproyectó c01, necesitamos obtener los límites desde c13
-        if (!c01_info) {
-            repro_c13 = reproject_to_geographics(&c13.fdata, nav_ref, &lon_min, &lon_max, &lat_min, &lat_max);
+        bool first_repro = true;
+        for (int i = 1; i <= 16; i++) {
+            if (c_info[i]) {
+                DataF repro;
+                if (first_repro) {
+                    repro = reproject_to_geographics(&c[i].fdata, nav_ref, &lon_min, &lon_max, &lat_min, &lat_max);
+                    first_repro = false;
+                } else {
+                    repro = reproject_to_geographics(&c[i].fdata, nav_ref, NULL, NULL, NULL, NULL);
+                }
+                dataf_destroy(&c[i].fdata);
+                c[i].fdata = repro;
+            }
         }
-        dataf_destroy(&c13.fdata); c13.fdata = repro_c13;
 
         // Liberar la navegación original (geostacionaria)
         dataf_destroy(&navla);
         dataf_destroy(&navlo);
 
         // Crear la nueva navegación directamente sobre la malla geográfica, sin reproyectar.
-        size_t final_width = c01_info ? c01.fdata.width : c13.fdata.width;
-        size_t final_height = c01_info ? c01.fdata.height : c13.fdata.height;
+        size_t final_width = c[ref_ch_idx].fdata.width;
+        size_t final_height = c[ref_ch_idx].fdata.height;
         LOG_INFO("Creando navegación para la malla geográfica final...");
         create_navigation_from_reprojected_bounds(&navla, &navlo, final_width, final_height, lon_min, lon_max, lat_min, lat_max);
 
@@ -239,7 +330,7 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
 
     if (strcmp(mode, "truecolor") == 0) {
         LOG_INFO("Generando imagen en modo 'truecolor'...");
-        ImageData diurna = create_truecolor_rgb(c01.fdata, c02.fdata, c03.fdata);
+        ImageData diurna = create_truecolor_rgb(c[1].fdata, c[2].fdata, c[3].fdata);
         image_apply_histogram(diurna);
         if (gamma != 1.0) image_apply_gamma(diurna, gamma);
         write_image_png(out_filename, &diurna);
@@ -247,19 +338,47 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
 
     } else if (strcmp(mode, "night") == 0) {
         LOG_INFO("Generando imagen en modo 'night'...");
-        ImageData nocturna = create_nocturnal_pseudocolor(c13);
+        ImageData nocturna = create_nocturnal_pseudocolor(c[13]);
         if (gamma != 1.0) image_apply_gamma(nocturna, gamma);
         write_image_png(out_filename, &nocturna);
         image_destroy(&nocturna);
 
+    } else if (strcmp(mode, "ash") == 0) {
+        LOG_INFO("Generando imagen en modo 'ash'...");
+        DataF r = dataf_op_dataf(&c[15].fdata, &c[13].fdata, OP_SUB);
+        DataF g = dataf_op_dataf(&c[14].fdata, &c[11].fdata, OP_SUB);
+        ImageData img = create_multiband_rgb(&r, &g, &c[13].fdata, -6.7f, 2.6f, -6.0f, 6.3f, 243.6f, 302.4f);
+        write_image_png(out_filename, &img);
+        image_destroy(&img);
+        dataf_destroy(&r); dataf_destroy(&g);
+
+    } else if (strcmp(mode, "airmass") == 0) {
+        LOG_INFO("Generando imagen en modo 'airmass'...");
+        DataF r = dataf_op_dataf(&c[8].fdata, &c[10].fdata, OP_SUB);
+        DataF g = dataf_op_dataf(&c[12].fdata, &c[13].fdata, OP_SUB);
+        DataF b = dataf_op_scalar(&c[8].fdata, 273.15f, OP_SUB, true); // scalar_first = true -> 273.15 - C8
+        ImageData img = create_multiband_rgb(&r, &g, &b, -26.2f, 0.6f, -43.2f, 6.7f, -64.65f, -29.25f);
+        write_image_png(out_filename, &img);
+        image_destroy(&img);
+        dataf_destroy(&r); dataf_destroy(&g); dataf_destroy(&b);
+
+    } else if (strcmp(mode, "so2") == 0) {
+        LOG_INFO("Generando imagen en modo 'so2'...");
+        DataF r = dataf_op_dataf(&c[9].fdata, &c[10].fdata, OP_SUB);
+        DataF g = dataf_op_dataf(&c[13].fdata, &c[11].fdata, OP_SUB);
+        ImageData img = create_multiband_rgb(&r, &g, &c[13].fdata, -4.0f, 2.0f, -4.0f, 5.0f, 233.0f, 300.0f);
+        write_image_png(out_filename, &img);
+        image_destroy(&img);
+        dataf_destroy(&r); dataf_destroy(&g);
+
     } else { // Modo "composite" (default)
         LOG_INFO("Generando imagen en modo 'composite'...");
-        ImageData diurna = create_truecolor_rgb(c01.fdata, c02.fdata, c03.fdata);
+        ImageData diurna = create_truecolor_rgb(c[1].fdata, c[2].fdata, c[3].fdata);
         image_apply_histogram(diurna);
-        ImageData nocturna = create_nocturnal_pseudocolor(c13);
+        ImageData nocturna = create_nocturnal_pseudocolor(c[13]);
 
         float dnratio;
-        ImageData mask = create_daynight_mask(c13, navla, navlo, &dnratio, 263.15);
+        ImageData mask = create_daynight_mask(c[13], navla, navlo, &dnratio, 263.15);
         LOG_INFO("Ratio día/noche: %.2f%%", dnratio);
 
         ImageData blend = blend_images(nocturna, diurna, mask);
@@ -272,10 +391,9 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
     }
     LOG_INFO("Imagen RGB guardada en: %s", out_filename);
 
-    if (c01_info) datanc_destroy(&c01);
-    if (c02_info) datanc_destroy(&c02);
-    if (c03_info) datanc_destroy(&c03);
-    datanc_destroy(&c13);
+    for (int i = 1; i <= 16; i++) {
+        if (c_info[i]) datanc_destroy(&c[i]);
+    }
     dataf_destroy(&navla); dataf_destroy(&navlo);
     channelset_destroy(channels);
     return 0;

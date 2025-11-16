@@ -43,8 +43,9 @@ int main(int argc, char *argv[]) {
     if (rgb_cmd) {
         ap_set_helptext(rgb_cmd, "Usanza: hpsatviews rgb [opciones] <Archivo NetCDF de referencia>\n\n"
                                  "Genera una imagen de color verdadero día/noche. Requiere archivos C01, C02, C03, C13 en el mismo directorio.\n\n"
-                                 "Opciones:\n\n"
-                                 "  -m, --mode <modo>       Modo de operación: 'composite' (defecto), 'truecolor', 'night'.\n"
+                                 "Opciones:\n"
+                                 "  -m, --mode <modo>       Modo de operación. Opciones disponibles:\n"
+                                 "                          'composite' (defecto), 'truecolor', 'night', 'ash', 'airmass', 'so2'.\n"
                                  "  -o, --out <archivo>     Archivo de salida PNG (defecto: rgb_composite.png).\n"
                                  "  -g, --gamma <valor>     Corrección gamma a aplicar (defecto: 1.0).\n"
                                  "  -r, --geographics       Reproyecta la salida a coordenadas geográficas.");

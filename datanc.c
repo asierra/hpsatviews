@@ -272,3 +272,132 @@ DataF datanc_get_float_base(DataNC *datanc) {
     // A better approach might be to convert byte to float here if needed.
     return dataf_create(0, 0);
 }
+
+/**
+ * @brief Performs an arithmetic operation between two DataF structures.
+ * @param a The first operand.
+ * @param b The second operand.
+ * @param op The operation to perform (OP_ADD, OP_SUB, OP_MUL, OP_DIV).
+ * @return A new DataF structure with the result. Returns an empty DataF on error.
+ */
+DataF dataf_op_dataf(const DataF* a, const DataF* b, Operation op) {
+    if (a->width != b->width || a->height != b->height) {
+        // LOG_ERROR is missing here, but should be added in a real scenario
+        return dataf_create(0, 0);
+    }
+
+    DataF result = dataf_create(a->width, a->height);
+    if (result.data_in == NULL) return result;
+
+    float fmin = 1e20f, fmax = -1e20f;
+
+    #pragma omp parallel for reduction(min:fmin) reduction(max:fmax)
+    for (size_t i = 0; i < a->size; i++) {
+        float val_a = a->data_in[i];
+        float val_b = b->data_in[i];
+
+        if (val_a == NonData || val_b == NonData) {
+            result.data_in[i] = NonData;
+            continue;
+        }
+
+        float res_val;
+        switch (op) {
+            case OP_ADD: res_val = val_a + val_b; break;
+            case OP_SUB: res_val = val_a - val_b; break;
+            case OP_MUL: res_val = val_a * val_b; break;
+            case OP_DIV:
+                res_val = (fabsf(val_b) > 1e-9) ? (val_a / val_b) : NonData;
+                break;
+            default: res_val = NonData; break;
+        }
+        result.data_in[i] = res_val;
+
+        if (res_val != NonData) {
+            if (res_val < fmin) fmin = res_val;
+            if (res_val > fmax) fmax = res_val;
+        }
+    }
+
+    result.fmin = fmin;
+    result.fmax = fmax;
+    return result;
+}
+
+/**
+ * @brief Performs an arithmetic operation between a DataF and a scalar.
+ * @param a The DataF operand.
+ * @param scalar The float scalar operand.
+ * @param op The operation to perform.
+ * @param scalar_first If true, the operation is scalar OP data (e.g., 1 - data).
+ *                     If false, it's data OP scalar (e.g., data - 1).
+ * @return A new DataF structure with the result.
+ */
+DataF dataf_op_scalar(const DataF* a, float scalar, Operation op, bool scalar_first) {
+    DataF result = dataf_create(a->width, a->height);
+    if (result.data_in == NULL) return result;
+
+    float fmin = 1e20f, fmax = -1e20f;
+
+    #pragma omp parallel for reduction(min:fmin) reduction(max:fmax)
+    for (size_t i = 0; i < a->size; i++) {
+        float val_a = a->data_in[i];
+        if (val_a == NonData) {
+            result.data_in[i] = NonData;
+            continue;
+        }
+
+        float res_val;
+        if (scalar_first) {
+            switch (op) {
+                case OP_ADD: res_val = scalar + val_a; break;
+                case OP_SUB: res_val = scalar - val_a; break;
+                case OP_MUL: res_val = scalar * val_a; break;
+                case OP_DIV:
+                    res_val = (fabsf(val_a) > 1e-9) ? (scalar / val_a) : NonData;
+                    break;
+                default: res_val = NonData; break;
+            }
+        } else {
+            switch (op) {
+                case OP_ADD: res_val = val_a + scalar; break;
+                case OP_SUB: res_val = val_a - scalar; break;
+                case OP_MUL: res_val = val_a * scalar; break;
+                case OP_DIV:
+                    res_val = (fabsf(scalar) > 1e-9) ? (val_a / scalar) : NonData;
+                    break;
+                default: res_val = NonData; break;
+            }
+        }
+        result.data_in[i] = res_val;
+
+        if (res_val != NonData) {
+            if (res_val < fmin) fmin = res_val;
+            if (res_val > fmax) fmax = res_val;
+        }
+    }
+
+    result.fmin = fmin;
+    result.fmax = fmax;
+    return result;
+}
+
+/**
+ * @brief Inverts the sign of all values in a DataF structure in-place.
+ * @param a Pointer to the DataF structure to modify.
+ */
+void dataf_invert(DataF* a) {
+    if (a == NULL || a->data_in == NULL) return;
+
+    #pragma omp parallel for
+    for (size_t i = 0; i < a->size; i++) {
+        if (a->data_in[i] != NonData) {
+            a->data_in[i] *= -1.0f;
+        }
+    }
+
+    // Swap and invert min/max
+    float old_fmin = a->fmin;
+    a->fmin = -a->fmax;
+    a->fmax = -old_fmin;
+}
