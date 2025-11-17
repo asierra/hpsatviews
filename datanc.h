@@ -62,6 +62,10 @@ DataF dataf_copy(const DataF *data);
 
 void dataf_fill(DataF *data, float value);
 
+// Crops a rectangular region from a DataF structure
+DataF dataf_crop(const DataF *data, unsigned int x_start, unsigned int y_start, 
+                 unsigned int width, unsigned int height);
+
 // Simple downsampling selecting points.
 DataF downsample_simple(DataF datanc_big, int factor);
 

@@ -199,6 +199,48 @@ int find_channel_filenames(const char *dirnm, ChannelSet* channelset, bool is_l2
     return 0;
 }
 
+/**
+ * @brief Calcula el bounding box que contiene las 4 esquinas de un área de recorte.
+ * 
+ * @param ix_tl, iy_tl Coordenadas de la esquina superior izquierda
+ * @param ix_tr, iy_tr Coordenadas de la esquina superior derecha
+ * @param ix_bl, iy_bl Coordenadas de la esquina inferior izquierda
+ * @param ix_br, iy_br Coordenadas de la esquina inferior derecha
+ * @param x_start, y_start Salida: coordenadas de inicio del bounding box
+ * @param width, height Salida: dimensiones del bounding box
+ */
+static void calculate_bounding_box(int ix_tl, int iy_tl, int ix_tr, int iy_tr,
+                                   int ix_bl, int iy_bl, int ix_br, int iy_br,
+                                   unsigned int* x_start, unsigned int* y_start,
+                                   unsigned int* width, unsigned int* height) {
+    // Encontrar min/max de x
+    int min_ix = ix_tl;
+    if (ix_tr < min_ix) min_ix = ix_tr;
+    if (ix_bl < min_ix) min_ix = ix_bl;
+    if (ix_br < min_ix) min_ix = ix_br;
+    
+    int max_ix = ix_tl;
+    if (ix_tr > max_ix) max_ix = ix_tr;
+    if (ix_bl > max_ix) max_ix = ix_bl;
+    if (ix_br > max_ix) max_ix = ix_br;
+    
+    // Encontrar min/max de y
+    int min_iy = iy_tl;
+    if (iy_tr < min_iy) min_iy = iy_tr;
+    if (iy_bl < min_iy) min_iy = iy_bl;
+    if (iy_br < min_iy) min_iy = iy_br;
+    
+    int max_iy = iy_tl;
+    if (iy_tr > max_iy) max_iy = iy_tr;
+    if (iy_bl > max_iy) max_iy = iy_bl;
+    if (iy_br > max_iy) max_iy = iy_br;
+    
+    *x_start = (min_ix >= 0) ? (unsigned int)min_ix : 0;
+    *y_start = (min_iy >= 0) ? (unsigned int)min_iy : 0;
+    *width = (max_ix > min_ix) ? (unsigned int)(max_ix - min_ix) : 0;
+    *height = (max_iy > min_iy) ? (unsigned int)(max_iy - min_iy) : 0;
+}
+
 int run_rgb(ArgParser* parser) { // This is the correct, single definition
     // Inicializar el logger aquí para que los mensajes DEBUG se muestren
     LogLevel log_level = ap_found(parser, "verbose") ? LOG_DEBUG : LOG_INFO;
@@ -310,24 +352,93 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
         aux = downsample_boxfilter(navlo, 2); dataf_destroy(&navlo); navlo = aux;
     }
 
-    if (do_reprojection) {
-        LOG_INFO("Iniciando reproyección para todos los canales...");
-        const char* nav_ref = c_info[ref_ch_idx]->filename;
-        float lon_min, lon_max, lat_min, lat_max;
+    // --- NUEVO: Si hay --clip y -r, primero recortamos en espacio geoestacionario ---
+    unsigned int clip_x_start = 0, clip_y_start = 0;
+    unsigned int clip_width = 0, clip_height = 0;
+    bool has_clip = ap_found(parser, "clip") && (ap_count(parser, "clip") == 4);
+    
+    if (has_clip && do_reprojection) {
+        float clip_lon_min = atof(ap_get_str_value_at_index(parser, "clip", 0));
+        float clip_lat_max = atof(ap_get_str_value_at_index(parser, "clip", 1));
+        float clip_lon_max = atof(ap_get_str_value_at_index(parser, "clip", 2));
+        float clip_lat_min = atof(ap_get_str_value_at_index(parser, "clip", 3));
 
-        // Reproyectar los datos de imagen. La primera llamada obtiene los límites geográficos.
-        bool first_repro = true;
+        LOG_INFO("Aplicando recorte PRE-reproyección: lon[%.3f, %.3f], lat[%.3f, %.3f]", 
+                 clip_lon_min, clip_lon_max, clip_lat_min, clip_lat_max);
+
+        // Encontrar las 4 esquinas en el espacio geoestacionario
+        int ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br;
+        reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_max, clip_lon_min, &ix_tl, &iy_tl);
+        reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_max, clip_lon_max, &ix_tr, &iy_tr);
+        reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_min, clip_lon_min, &ix_bl, &iy_bl);
+        reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_min, clip_lon_max, &ix_br, &iy_br);
+
+        LOG_DEBUG("Píxeles pre-reproj: TL(%d,%d), TR(%d,%d), BL(%d,%d), BR(%d,%d)", 
+                  ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br);
+
+        // Calcular bounding box usando función auxiliar
+        calculate_bounding_box(ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br,
+                               &clip_x_start, &clip_y_start, &clip_width, &clip_height);
+
+        LOG_INFO("Recortando datos pre-reproyección: start[%u, %u], size[%u, %u]", 
+                 clip_x_start, clip_y_start, clip_width, clip_height);
+
+        // Recortar todos los canales y la navegación
         for (int i = 1; i <= 16; i++) {
             if (c_info[i]) {
-                DataF repro;
-                if (first_repro) {
-                    repro = reproject_to_geographics(&c[i].fdata, nav_ref, &lon_min, &lon_max, &lat_min, &lat_max);
-                    first_repro = false;
-                } else {
-                    repro = reproject_to_geographics(&c[i].fdata, nav_ref, NULL, NULL, NULL, NULL);
-                }
+                DataF cropped = dataf_crop(&c[i].fdata, clip_x_start, clip_y_start, clip_width, clip_height);
                 dataf_destroy(&c[i].fdata);
-                c[i].fdata = repro;
+                c[i].fdata = cropped;
+            }
+        }
+        
+        DataF navla_cropped = dataf_crop(&navla, clip_x_start, clip_y_start, clip_width, clip_height);
+        DataF navlo_cropped = dataf_crop(&navlo, clip_x_start, clip_y_start, clip_width, clip_height);
+        dataf_destroy(&navla);
+        dataf_destroy(&navlo);
+        navla = navla_cropped;
+        navlo = navlo_cropped;
+    }
+
+    if (do_reprojection) {
+        LOG_INFO("Iniciando reproyección para todos los canales...");
+        float lon_min, lon_max, lat_min, lat_max;
+
+        // Decidir si usar navegación pre-calculada (caso con clip) o calcular desde archivo
+        if (has_clip) {
+            // Caso con recorte pre-reproyección: usar navegación ya recortada
+            bool first_repro = true;
+            for (int i = 1; i <= 16; i++) {
+                if (c_info[i]) {
+                    DataF repro;
+                    if (first_repro) {
+                        repro = reproject_to_geographics_with_nav(&c[i].fdata, &navla, &navlo, 
+                                                                   &lon_min, &lon_max, &lat_min, &lat_max);
+                        first_repro = false;
+                    } else {
+                        repro = reproject_to_geographics_with_nav(&c[i].fdata, &navla, &navlo, 
+                                                                   NULL, NULL, NULL, NULL);
+                    }
+                    dataf_destroy(&c[i].fdata);
+                    c[i].fdata = repro;
+                }
+            }
+        } else {
+            // Caso sin recorte: calcular navegación desde archivo NetCDF
+            const char* nav_ref = c_info[ref_ch_idx]->filename;
+            bool first_repro = true;
+            for (int i = 1; i <= 16; i++) {
+                if (c_info[i]) {
+                    DataF repro;
+                    if (first_repro) {
+                        repro = reproject_to_geographics(&c[i].fdata, nav_ref, &lon_min, &lon_max, &lat_min, &lat_max);
+                        first_repro = false;
+                    } else {
+                        repro = reproject_to_geographics(&c[i].fdata, nav_ref, NULL, NULL, NULL, NULL);
+                    }
+                    dataf_destroy(&c[i].fdata);
+                    c[i].fdata = repro;
+                }
             }
         }
 
@@ -401,63 +512,35 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
     }
 
     // --- LÓGICA DE RECORTE FINAL ---
-    if (ap_found(parser, "clip")) {
-        if (navla.data_in && ap_count(parser, "clip") == 4) {
+    // Solo aplicar si hay --clip pero NO se hizo recorte pre-reproyección
+    // (es decir, solo para el caso sin -r)
+    if (has_clip && !do_reprojection) {
+        if (navla.data_in) {
             float clip_lon_min = atof(ap_get_str_value_at_index(parser, "clip", 0));
             float clip_lat_max = atof(ap_get_str_value_at_index(parser, "clip", 1));
             float clip_lon_max = atof(ap_get_str_value_at_index(parser, "clip", 2));
             float clip_lat_min = atof(ap_get_str_value_at_index(parser, "clip", 3));
 
-            LOG_INFO("Aplicando recorte geográfico: lon[%.3f, %.3f], lat[%.3f, %.3f]", clip_lon_min, clip_lon_max, clip_lat_min, clip_lat_max);
+            LOG_INFO("Aplicando recorte POST-procesamiento (sin reproyección): lon[%.3f, %.3f], lat[%.3f, %.3f]", 
+                     clip_lon_min, clip_lon_max, clip_lat_min, clip_lat_max);
 
-            unsigned int x_start, y_start, x_end, y_end;
+            // Datos originales (cuadrícula geoestacionaria) - búsqueda de píxeles
+            int ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br;
+            reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_max, clip_lon_min, &ix_tl, &iy_tl);
+            reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_max, clip_lon_max, &ix_tr, &iy_tr);
+            reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_min, clip_lon_min, &ix_bl, &iy_bl);
+            reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_min, clip_lon_max, &ix_br, &iy_br);
 
-            if (do_reprojection) {
-                // --- Caso 1: Datos reproyectados (cuadrícula geográfica regular) ---
-                LOG_DEBUG("Calculando recorte para datos reproyectados.");
-                float lon_range = navlo.fmax - navlo.fmin;
-                float lat_range = navla.fmax - navla.fmin;
+            LOG_DEBUG("Píxeles de las esquinas: TL(%d,%d), TR(%d,%d), BL(%d,%d), BR(%d,%d)", 
+                      ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br);
 
-                LOG_INFO("Navegación reproyectada: lon[%.6f, %.6f] rango=%.6f, lat[%.6f, %.6f] rango=%.6f", 
-                         navlo.fmin, navlo.fmax, lon_range, navla.fmin, navla.fmax, lat_range);
-                LOG_INFO("Imagen final: %zu x %zu", final_image.width, final_image.height);
+            // Calcular bounding box usando función auxiliar
+            unsigned int x_start, y_start, crop_width, crop_height;
+            calculate_bounding_box(ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br,
+                                   &x_start, &y_start, &crop_width, &crop_height);
 
-                if (fabsf(lon_range) < 1e-6 || fabsf(lat_range) < 1e-6) {
-                    LOG_WARN("El rango de navegación es cero, no se puede aplicar el recorte.");
-                    goto end_clip;
-                }
-                x_start = (unsigned int)(((clip_lon_min - navlo.fmin) / lon_range) * final_image.width);
-                y_start = (unsigned int)(((navla.fmax - clip_lat_max) / lat_range) * final_image.height);
-                x_end = (unsigned int)(((clip_lon_max - navlo.fmin) / lon_range) * final_image.width);
-                y_end = (unsigned int)(((navla.fmax - clip_lat_min) / lat_range) * final_image.height);
-                
-                LOG_INFO("Cálculos de recorte reproj: x[%u, %u] (ancho=%u), y[%u, %u] (alto=%u)", 
-                         x_start, x_end, x_end - x_start, y_start, y_end, y_end - y_start);
-            } else {
-                // --- Caso 2: Datos originales (cuadrícula geoestacionaria) ---
-                LOG_DEBUG("Calculando recorte para datos originales usando búsqueda de píxeles.");
-                int ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br;
-                // Encontrar las 4 esquinas del área de recorte en el espacio de píxeles
-                reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_max, clip_lon_min, &ix_tl, &iy_tl); // Top-Left
-                reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_max, clip_lon_max, &ix_tr, &iy_tr); // Top-Right
-                reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_min, clip_lon_min, &ix_bl, &iy_bl); // Bottom-Left
-                reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_min, clip_lon_max, &ix_br, &iy_br); // Bottom-Right
-
-                LOG_DEBUG("Píxeles de las esquinas: TL(%d,%d), TR(%d,%d), BL(%d,%d), BR(%d,%d)", ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br);
-
-                // Calcular el cuadro delimitador (bounding box) a partir de las 4 esquinas
-                int min_ix = (ix_tl < ix_tr) ? ix_tl : ix_tr;
-                int max_ix = (ix_bl > ix_br) ? ix_bl : ix_br;
-                int min_iy = (iy_tl < iy_bl) ? iy_tl : iy_bl;
-                int max_iy = (iy_tr > iy_br) ? iy_tr : iy_br;
-
-                x_start = (unsigned int)min_ix; y_start = (unsigned int)min_iy;
-                x_end   = (unsigned int)max_ix; y_end   = (unsigned int)max_iy;
-            }
-
-            unsigned int crop_width = (x_end > x_start) ? (x_end - x_start) : 0;
-            unsigned int crop_height = (y_end > y_start) ? (y_end - y_start) : 0;
-            LOG_INFO("Dimensiones de recorte en píxeles: start[%u, %u], size[%u, %u]", x_start, y_start, crop_width, crop_height);
+            LOG_INFO("Dimensiones de recorte en píxeles: start[%u, %u], size[%u, %u]", 
+                     x_start, y_start, crop_width, crop_height);
 
             ImageData cropped_image = image_crop(&final_image, x_start, y_start, crop_width, crop_height);
             if (cropped_image.data) {
@@ -468,7 +551,6 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
             LOG_WARN("Formato de coordenadas de recorte inválido. Se esperaba \"lon_min lat_max lon_max lat_min\".");
         }
     }
-end_clip:;
 
     write_image_png(out_filename, &final_image);
     LOG_INFO("Imagen guardada en: %s", out_filename);

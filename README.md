@@ -28,7 +28,10 @@ HPSATVIEWS es una aplicación de alto rendimiento controlada por línea de coman
   - `composite`: Mezcla inteligente día/noche de `truecolor` y `night`.
 - **Mejora de Histograma** - Optimización automática de contraste
 - **Corrección Gamma** - Control de luminosidad configurable
-- **Reproyección Geográfica** - Conversión de la proyección nativa a un mapa geográfico (lat/lon).
+- **Reproyección Geográfica** - Conversión de proyección geoestacionaria a malla lat/lon uniforme
+- **Recorte Geográfico** - Extracción de regiones de interés por coordenadas geográficas
+  - Compatible con datos originales y reproyectados
+  - Optimizado: recorta antes de reproyectar para máxima eficiencia
 
 ### Rendimiento
 - ⚡ **Ultra rápido**: Procesamiento en fracciones de segundo
@@ -116,6 +119,49 @@ Genera compuestos RGB a partir de múltiples canales. El archivo de entrada pued
 - `mask.png` - Máscara día/noche
 - `out.png` - Composición final automática
 
+**Modos RGB disponibles:**
+```bash
+# True color diurno
+./hpsatviews rgb -m truecolor -o salida.png archivo.nc
+
+# Detección de ceniza volcánica
+./hpsatviews rgb -m ash -o ceniza.png archivo.nc
+
+# Clasificación de masas de aire
+./hpsatviews rgb -m airmass -o airmass.png archivo.nc
+
+# Detección de SO2
+./hpsatviews rgb -m so2 -o so2.png archivo.nc
+
+# Visualización nocturna
+./hpsatviews rgb -m night -o night.png archivo.nc
+```
+
+**Reproyección Geográfica:**
+```bash
+# Reproyectar a malla lat/lon uniforme
+./hpsatviews rgb -m ash -r -o reproyectado.png archivo.nc
+```
+
+**Recorte Geográfico:**
+```bash
+# Recortar región de interés (sin reproyección)
+./hpsatviews rgb -m ash --clip -107.23 22.72 -93.84 14.94 -o recorte.png archivo.nc
+
+# Recortar Y reproyectar (orden optimizado: recorta primero, luego reproyecta)
+./hpsatviews rgb -m ash --clip -107.23 22.72 -93.84 14.94 -r -o recorte_reproj.png archivo.nc
+```
+
+**Formato del recorte:** `--clip lon_min lat_max lon_max lat_min`
+- Coordenadas en grados decimales
+- Longitud oeste es negativa
+- Ejemplo: CONUS central: `--clip -107.23 22.72 -93.84 14.94`
+
+**Opciones adicionales:**
+- `-g, --gamma <valor>` - Corrección gamma (por defecto: 1.8)
+- `-v, --verbose` - Modo verboso con logging detallado
+- `-o, --out <archivo>` - Nombre del archivo de salida
+
 ### Imagen en Escala de Grises
 ```bash
 ./hpsatviews singlegray archivo_GOES_L1b.nc -o salida.png
@@ -143,7 +189,9 @@ hpsatviews/
 ├── 📡 reader_nc.h/.c     # Lectura de archivos NetCDF GOES
 ├── 💾 writer_png.h/.c    # Escritura de archivos PNG
 ├── 🌈 datanc.h/.c        # Estructuras de datos y algoritmos
-├── 🌅 truecolor_rgb.c    # Generación de imágenes RGB
+├── � reprojection.h/.c  # Reproyección geoestacionaria a geográfica
+├── 🎨 rgb.h/.c           # Generación de compuestos RGB
+├── �🌅 truecolor_rgb.c    # Generación de imágenes RGB
 ├── 🌙 nocturnal_pseudocolor.c # Imágenes infrarrojas nocturnas
 ├── 🌗 daynight_mask.c    # Cálculo de máscara día/noche
 ├── ⚙️ args.h/.c          # Procesamiento de argumentos
@@ -155,16 +203,20 @@ hpsatviews/
 ## 🔍 Datos de Entrada
 
 ### Formato Soportado
-- **GOES-16/17 Level 1b NetCDF** 
-- Canales requeridos: C01 (0.47μm), C02 (0.64μm), C03 (0.86μm), C13 (10.3μm)
-- Proyección: Geoestacionaria GOES
+- **GOES-16/17/18 Level 1b NetCDF** (Radiance data)
+- **GOES-16/17/18 Level 2 NetCDF** (CMI - Cloud and Moisture Imagery)
+- Canales principales: C01 (0.47μm), C02 (0.64μm), C03 (0.86μm), C11-C16 (IR)
+- Proyecciones: Geoestacionaria GOES (nativa) y Geográfica lat/lon (reproyectada)
 
 ### Ejemplo de Nombres de Archivo
 ```
-OR_ABI-L1b-RadC01_G16_s20242501800_e20242501809_c20242501815.nc
-OR_ABI-L1b-RadC02_G16_s20242501800_e20242501809_c20242501815.nc
-OR_ABI-L1b-RadC03_G16_s20242501800_e20242501809_c20242501815.nc
-OR_ABI-L1b-RadC13_G16_s20242501800_e20242501809_c20242501815.nc
+# Level 1b (Radiance)
+OR_ABI-L1b-RadC-M6C01_G16_s20242501800_e20242501809_c20242501815.nc
+OR_ABI-L1b-RadF-M6C02_G16_s20242501800_e20242501809_c20242501815.nc
+
+# Level 2 (CMI - Cloud and Moisture Imagery)
+OR_ABI-L2-CMIPC-M3C13_G16_s20190871342161_e20190871344546_c20190871344589.nc
+OR_ABI-L2-CMIPF-M6C02_G16_s20243102000217_e20243102009525_c20243102010008.nc
 ```
 
 ---
@@ -213,6 +265,20 @@ LOG_ERROR("Error al abrir archivo: %s", error_msg);
 2. **Generación de máscara** basada en geometría solar
 3. **Mezcla ponderada** entre imágenes diurna y nocturna
 
+### Reproyección Geográfica
+1. **Cálculo de navegación** desde metadatos GOES (fixed grid projection)
+2. **Mapeo forward** de píxeles geoestacionarios a malla lat/lon
+3. **Interpolación de huecos** con vecinos más cercanos (4-conectividad)
+4. **Optimización**: Pre-cálculo de factores de escala para máximo rendimiento
+
+### Recorte Geográfico Inteligente
+1. **Sin reproyección**: Búsqueda de píxeles más cercanos a coordenadas objetivo
+2. **Con reproyección**: 
+   - Recorta primero en espacio geoestacionario (orden optimizado)
+   - Reproyecta solo el área recortada
+   - Cálculo automático de límites geográficos del área recortada
+   - Resultado: Máxima calidad con mínimo tiempo de procesamiento
+
 ---
 
 ## 🛠️ API de Desarrollo
@@ -230,23 +296,55 @@ image_destroy(&image);
 
 ### Procesamiento de Canales
 ```c
-// Cargar datos NetCDF
+// Cargar datos NetCDF (funciona con L1b y L2)
 DataNC channel;
-load_nc_sf("archivo.nc", "Rad", &channel);
+load_nc_sf("archivo.nc", "Rad", &channel);  // L1b
+load_nc_sf("archivo.nc", "CMI", &channel);  // L2
 
 // Remuestreo
 DataF downsampled = downsample_boxfilter(channel.base, factor);
 DataF upsampled = upsample_bilinear(channel.base, factor);
+
+// Recorte de regiones
+DataF cropped = dataf_crop(&data, x_start, y_start, width, height);
+```
+
+### Reproyección y Navegación
+```c
+// Calcular navegación desde archivo NetCDF
+DataF navla, navlo;
+compute_navigation_nc("archivo.nc", &navla, &navlo);
+
+// Reproyectar a geográfica
+DataF reproj = reproject_to_geographics(&data, "archivo_nav.nc", 
+                                        &lon_min, &lon_max, &lat_min, &lat_max);
+
+// Reproyectar con navegación pre-calculada (más eficiente)
+DataF reproj = reproject_to_geographics_with_nav(&data, &navla, &navlo,
+                                                  &lon_min, &lon_max, &lat_min, &lat_max);
+
+// Buscar píxel más cercano a coordenada geográfica
+int x, y;
+reprojection_find_pixel_for_coord(&navla, &navlo, target_lat, target_lon, &x, &y);
 ```
 
 ---
 
 ## 📊 Rendimiento
 
-### Benchmarks Típicos
+### Benchmarks Típicos (Procesamiento RGB)
 - **Imagen 5424x5424**: ~0.5 segundos
 - **Imagen 2712x2712**: ~0.2 segundos  
 - **Composición completa**: ~1.0 segundo
+- **Reproyección 2500x1500**: ~0.3 segundos
+- **Recorte + Reproyección (~660x400)**: ~0.1 segundos
+
+### Optimizaciones Implementadas
+- ✅ **Paralelización OpenMP** en bucles críticos
+- ✅ **Pre-cálculo de factores** para evitar divisiones repetidas
+- ✅ **Recorte inteligente** antes de reproyección (evita procesar píxeles innecesarios)
+- ✅ **Operaciones atómicas** para escritura thread-safe sin locks
+- ✅ **Gestión eficiente de memoria** con destructores automáticos
 
 ### Comparación con Python
 - **HPSATVIEWS**: 0.5-1.0 segundos

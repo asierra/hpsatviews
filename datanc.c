@@ -8,6 +8,7 @@
 #include <string.h>
 #include <omp.h>
 #include <math.h>
+#include <float.h>
 
 #include "datanc.h"
 
@@ -105,6 +106,76 @@ void dataf_fill(DataF *data, float value) {
     for (size_t i = 0; i < data->size; i++) {
         data->data_in[i] = value;
     }
+}
+
+/**
+ * @brief Crops a rectangular region from a DataF structure.
+ * 
+ * Creates a new DataF containing only the specified rectangular region from the source.
+ * The cropped region is defined by a starting position (x_start, y_start) and dimensions
+ * (width, height). Coordinates are clamped to the source boundaries.
+ * 
+ * @param data A pointer to the source DataF structure to crop from.
+ * @param x_start The starting column (x coordinate) of the crop region.
+ * @param y_start The starting row (y coordinate) of the crop region.
+ * @param width The width of the crop region.
+ * @param height The height of the crop region.
+ * @return A new DataF structure containing the cropped region, or an empty DataF on failure.
+ */
+DataF dataf_crop(const DataF *data, unsigned int x_start, unsigned int y_start, 
+                 unsigned int width, unsigned int height) {
+    if (data == NULL || data->data_in == NULL || data->size == 0) {
+        return dataf_create(0, 0); // Return empty DataF
+    }
+
+    // Clamp crop region to source boundaries
+    if (x_start >= data->width || y_start >= data->height) {
+        return dataf_create(0, 0); // Start position is outside bounds
+    }
+
+    unsigned int effective_width = width;
+    unsigned int effective_height = height;
+
+    if (x_start + width > data->width) {
+        effective_width = data->width - x_start;
+    }
+    if (y_start + height > data->height) {
+        effective_height = data->height - y_start;
+    }
+
+    // Create new DataF for cropped region
+    DataF cropped = dataf_create(effective_width, effective_height);
+    if (cropped.data_in == NULL) {
+        return cropped; // Allocation failed
+    }
+
+    // Copy data row by row
+    #pragma omp parallel for
+    for (unsigned int y = 0; y < effective_height; y++) {
+        unsigned int src_y = y_start + y;
+        size_t src_offset = src_y * data->width + x_start;
+        size_t dst_offset = y * effective_width;
+        memcpy(&cropped.data_in[dst_offset], &data->data_in[src_offset], 
+               effective_width * sizeof(float));
+    }
+
+    // Recalculate min/max values for the cropped region
+    float new_min = FLT_MAX;
+    float new_max = -FLT_MAX;
+    
+    #pragma omp parallel for reduction(min:new_min) reduction(max:new_max)
+    for (size_t i = 0; i < cropped.size; i++) {
+        float val = cropped.data_in[i];
+        if (val != NonData && !isnan(val)) {
+            if (val < new_min) new_min = val;
+            if (val > new_max) new_max = val;
+        }
+    }
+    
+    cropped.fmin = (new_min != FLT_MAX) ? new_min : data->fmin;
+    cropped.fmax = (new_max != -FLT_MAX) ? new_max : data->fmax;
+
+    return cropped;
 }
 
 DataF downsample_simple(DataF datanc_big, int factor)
