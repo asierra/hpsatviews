@@ -52,6 +52,9 @@ void image_destroy(ImageData *image);
 // Creates a new image from an original image.
 ImageData copy_image(ImageData orig);
 
+// Crops an image to a specified rectangle.
+ImageData image_crop(const ImageData* src, unsigned int x, unsigned int y, unsigned int width, unsigned int height);
+
 // Both images must be RGB and of the same size
 ImageData blend_images(ImageData bg, ImageData fg, ImageData mask);
 

@@ -4,23 +4,26 @@
  * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Laboratorio Nacional de Observación de la Tierra, UNAM
  */
+
 #include "reprojection.h"
 #include "datanc.h"
 #include "reader_nc.h"
 #include "logger.h"
+#include <float.h>
+#include <stddef.h>
 #include <omp.h>
 #include <math.h>
 #include <stdlib.h>
 
 /**
- * @brief Reprojects a DataF grid from geostationary to geographic coordinates.
+ * @brief Reproyecta una malla DataF de coordenadas geoestacionarias a geográficas.
  *
- * @param source_data The source data grid to reproject.
- * @param nav_reference_file A NetCDF file path used to compute the navigation grid (lat/lon).
- * @return A new DataF structure containing the reprojected and gap-filled data.
- *         The caller is responsible for freeing this structure with dataf_destroy().
- *         Returns an empty DataF on failure. The out_* parameters will contain the
- *         geographic bounds of the reprojected grid.
+ * @param source_data La malla de datos de origen a reproyectar.
+ * @param nav_reference_file Ruta a un archivo NetCDF para calcular la malla de navegación (lat/lon).
+ * @return Una nueva estructura DataF con los datos reproyectados y con huecos rellenados.
+ *         El llamador es responsable de liberar esta estructura con dataf_destroy().
+ *         Retorna una DataF vacía en caso de fallo. Los parámetros out_* contendrán los
+ *         límites geográficos de la malla reproyectada.
  */
 DataF reproject_to_geographics(const DataF* source_data, const char* nav_reference_file,
                                float* out_lon_min, float* out_lon_max,
@@ -30,7 +33,7 @@ DataF reproject_to_geographics(const DataF* source_data, const char* nav_referen
     DataF navla, navlo;
     if (compute_navigation_nc(nav_reference_file, &navla, &navlo) != 0) {
         LOG_ERROR("Fallo al calcular la navegación para la reproyección.");
-        return dataf_create(0, 0); // Retorna estructura vacía
+        return dataf_create(0, 0);
     }
     LOG_INFO("Datos de navegación calculados. Extensión: lat[%.3f, %.3f], lon[%.3f, %.3f]", navla.fmin, navla.fmax, navlo.fmin, navlo.fmax);
     // Devolver los límites geográficos calculados
@@ -39,13 +42,19 @@ DataF reproject_to_geographics(const DataF* source_data, const char* nav_referen
     if (out_lat_min) *out_lat_min = navla.fmin;
     if (out_lat_max) *out_lat_max = navla.fmax;
 
-    // Usar 70% del tamaño original para la salida
-    size_t width = navlo.width * 0.7;
-    size_t height = navla.height * 0.7;
+    // Usar el tamaño original (sin escala)
+    size_t width = navlo.width;
+    size_t height = navla.height;
     LOG_INFO("Tamaño de salida: %zu x %zu", width, height);
 
     DataF datagg = dataf_create(width, height);
-    dataf_fill(&datagg, NonData);
+    if (datagg.data_in == NULL) {
+        LOG_FATAL("Fallo de memoria al crear la malla geográfica de destino.");
+        dataf_destroy(&navla);
+        dataf_destroy(&navlo);
+        return datagg;
+    }
+    dataf_fill(&datagg, NAN);
 
     #pragma omp parallel for collapse(2)
     for (unsigned y = 0; y < source_data->height; y++) {
@@ -73,11 +82,10 @@ DataF reproject_to_geographics(const DataF* source_data, const char* nav_referen
 
     LOG_INFO("Iniciando relleno de huecos (interpolación de vecinos)...");
     DataF datagg_filled = dataf_copy(&datagg);
-    // ¡ERROR CRÍTICO CORREGIDO AQUÍ!
-    // dataf_copy solo asigna memoria, no copia el contenido. Debemos copiarlo manualmente.
-    //if (datagg_filled.data_in != NULL) {
-    //    memcpy(datagg_filled.data_in, datagg.data_in, datagg.size * sizeof(float));
-    //}
+    if (datagg_filled.data_in == NULL) {
+        LOG_FATAL("Fallo de memoria al copiar la malla para el relleno de huecos.");
+        goto cleanup;
+    }
 
     const int dx[] = {0, 0, -1, 1};
     const int dy[] = {-1, 1, 0, 0};
@@ -110,6 +118,7 @@ DataF reproject_to_geographics(const DataF* source_data, const char* nav_referen
     }
     LOG_INFO("Relleno de huecos terminado.");
 
+cleanup:
     // Liberar memoria intermedia
     dataf_destroy(&datagg);
     dataf_destroy(&navla);
@@ -117,4 +126,100 @@ DataF reproject_to_geographics(const DataF* source_data, const char* nav_referen
 
     // Devolvemos la malla rellena. El que llama es responsable de liberarla.
     return datagg_filled;
+}
+
+/**
+ * @brief Encuentra el píxel más cercano a una coordenada geográfica dada en una malla no reproyectada.
+ *
+ * Esta función busca en las mallas de navegación de latitud y longitud para encontrar el índice
+ * del píxel (columna, fila) que está geográficamente más cerca de las coordenadas de destino.
+ * Utiliza OpenMP para paralelizar la búsqueda por filas.
+ *
+ * @param navla Puntero a una estructura DataF que contiene la latitud para cada píxel.
+ * @param navlo Puntero a una estructura DataF que contiene la longitud para cada píxel.
+ * @param target_lat La latitud de la coordenada de destino.
+ * @param target_lon La longitud de la coordenada de destino.
+ * @param out_ix Puntero a un entero donde se almacenará el índice de la columna (x) resultante.
+ * @param out_iy Puntero a un entero donde se almacenará el índice de la fila (y) resultante.
+ */
+void reprojection_find_pixel_for_coord(const DataF* navla, const DataF* navlo,
+                                       float target_lat, float target_lon,
+                                       int* out_ix, int* out_iy) {
+    if (!navla || !navla->data_in || !navlo || !navlo->data_in || !out_ix || !out_iy) {
+        if (out_ix) *out_ix = -1;
+        if (out_iy) *out_iy = -1;
+        LOG_WARN("reprojection_find_pixel_for_coord: parámetros inválidos");
+        return;
+    }
+
+    size_t width = navla->width;
+    size_t height = navla->height;
+
+    float min_dist_sq = FLT_MAX;
+    int best_ix = -1;
+    int best_iy = -1;
+    int candidates_checked = 0;
+    int valid_pixels_found = 0;
+
+    #pragma omp parallel
+    {
+        float local_min_dist_sq = FLT_MAX;
+        int local_best_ix = -1;
+        int local_best_iy = -1;
+        int local_checked = 0;
+        int local_valid = 0;
+
+        #pragma omp for nowait
+        for (size_t j = 0; j < height; ++j) {
+            for (size_t i = 0; i < width; ++i) {
+                size_t index = j * width + i;
+                float current_lat = navla->data_in[index];
+                float current_lon = navlo->data_in[index];
+
+                local_checked++;
+                
+                // ¡CORRECCIÓN! Ignorar píxeles inválidos en la malla de navegación.
+                if (current_lat == NonData || current_lon == NonData) {
+                    continue;
+                }
+                
+                local_valid++;
+                float lat_diff = current_lat - target_lat;
+                float lon_diff = current_lon - target_lon;
+                float dist_sq = lat_diff * lat_diff + lon_diff * lon_diff;
+
+                if (dist_sq < local_min_dist_sq) {
+                    local_min_dist_sq = dist_sq;
+                    local_best_ix = (int)i;
+                    local_best_iy = (int)j;
+                }
+            }
+        }
+
+        #pragma omp critical
+        {
+            candidates_checked += local_checked;
+            valid_pixels_found += local_valid;
+            
+            if (local_min_dist_sq < min_dist_sq) {
+                min_dist_sq = local_min_dist_sq;
+                best_ix = local_best_ix;
+                best_iy = local_best_iy;
+            }
+        }
+    }
+
+    if (valid_pixels_found == 0) {
+        LOG_WARN("reprojection_find_pixel_for_coord: no se encontraron píxeles válidos (checked=%d, target=[%.3f, %.3f])", 
+                 candidates_checked, target_lat, target_lon);
+    } else if (best_ix == -1 || best_iy == -1) {
+        LOG_WARN("reprojection_find_pixel_for_coord: búsqueda falló (valid=%d/%d, target=[%.3f, %.3f])", 
+                 valid_pixels_found, candidates_checked, target_lat, target_lon);
+    } else {
+        LOG_DEBUG("reprojection_find_pixel_for_coord: encontrado píxel [%d, %d] para coord [%.3f, %.3f] (dist=%.6f, valid=%d/%d)",
+                  best_ix, best_iy, target_lat, target_lon, sqrtf(min_dist_sq), valid_pixels_found, candidates_checked);
+    }
+
+    *out_ix = best_ix;
+    *out_iy = best_iy;
 }

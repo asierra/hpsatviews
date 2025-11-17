@@ -281,7 +281,12 @@ void compute_lalo(float x, float y, float *la, float *lo) {
   *la = (float)(atan2(sm_maj2 * sz,
                       sm_min2 * sqrt(((H - sx) * (H - sx)) + (sy * sy))) *
                 rad2deg);
-  *lo = (float)((lambda_0 - atan2(sy, H - sx)) * rad2deg);
+  double lon_rad = lambda_0 - atan2(sy, H - sx);
+  
+  // Normalizar la longitud al rango [-PI, PI] antes de convertir a grados
+  lon_rad = fmod(lon_rad + M_PI, 2.0 * M_PI);
+  if (lon_rad < 0) lon_rad += 2.0 * M_PI;
+  *lo = (float)((lon_rad - M_PI) * rad2deg);
 }
 
 int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
@@ -327,15 +332,23 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
   lambda_0 = lo_proj_orig / rad2deg;
   // printf("hsat %g %g %g %g %g\n", hsat, sm_maj, sm_min, lo_proj_orig, H);
 
-  // Obtiene el factor de escala y offset de la variable
+  // Obtiene el factor de escala y offset de las VARIABLES (no dimensiones)
   float x_sf, y_sf, x_ao, y_ao;
-  if ((retval = nc_get_att_float(ncid, xid, "scale_factor", &x_sf)))
+  int x_varid, y_varid;
+  
+  // Buscar las variables x e y (no las dimensiones)
+  if ((retval = nc_inq_varid(ncid, "x", &x_varid)))
+    ERR(retval);
+  if ((retval = nc_inq_varid(ncid, "y", &y_varid)))
+    ERR(retval);
+    
+  if ((retval = nc_get_att_float(ncid, x_varid, "scale_factor", &x_sf)))
     WRN(retval);
-  if ((retval = nc_get_att_float(ncid, xid, "add_offset", &x_ao)))
+  if ((retval = nc_get_att_float(ncid, x_varid, "add_offset", &x_ao)))
     WRN(retval);
-  if ((retval = nc_get_att_float(ncid, yid, "scale_factor", &y_sf)))
+  if ((retval = nc_get_att_float(ncid, y_varid, "scale_factor", &y_sf)))
     WRN(retval);
-  if ((retval = nc_get_att_float(ncid, yid, "add_offset", &y_ao)))
+  if ((retval = nc_get_att_float(ncid, y_varid, "add_offset", &y_ao)))
     WRN(retval);
 
   // Apartamos memoria para los datos
@@ -343,6 +356,8 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
 
   int k = 0;
   float lomin = 1e10, lamin = 1e10, lomax = -lomin, lamax = -lamin;
+  int valid_count = 0;
+  
   for (int j = 0; j < navla->height; j++) {
     float y = j * y_sf + y_ao;
     for (int i = 0; i < navla->width; i++) {
@@ -364,15 +379,28 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
           lomax = lo;
         navla->data_in[k] = la;
         navlo->data_in[k] = lo;
+        valid_count++;
       }
       k++;
     }
+  }
+  
+  // Solo actualizar los límites si encontramos al menos un píxel válido
+  if (valid_count > 0) {
     navla->fmin = lamin;
     navla->fmax = lamax;
     navlo->fmin = lomin;
     navlo->fmax = lomax;
+  } else {
+    // Si no hay píxeles válidos, establecer límites por defecto para evitar valores centinela
+    navla->fmin = -90.0f;
+    navla->fmax = 90.0f;
+    navlo->fmin = -180.0f;
+    navlo->fmax = 180.0f;
+    LOG_WARN("No se encontraron coordenadas válidas en compute_navigation_nc. Usando límites por defecto.");
   }
-  printf("corners %g %g  %g %g\n", lomin, lamin, lomax, lamax);
+  
+  printf("corners %g %g  %g %g (valid: %d/%lu)\n", lomin, lamin, lomax, lamax, valid_count, navla->size);
   if ((retval = nc_close(ncid)))
     ERR(retval);
 

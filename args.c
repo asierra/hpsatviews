@@ -366,6 +366,7 @@ typedef struct {
     OptionValue* values;
     OptionValue fallback;
     bool is_greedy;
+    int n_args; // Number of arguments the option takes.
 } Option;
 
 
@@ -419,6 +420,7 @@ static Option* option_new(void) {
     option->capacity = 0;
     option->values = NULL;
     option->is_greedy = false;
+    option->n_args = 0; // Default to 0 (for flags)
     return option;
 }
 
@@ -429,6 +431,7 @@ static Option* option_new_flag(void) {
         return NULL;
     }
     opt->type = OPT_FLAG;
+    opt->n_args = 0;
     return opt;
 }
 
@@ -440,6 +443,7 @@ static Option* option_new_str(char* fallback) {
     }
     opt->type = OPT_STR;
     opt->fallback = (OptionValue){.str_val = fallback};
+    opt->n_args = 1;
     return opt;
 }
 
@@ -451,6 +455,7 @@ static Option* option_new_int(int fallback) {
     }
     opt->type = OPT_INT;
     opt->fallback = (OptionValue){.int_val = fallback};
+    opt->n_args = 1;
     return opt;
 }
 
@@ -462,6 +467,7 @@ static Option* option_new_double(double fallback) {
     }
     opt->type = OPT_DBL;
     opt->fallback = (OptionValue){.dbl_val = fallback};
+    opt->n_args = 1;
     return opt;
 }
 
@@ -851,6 +857,15 @@ void ap_add_greedy_str_opt(ArgParser* parser, const char* name) {
     ap_register_option(parser, name, opt);
 }
 
+// Register a new string-valued option that takes multiple arguments.
+void ap_add_multi_str_opt(ArgParser* parser, const char* name, int n_args) {
+    Option* opt = option_new_str(NULL); // No fallback for multi-opts
+    if (opt) {
+        opt->n_args = n_args;
+    }
+    ap_register_option(parser, name, opt);
+}
+
 
 // Register a new integer-valued option.
 void ap_add_int_opt(ArgParser* parser, const char* name, int fallback) {
@@ -1087,6 +1102,15 @@ ArgParser* ap_get_cmd_parser(ArgParser* parent_parser) {
 }
 
 
+ArgParser* ap_get_cmd_parser_for_name(ArgParser* parent_parser, const char* name) {
+    void* cmd_parser_ptr;
+    if (map_get(parent_parser->command_map, name, &cmd_parser_ptr)) {
+        return (ArgParser*)cmd_parser_ptr;
+    }
+    return NULL;
+}
+
+
 int ap_get_cmd_exit_code(ArgParser* parent_parser) {
     return parent_parser->cmd_callback_exit_code;
 }
@@ -1151,13 +1175,13 @@ static void ap_handle_equals_opt(ArgParser* parser, const char* prefix, const ch
 
 
 // Parse a long-form option, i.e. an option beginning with a double dash.
-static void ap_handle_long_opt(ArgParser* parser, const char* arg, ArgStream* stream) {
+static bool ap_handle_long_opt(ArgParser* parser, const char* arg, ArgStream* stream) {
     Option* option;
 
     if (map_get(parser->option_map, arg, (void**)&option)) {
         if (option->type == OPT_FLAG) {
             option->count++;
-            return;
+            return true;
         }
 
         if (argstream_has_next(stream) && option->is_greedy) {
@@ -1166,27 +1190,33 @@ static void ap_handle_long_opt(ArgParser* parser, const char* arg, ArgStream* st
                     ap_set_memory_error_flag(parser);
                 }
             }
-            return;
+            return true;
         }
 
-        if (argstream_has_next(stream)) {
-            if (!option_try_set(option, argstream_next(stream))) {
-                ap_set_memory_error_flag(parser);
+        for (int i = 0; i < option->n_args; i++) {
+            if (argstream_has_next(stream)) {
+                if (!option_try_set(option, argstream_next(stream))) {
+                    ap_set_memory_error_flag(parser);
+                }
+            } else {
+                exit_with_error("missing argument %d of %d for --%s", i + 1, option->n_args, arg);
             }
-            return;
         }
+        return true; // Arguments consumed, continue parsing
 
         exit_with_error("missing argument for --%s", arg);
     }
 
     if (strcmp(arg, "help") == 0 && parser->helptext != NULL) {
         puts(parser->helptext);
-        exit(0);
+        // We exit here, so the return value doesn't matter, but false is safe.
+        exit(0); 
     }
 
     if (strcmp(arg, "version") == 0 && parser->version != NULL) {
         puts(parser->version);
-        exit(0);
+        // We exit here, so the return value doesn't matter, false is safe.
+        exit(0); 
     }
 
     exit_with_error("--%s is not a recognised flag or option name", arg);
@@ -1217,7 +1247,7 @@ static void ap_handle_short_opt(ArgParser* parser, const char* arg, ArgStream* s
 
         if (option->type == OPT_FLAG) {
             option->count++;
-            continue;
+            continue; // Continue to next char in cluster
         }
 
         if (argstream_has_next(stream) && option->is_greedy) {
@@ -1226,15 +1256,19 @@ static void ap_handle_short_opt(ArgParser* parser, const char* arg, ArgStream* s
                     ap_set_memory_error_flag(parser);
                 }
             }
-            continue;
+            return;
         }
 
-        if (argstream_has_next(stream)) {
-            if (!option_try_set(option, argstream_next(stream))) {
-                ap_set_memory_error_flag(parser);
+        for (int k = 0; k < option->n_args; k++) {
+            if (argstream_has_next(stream)) {
+                if (!option_try_set(option, argstream_next(stream))) {
+                    ap_set_memory_error_flag(parser);
+                }
+            } else {
+                exit_with_error("missing argument %d of %d for -%c", k + 1, option->n_args, arg[i]);
             }
-            continue;
         }
+        return; // For short opts, if it takes an arg, the rest of the cluster is the arg.
 
         if (strlen(arg) > 1) {
             exit_with_error("missing argument for '%c' in -%s", arg[i], arg);
@@ -1278,7 +1312,9 @@ static void ap_parse_stream(ArgParser* parser, ArgStream* stream) {
             if (strstr(arg, "=") != NULL) {
                 ap_handle_equals_opt(parser, "--", arg + 2, stream);
             } else {
-                ap_handle_long_opt(parser, arg + 2, stream);
+                if (ap_handle_long_opt(parser, arg + 2, stream)) {
+                    continue;
+                }
             }
         }
 

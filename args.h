@@ -91,6 +91,9 @@ void ap_add_dbl_opt(ArgParser* parser, const char* name, double fallback);
 // Registers a new greedy string-valued option.
 void ap_add_greedy_str_opt(ArgParser* parser, const char* name);
 
+// Registers a new string-valued option that takes multiple arguments.
+void ap_add_multi_str_opt(ArgParser* parser, const char* name, int n_args);
+
 // -----------------------------------------------------------------------------
 // Inspect flags and options.
 // -----------------------------------------------------------------------------
@@ -184,6 +187,10 @@ char* ap_get_cmd_name(ArgParser* parent_parser);
 // If [parent_parser] has found a command, returns its ArgParser instance,
 // otherwise NULL.
 ArgParser* ap_get_cmd_parser(ArgParser* parent_parser);
+
+// If [parent_parser] has a command with the given name, returns its ArgParser
+// instance, otherwise NULL.
+ArgParser* ap_get_cmd_parser_for_name(ArgParser* parent_parser, const char* name);
 
 // If [parent_parser] has found a command, and if that command has a callback
 // function, returns the exit code from the callback, otherwise 0.

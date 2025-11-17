@@ -28,8 +28,6 @@ int cmd_singlegray(char* cmd_name, ArgParser* cmd_parser) {
 }
 
 int main(int argc, char *argv[]) {
-    logger_init(LOG_INFO);
-
     ArgParser *parser = ap_new_parser();
     ap_set_helptext(parser, "Usanza: hpsatviews <comando> [opciones]\n\nComandos:\n"
                             "  rgb          Genera una imagen RGB (ej. color verdadero con composición día/noche).\n"
@@ -47,23 +45,28 @@ int main(int argc, char *argv[]) {
                                  "  -m, --mode <modo>       Modo de operación. Opciones disponibles:\n"
                                  "                          'composite' (defecto), 'truecolor', 'night', 'ash', 'airmass', 'so2'.\n"
                                  "  -o, --out <archivo>     Archivo de salida PNG (defecto: rgb_composite.png).\n"
+                                 "  -c, --clip <coords>     Recorta la imagen a una ventana geográfica. Formato: lon_min lat_max lon_max lat_min.\n"
                                  "  -g, --gamma <valor>     Corrección gamma a aplicar (defecto: 1.0).\n"
                                  "  -r, --geographics       Reproyecta la salida a coordenadas geográficas.");
         ap_add_str_opt(rgb_cmd, "mode m", "composite");
         ap_add_str_opt(rgb_cmd, "out o", "rgb_composite.png");
+        ap_add_multi_str_opt(rgb_cmd, "clip c", 4);
         ap_add_dbl_opt(rgb_cmd, "gamma g", 1.0);
         ap_add_flag(rgb_cmd, "geographics r");
+        ap_add_flag(rgb_cmd, "verbose v"); // Corregido a 'v' minúscula
         ap_set_cmd_callback(rgb_cmd, cmd_rgb);
     }
 
     // --- Opciones comunes para singlegray y pseudocolor ---
     void add_common_opts(ArgParser* cmd_parser) {
         ap_add_str_opt(cmd_parser, "out o", "output.png");
+        ap_add_multi_str_opt(cmd_parser, "clip c", 4);
         ap_add_dbl_opt(cmd_parser, "gamma g", 1.0);
         ap_add_flag(cmd_parser, "histo h");
         ap_add_flag(cmd_parser, "invert i");
         ap_add_int_opt(cmd_parser, "scale s", 1);
         ap_add_flag(cmd_parser, "geographics r");
+        ap_add_flag(cmd_parser, "verbose v"); // Corregido a 'v' minúscula
     }
 
     // --- Comando 'pseudocolor' ---
@@ -74,6 +77,7 @@ int main(int argc, char *argv[]) {
                                 "Opciones:\n"
                                 "  -p, --cpt <archivo>     Aplica una paleta de colores (archivo .cpt). Requerido.\n"
                                 "  -o, --out <archivo>     Archivo de salida PNG (defecto: output.png).\n"
+                                "  -c, --clip <coords>     Recorta la imagen a una ventana geográfica. Formato: lon_min lat_max lon_max lat_min.\n"
                                 "  -g, --gamma <valor>     Corrección gamma a aplicar (defecto: 1.0).\n"
                                  "  -a, --alpha             Añade un canal alfa (funcionalidad futura).\n"
                                 "  -h, --histo             Aplica ecualización de histograma.\n"
@@ -83,6 +87,7 @@ int main(int argc, char *argv[]) {
         add_common_opts(pc_cmd);
         ap_add_str_opt(pc_cmd, "cpt p", NULL);
         ap_add_flag(pc_cmd, "alpha a");
+        // La opción 'verbose' ya está en common_opts
         ap_set_cmd_callback(pc_cmd, cmd_pseudocolor);
     }
 
@@ -93,6 +98,7 @@ int main(int argc, char *argv[]) {
                                 "Genera una imagen en escala de grises a partir de una variable NetCDF.\n\n"
                                 "Opciones:\n"
                                 "  -o, --out <archivo>     Archivo de salida PNG (defecto: output.png).\n"
+                                "  -c, --clip <coords>     Recorta la imagen a una ventana geográfica. Formato: lon_min lat_max lon_max lat_min.\n"
                                 "  -g, --gamma <valor>     Corrección gamma a aplicar (defecto: 1.0).\n"
                                 "  -h, --histo             Aplica ecualización de histograma.\n"
                                 "  -i, --invert            Invierte los valores (blanco y negro).\n"
@@ -101,14 +107,26 @@ int main(int argc, char *argv[]) {
                                 "  -r, --geographics       Reproyecta la salida a coordenadas geográficas.");
         add_common_opts(sg_cmd);
         ap_add_flag(sg_cmd, "alpha a");
+        // La opción 'verbose' ya está en common_opts
         ap_set_cmd_callback(sg_cmd, cmd_singlegray);
     }
 
-    // Parsear los argumentos
+    // Parsear los argumentos UNA SOLA VEZ. La librería ejecutará el callback apropiado.
     if (!ap_parse(parser, argc, argv)) {
+        // ap_parse ya imprime errores, solo necesitamos salir.
         ap_free(parser);
         return 1;
     }
+
+    // El callback ya se ha ejecutado dentro de ap_parse.
+    // Ahora podemos configurar el logger y, si es necesario, volver a ejecutar
+    // la lógica con el logger activado. Esto es un poco redundante pero es
+    // una limitación del diseño actual de la librería de argumentos.
+    // La forma ideal sería que ap_parse no ejecutara el callback.
+    ArgParser* active_cmd = ap_get_cmd_parser(parser);
+    LogLevel log_level = (active_cmd && ap_found(active_cmd, "verbose")) ? LOG_DEBUG : LOG_INFO;
+    logger_init(log_level);
+    LOG_DEBUG("Logger inicializado en modo verboso.");
 
     ap_free(parser);
     return 0;

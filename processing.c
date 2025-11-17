@@ -26,6 +26,11 @@ bool strinstr(const char *main_str, const char *sub) {
 }
 
 int run_processing(ArgParser *parser, bool is_pseudocolor) {
+    // Inicializar el logger aquí para que los mensajes DEBUG se muestren
+    LogLevel log_level = ap_found(parser, "verbose") ? LOG_DEBUG : LOG_INFO;
+    logger_init(log_level);
+    LOG_DEBUG("Modo verboso activado para el comando de procesamiento.");
+
     char *fnc01, *outfn;
     bool invert_values = false;
     bool apply_histogram = false;
@@ -115,6 +120,52 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
 
     if (gamma != 1.0) image_apply_gamma(imout, gamma);
     if (apply_histogram) image_apply_histogram(imout);
+
+    // --- LÓGICA DE RECORTE ---
+    if (ap_found(parser, "clip")) {
+        DataF navla, navlo;
+        bool nav_loaded = false;
+        if (ap_count(parser, "clip") == 4) {
+            // Cargar navegación solo si es necesario
+            if (compute_navigation_nc(fnc01, &navla, &navlo) == 0) {
+                nav_loaded = true;
+            } else {
+                LOG_WARN("No se pudo cargar la navegación para el recorte. Ignorando --clip.");
+            }
+        }
+
+        if (nav_loaded) {
+            float clip_lon_min = atof(ap_get_str_value_at_index(parser, "clip", 0));
+            float clip_lat_max = atof(ap_get_str_value_at_index(parser, "clip", 1));
+            float clip_lon_max = atof(ap_get_str_value_at_index(parser, "clip", 2));
+            float clip_lat_min = atof(ap_get_str_value_at_index(parser, "clip", 3));
+
+            LOG_INFO("Aplicando recorte geográfico: lon[%.3f, %.3f], lat[%.3f, %.3f]", clip_lon_min, clip_lon_max, clip_lat_min, clip_lat_max);
+
+            int ix_start, iy_start, ix_end, iy_end;
+            if (do_reprojection) {
+                // Caso reproyectado: usar interpolación lineal
+                float lon_range = navlo.fmax - navlo.fmin;
+                float lat_range = navla.fmax - navla.fmin;
+                ix_start = (int)(((clip_lon_min - navlo.fmin) / lon_range) * imout.width);
+                iy_start = (int)(((navla.fmax - clip_lat_max) / lat_range) * imout.height);
+                ix_end = (int)(((clip_lon_max - navlo.fmin) / lon_range) * imout.width);
+                iy_end = (int)(((navla.fmax - clip_lat_min) / lat_range) * imout.height);
+            } else {
+                // Caso original: usar búsqueda de píxeles
+                reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_max, clip_lon_min, &ix_start, &iy_start);
+                reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_min, clip_lon_max, &ix_end, &iy_end);
+            }
+
+            unsigned int crop_width = (ix_end > ix_start) ? (ix_end - ix_start) : 0;
+            unsigned int crop_height = (iy_end > iy_start) ? (iy_end - iy_start) : 0;
+            LOG_INFO("Dimensiones de recorte en píxeles: start[%u, %u], size[%u, %u]", ix_start, iy_start, crop_width, crop_height);
+
+            ImageData cropped_image = image_crop(&imout, ix_start, iy_start, crop_width, crop_height);
+            if (cropped_image.data) { image_destroy(&imout); imout = cropped_image; }
+        }
+        dataf_destroy(&navla); dataf_destroy(&navlo);
+    }
 
     if (is_pseudocolor && color_array) {
         write_image_png_palette(outfn, &imout, color_array);

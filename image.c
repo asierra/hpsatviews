@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "image.h"
+#include "logger.h"
 
 
 // Constructor for ImageData structure
@@ -74,6 +75,47 @@ ImageData copy_image(ImageData orig) {
   return imout;
 }
 
+/**
+ * @brief Crops an image to a specified rectangular region.
+ * @param src Pointer to the source image data.
+ * @param x The starting x-coordinate of the crop rectangle.
+ * @param y The starting y-coordinate of the crop rectangle.
+ * @param width The width of the crop rectangle.
+ * @param height The height of the crop rectangle.
+ * @return A new ImageData structure containing the cropped image.
+ *         The caller is responsible for freeing this new image.
+ *         Returns an empty image on failure.
+ */
+ImageData image_crop(const ImageData* src, unsigned int x, unsigned int y, unsigned int width, unsigned int height) {
+    // Sanity checks
+    if (src == NULL || src->data == NULL || width == 0 || height == 0) {
+        return image_create(0, 0, 0);
+    }
+    if (x + width > src->width || y + height > src->height) {
+        LOG_ERROR("El área de recorte excede las dimensiones de la imagen original.");
+        return image_create(0, 0, 0);
+    }
+
+    ImageData cropped_img = image_create(width, height, src->bpp);
+    if (cropped_img.data == NULL) {
+        LOG_FATAL("Fallo de memoria al crear la imagen recortada.");
+        return cropped_img;
+    }
+
+    size_t src_row_stride = src->width * src->bpp;
+    size_t cropped_row_stride = width * src->bpp;
+
+    #pragma omp parallel for
+    for (unsigned int i = 0; i < height; ++i) {
+        // Pointer to the start of the source row
+        const unsigned char* src_row = src->data + (y + i) * src_row_stride + x * src->bpp;
+        // Pointer to the start of the destination row
+        unsigned char* dst_row = cropped_img.data + i * cropped_row_stride;
+        memcpy(dst_row, src_row, cropped_row_stride);
+    }
+
+    return cropped_img;
+}
 
 ImageData blend_images(ImageData bg, ImageData fg, ImageData mask) {
   size_t size = bg.width * bg.height;
