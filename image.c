@@ -98,7 +98,7 @@ ImageData image_crop(const ImageData* src, unsigned int x, unsigned int y, unsig
 
     ImageData cropped_img = image_create(width, height, src->bpp);
     if (cropped_img.data == NULL) {
-        LOG_FATAL("Fallo de memoria al crear la imagen recortada.");
+        LOG_FATAL("Falla de memoria al crear la imagen recortada.");
         return cropped_img;
     }
 

@@ -19,7 +19,7 @@ ImageData create_truecolor_rgb(DataF c01_blue, DataF c02_red, DataF c03_nir) {
   // Crear el canal verde sintético
   DataF green_ch = dataf_create(c02_red.width, c02_red.height);
   if (green_ch.data_in == NULL) {
-    LOG_ERROR("Fallo de memoria al crear el canal verde sintético.");
+    LOG_ERROR("Falla de memoria al crear el canal verde sintético.");
     return image_create(0, 0, 0);
   }
 

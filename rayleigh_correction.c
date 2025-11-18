@@ -82,7 +82,7 @@ int main(int argc, char *argv[]) {
     DataNC c01_nc; // Declara primero
     // Usa tu función 'load_nc_sf' para cargar la banda 1 Y los metadatos de tiempo
     if (load_nc_sf(l1b_path_c01, "Rad", &c01_nc) != 0) {
-        LOG_FATAL("Fallo al cargar L1b C01. Terminando.");
+        LOG_FATAL("Falla al cargar L1b C01. Terminando.");
         return 1;
     }
 
@@ -97,7 +97,7 @@ int main(int argc, char *argv[]) {
     DataF nav_vza = dataf_load_from_netcdf(nav_path, "SenZenAng");
     DataF nav_vaa = dataf_load_from_netcdf(nav_path, "SenAziAng");
     if (navla.data_in == NULL || navlo.data_in == NULL || nav_vza.data_in == NULL || nav_vaa.data_in == NULL) {
-        LOG_FATAL("Fallo al cargar archivos NAVF (Geometría). Terminando.");
+        LOG_FATAL("Falla al cargar archivos NAVF (Geometría). Terminando.");
         return 1;
     }
     
@@ -117,7 +117,7 @@ int main(int argc, char *argv[]) {
     RayleighLUT lut_c02 = lut_load_for_band(2, lut_path_sunglint, lut_path_aerosol);
     RayleighLUT lut_c03 = lut_load_for_band(3, lut_path_sunglint, lut_path_aerosol);
     if (lut_c01.data == NULL || lut_c02.data == NULL || lut_c03.data == NULL) {
-        LOG_FATAL("Fallo al cargar una o más LUTs. Terminando.");
+        LOG_FATAL("Falla al cargar una o más LUTs. Terminando.");
         return 1;
     }
 
@@ -152,7 +152,7 @@ int main(int argc, char *argv[]) {
     //     LOG_INFO("Paso 8: Guardando imagen en 'goes_truecolor_corrected.png'...");
     //     image_save_png(&final_rgb_image, "goes_truecolor_corrected.png");
     // } else {
-    //     LOG_ERROR("Fallo al crear la imagen RGB final.");
+    //     LOG_ERROR("Falla al crear la imagen RGB final.");
     // }
 
     // 10. LIMPIEZA DE MEMORIA
@@ -343,7 +343,7 @@ static int nc_load_lut_array_1d(int ncid, const char *varname, float **data_out,
     if ((retval = nc_inq_vardimid(ncid, varid, &dimid))) ERR(retval);
     if ((retval = nc_inq_dimlen(ncid, dimid, size_out))) ERR(retval);
     *data_out = (float*)malloc(*size_out * sizeof(float));
-    if (!*data_out) { LOG_ERROR("Fallo de memoria (1D)"); return 0; }
+    if (!*data_out) { LOG_ERROR("Falla de memoria (1D)"); return 0; }
     if ((retval = nc_get_var_float(ncid, varid, *data_out))) { free(*data_out); *data_out = NULL; ERR(retval); }
     return 1;
 }
@@ -357,7 +357,7 @@ static int nc_load_lut_slice_3d(int ncid, const char *varname, int band_idx,
     if ((retval = nc_inq_varid(ncid, varname, &varid))) ERR(retval);
     if ((retval = nc_inq_varndims(ncid, varid, &ndims))) ERR(retval);
     *data_out = (float *)malloc(expected_size * sizeof(float));
-    if (!*data_out) { LOG_ERROR("Fallo de memoria (slice 3D)"); return 0; }
+    if (!*data_out) { LOG_ERROR("Falla de memoria (slice 3D)"); return 0; }
     size_t channel_index = (size_t)band_idx - 1;
 
     if (ndims == 5) { // Asume [NChn, NAer, SZA, VZA, RA]
@@ -388,7 +388,7 @@ static int nc_load_and_expand_2d(int ncid, const char *varname, int band_idx,
     size_t start[2] = {0}, count[2] = {0};
     size_t component_size_3d = sza_dim * vza_dim * ra_dim;
     float *sza_slice_1d = (float*)malloc(sza_dim * sizeof(float));
-    if (!sza_slice_1d) { LOG_ERROR("Fallo de memoria (expand 2D buf)"); return 0; }
+    if (!sza_slice_1d) { LOG_ERROR("Falla de memoria (expand 2D buf)"); return 0; }
     if ((retval = nc_inq_varid(ncid, varname, &varid))) { free(sza_slice_1d); ERR(retval); }
     start[0] = (size_t)band_idx - 1; count[0] = 1;
     start[1] = 0;                    count[1] = sza_dim;
@@ -396,7 +396,7 @@ static int nc_load_and_expand_2d(int ncid, const char *varname, int band_idx,
         free(sza_slice_1d); ERR(retval);
     }
     *data_out = (float *)malloc(component_size_3d * sizeof(float));
-    if (!*data_out) { free(sza_slice_1d); LOG_ERROR("Fallo de memoria (expand 2D)"); return 0; }
+    if (!*data_out) { free(sza_slice_1d); LOG_ERROR("Falla de memoria (expand 2D)"); return 0; }
     
     #pragma omp parallel for
     for (size_t i = 0; i < sza_dim; i++) {
@@ -420,7 +420,7 @@ static int nc_load_and_expand_1d(int ncid, const char *varname, int band_idx,
     start[0] = (size_t)band_idx - 1;
     if ((retval = nc_get_vara_float(ncid, varid, start, count, &value_1d))) ERR(retval);
     *data_out = (float *)malloc(component_size_3d * sizeof(float));
-    if (!*data_out) { LOG_ERROR("Fallo de memoria (expand 1D)"); return 0; }
+    if (!*data_out) { LOG_ERROR("Falla de memoria (expand 1D)"); return 0; }
     
     #pragma omp parallel for
     for (size_t i = 0; i < component_size_3d; i++) (*data_out)[i] = value_1d;
@@ -435,7 +435,7 @@ RayleighLUT lut_load_for_band(int band_id, const char *knots_path, const char *d
     const char *knot_vars[3] = {"solar_zenith_angle", "sensor_zenith_angle", "relative_azimuth_angle"};
     const char *rtc_vars[NUM_COMPONENTS] = {"ray_path_refl", "ray_trans", "ray_trans", "ray_sph_alb"};
     
-    if (nc_open(knots_path, NC_NOWRITE, &ncid_knots)) { LOG_ERROR("Fallo al abrir LUT knots: %s", knots_path); goto cleanup; }
+    if (nc_open(knots_path, NC_NOWRITE, &ncid_knots)) { LOG_ERROR("Falla al abrir LUT knots: %s", knots_path); goto cleanup; }
     if (!nc_load_lut_array_1d(ncid_knots, knot_vars[0], &lut.sza_knots, &lut.sza_dim)) goto cleanup;
     if (!nc_load_lut_array_1d(ncid_knots, knot_vars[1], &lut.vza_knots, &lut.vza_dim)) goto cleanup;
     if (!nc_load_lut_array_1d(ncid_knots, knot_vars[2], &lut.ra_knots, &lut.ra_dim)) goto cleanup;
@@ -445,7 +445,7 @@ RayleighLUT lut_load_for_band(int band_id, const char *knots_path, const char *d
     lut.component_size = lut.sza_dim * lut.vza_dim * lut.ra_dim;
     if (lut.component_size == 0) goto cleanup;
 
-    if (nc_open(data_path, NC_NOWRITE, &ncid_data)) { LOG_ERROR("Fallo al abrir LUT data: %s", data_path); goto cleanup; }
+    if (nc_open(data_path, NC_NOWRITE, &ncid_data)) { LOG_ERROR("Falla al abrir LUT data: %s", data_path); goto cleanup; }
     if (!nc_load_lut_slice_3d(ncid_data, rtc_vars[0], band_id, lut.sza_dim, lut.vza_dim, lut.ra_dim, &rtc_buffers[0])) goto cleanup;
     if (!nc_load_and_expand_2d(ncid_data, rtc_vars[1], band_id, lut.sza_dim, lut.vza_dim, lut.ra_dim, &rtc_buffers[1])) goto cleanup;
     if (!nc_load_and_expand_2d(ncid_data, rtc_vars[2], band_id, lut.sza_dim, lut.vza_dim, lut.ra_dim, &rtc_buffers[2])) goto cleanup;
@@ -453,7 +453,7 @@ RayleighLUT lut_load_for_band(int band_id, const char *knots_path, const char *d
     nc_close(ncid_data); ncid_data = 0;
 
     lut.data = (float *)malloc(lut.component_size * NUM_COMPONENTS * sizeof(float));
-    if (!lut.data) { LOG_ERROR("Fallo de memoria (LUT data final)"); goto cleanup; }
+    if (!lut.data) { LOG_ERROR("Falla de memoria (LUT data final)"); goto cleanup; }
     
     for (int i = 0; i < NUM_COMPONENTS; i++) {
         memcpy(lut.data + (i * lut.component_size), rtc_buffers[i], lut.component_size * sizeof(float));
@@ -601,7 +601,7 @@ static inline unsigned char apply_gamma(float reflectance, float gamma) {
 ImageData create_truecolor_rgb(DataF rho_c01, DataF rho_c02, DataF rho_c03) {
     ImageData imout = image_create(rho_c01.width, rho_c01.height, 3);
     if (imout.data == NULL) {
-        LOG_ERROR("Fallo de memoria al crear imagen RGB");
+        LOG_ERROR("Falla de memoria al crear imagen RGB");
         return imout; 
     }
     const float GAMMA = 1.8f; // Gamma para hacerlo más vívido

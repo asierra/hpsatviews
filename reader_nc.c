@@ -429,7 +429,7 @@ int create_navigation_from_reprojected_bounds(DataF *navla, DataF *navlo, size_t
     *navla = dataf_create(width, height);
     *navlo = dataf_create(width, height);
     if (navla->data_in == NULL || navlo->data_in == NULL) {
-        LOG_FATAL("Fallo de memoria al crear mallas de navegación para datos reproyectados.");
+        LOG_FATAL("Falla de memoria al crear mallas de navegación para datos reproyectados.");
         return -1;
     }
 
@@ -498,7 +498,7 @@ DataF dataf_load_from_netcdf(const char *filename, const char *varname) {
   // Crear la estructura DataF
   data = dataf_create(width, height);
   if (data.data_in == NULL) {
-    LOG_FATAL("Fallo de memoria al crear DataF para %s", varname);
+    LOG_FATAL("Falla de memoria al crear DataF para %s", varname);
     nc_close(ncid);
     return data;
   }

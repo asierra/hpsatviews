@@ -32,7 +32,7 @@ DataF reproject_to_geographics(const DataF* source_data, const char* nav_referen
 
     DataF navla, navlo;
     if (compute_navigation_nc(nav_reference_file, &navla, &navlo) != 0) {
-        LOG_ERROR("Fallo al calcular la navegación para la reproyección.");
+        LOG_ERROR("Falla al calcular la navegación para la reproyección.");
         return dataf_create(0, 0);
     }
     
@@ -89,7 +89,7 @@ DataF reproject_to_geographics_with_nav(const DataF* source_data, const DataF* n
 
     DataF datagg = dataf_create(width, height);
     if (datagg.data_in == NULL) {
-        LOG_FATAL("Fallo de memoria al crear la malla geográfica de destino.");
+        LOG_FATAL("Falla de memoria al crear la malla geográfica de destino.");
         return datagg;
     }
     dataf_fill(&datagg, NAN);
@@ -125,7 +125,7 @@ DataF reproject_to_geographics_with_nav(const DataF* source_data, const DataF* n
     LOG_INFO("Iniciando relleno de huecos (interpolación de vecinos)...");
     DataF datagg_filled = dataf_copy(&datagg);
     if (datagg_filled.data_in == NULL) {
-        LOG_FATAL("Fallo de memoria al copiar la malla para el relleno de huecos.");
+        LOG_FATAL("Falla de memoria al copiar la malla para el relleno de huecos.");
         dataf_destroy(&datagg);
         return dataf_create(0, 0);
     }

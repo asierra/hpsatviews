@@ -46,7 +46,7 @@ ImageData create_nocturnal_pseudocolor(DataNC datanc);
 static unsigned char* normalize_to_u8(const DataF* data, float min_val, float max_val) {
     unsigned char* buffer = malloc(data->size * sizeof(unsigned char));
     if (!buffer) {
-        LOG_FATAL("Fallo de memoria al normalizar canal a 8-bit.");
+        LOG_FATAL("Falla de memoria al normalizar canal a 8-bit.");
         return NULL;
     }
 
@@ -485,7 +485,8 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
         r_ch = dataf_op_dataf(&c[8].fdata, &c[10].fdata, OP_SUB);
         g_ch = dataf_op_dataf(&c[12].fdata, &c[13].fdata, OP_SUB);
         b_ch = dataf_op_scalar(&c[8].fdata, 273.15f, OP_SUB, true); // scalar_first = true -> 273.15 - C8
-        final_image = create_multiband_rgb(&r_ch, &g_ch, &b_ch, -26.2f, 0.6f, -43.2f, 6.7f, -64.65f, -29.25f);
+        final_image = create_multiband_rgb(&r_ch, &g_ch, &b_ch, -26.2f, 0.6f, -43.2f, 6.7f, 
+            29.25f, 64.65f);
 
     } else if (strcmp(mode, "so2") == 0) {
         LOG_INFO("Generando imagen en modo 'so2'...");

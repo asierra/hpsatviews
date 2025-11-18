@@ -38,7 +38,7 @@ static int nc_load_lut_array_1d(int ncid, const char *varname, float **data_out,
 
     *data_out = (float*)malloc(*size_out * sizeof(float));
     if (!*data_out) {
-        LOG_ERROR("Fallo de memoria al cargar %s", varname);
+        LOG_ERROR("Falla de memoria al cargar %s", varname);
         return 0;
     }
 
@@ -70,7 +70,7 @@ static int nc_load_lut_slice_3d(int ncid, const char *varname, int band_idx,
 
     *data_out = (float *)malloc(expected_size * sizeof(float));
     if (!*data_out) {
-        LOG_ERROR("Fallo de memoria al rebanar %s", varname);
+        LOG_ERROR("Falla de memoria al rebanar %s", varname);
         return 0;
     }
 
@@ -119,7 +119,7 @@ static int nc_load_and_expand_2d(int ncid, const char *varname, int band_idx,
     // 1. Crear un buffer temporal para el slice 1D (de tamaño SZA)
     float *sza_slice_1d = (float*)malloc(sza_dim * sizeof(float));
     if (!sza_slice_1d) {
-        LOG_ERROR("Fallo de memoria para buffer 2D expandido");
+        LOG_ERROR("Falla de memoria para buffer 2D expandido");
         return 0;
     }
 
@@ -139,7 +139,7 @@ static int nc_load_and_expand_2d(int ncid, const char *varname, int band_idx,
     // 3. Asignar memoria para el array 3D final
     *data_out = (float *)malloc(component_size_3d * sizeof(float));
     if (!*data_out) {
-        LOG_ERROR("Fallo de memoria para expansión 2D->3D");
+        LOG_ERROR("Falla de memoria para expansión 2D->3D");
         free(sza_slice_1d);
         return 0;
     }
@@ -182,7 +182,7 @@ static int nc_load_and_expand_1d(int ncid, const char *varname, int band_idx,
     // Asignar memoria para el array 3D final
     *data_out = (float *)malloc(component_size_3d * sizeof(float));
     if (!*data_out) {
-        LOG_ERROR("Fallo de memoria para expansión 1D->3D");
+        LOG_ERROR("Falla de memoria para expansión 1D->3D");
         return 0;
     }
 
@@ -269,7 +269,7 @@ RayleighLUT lut_load_for_band(int band_id) {
     // 4. ASIGNAR Y CONCATENAR EL BUFFER FINAL
     lut.data = (float *)malloc(total_lut_size * sizeof(float));
     if (!lut.data) {
-        LOG_ERROR("Fallo de memoria para el buffer LUT final");
+        LOG_ERROR("Falla de memoria para el buffer LUT final");
         goto cleanup;
     }
 
