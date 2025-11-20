@@ -8,8 +8,12 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <math.h>
 
 extern float NonData;
+
+// Macro para verificar si un valor es NonData (comparación robusta para floats)
+#define IS_NONDATA(x) ((x) >= 1.0e+30f || isnan(x) || isinf(x))
 
 // Enum for arithmetic operations
 typedef enum {

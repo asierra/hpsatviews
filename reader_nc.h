@@ -22,4 +22,13 @@ int create_navigation_from_reprojected_bounds(DataF *navla, DataF *navlo, size_t
 
 DataF dataf_load_from_netcdf(const char *filename, const char *varname);
 
+// Compute solar geometry angles (Solar Zenith Angle and Solar Azimuth Angle)
+int compute_solar_angles_nc(const char *filename, const DataF *navla, const DataF *navlo, DataF *sza, DataF *saa);
+
+// Compute satellite viewing geometry angles (View Zenith Angle and View Azimuth Angle)
+int compute_satellite_angles_nc(const char *filename, const DataF *navla, const DataF *navlo, DataF *vza, DataF *vaa);
+
+// Compute relative azimuth angle between sun and satellite
+void compute_relative_azimuth(const DataF *saa, const DataF *vaa, DataF *raa);
+
 #endif /* HPSATVIEWS_READER_NC_H_ */

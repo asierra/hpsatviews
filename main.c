@@ -46,13 +46,15 @@ int main(int argc, char *argv[]) {
                                  "                          'composite' (defecto), 'truecolor', 'night', 'ash', 'airmass', 'so2'.\n"
                                  "  -o, --out <archivo>     Archivo de salida PNG (defecto: rgb_composite.png).\n"
                                  "  -c, --clip <coords>     Recorta la imagen a una ventana geográfica. Formato: lon_min lat_max lon_max lat_min.\n"
-                                 "  -g, --gamma <valor>     Corrección gamma a aplicar (defecto: 1.0).\n"
-                                 "  -r, --geographics       Reproyecta la salida a coordenadas geográficas.");
+                                 "  -g, --gamma <valor>     Corrección gamma a aplicar (defecto: 1.0, sin corrección).\n"
+                                 "  -r, --geographics       Reproyecta la salida a coordenadas geográficas.\n"
+                                 "      --rayleigh          Aplica corrección atmosférica de Rayleigh (solo modos truecolor/composite).");
         ap_add_str_opt(rgb_cmd, "mode m", "composite");
         ap_add_str_opt(rgb_cmd, "out o", "rgb_composite.png");
         ap_add_multi_str_opt(rgb_cmd, "clip c", 4);
         ap_add_dbl_opt(rgb_cmd, "gamma g", 1.0);
         ap_add_flag(rgb_cmd, "geographics r");
+        ap_add_flag(rgb_cmd, "rayleigh");
         ap_add_flag(rgb_cmd, "verbose v"); // Corregido a 'v' minúscula
         ap_set_cmd_callback(rgb_cmd, cmd_rgb);
     }

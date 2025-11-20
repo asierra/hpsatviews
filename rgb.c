@@ -11,6 +11,7 @@
 #include "logger.h"
 #include "datanc.h"
 #include "reprojection.h"
+#include "filename_utils.h"
 #include <dirent.h>
 #include <libgen.h>
 #include <stdio.h>
@@ -252,6 +253,7 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
     float gamma = ap_get_dbl_value(parser, "gamma");
     const char* mode = ap_get_str_value(parser, "mode");
 
+
     if (ap_has_args(parser)) {
         input_file = ap_get_arg_at_index(parser, 0);
     } else {
@@ -341,16 +343,6 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
     if (c_info[3]) { aux = downsample_boxfilter(c[3].fdata, 2); dataf_destroy(&c[3].fdata); c[3].fdata = aux; }
     
     compute_navigation_nc(c_info[ref_ch_idx]->filename, &navla, &navlo);
-    
-    // ¡CORRECCIÓN CRÍTICA! Remuestrear la navegación si los datos no están reproyectados
-    // Y SI se usaron canales de alta resolución que fueron remuestreados.
-    // El canal C02 (rojo) es el de mayor resolución (0.5km -> 2km, factor 4).
-    // Si está presente, significa que la resolución final es de 2km.
-    if (!do_reprojection && c_info[2]) {
-        LOG_DEBUG("Remuestreando mallas de navegación para coincidir con datos de 2km.");
-        aux = downsample_boxfilter(navla, 2); dataf_destroy(&navla); navla = aux;
-        aux = downsample_boxfilter(navlo, 2); dataf_destroy(&navlo); navlo = aux;
-    }
 
     // --- NUEVO: Si hay --clip y -r, primero recortamos en espacio geoestacionario ---
     unsigned int clip_x_start = 0, clip_y_start = 0;
@@ -455,14 +447,36 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
         LOG_INFO("Reproyección completada.");
     }
 
-    const char* out_filename = ap_get_str_value(parser, "out");
+    char* out_filename_generated = NULL;
+    const char* out_filename;
+
+    if (ap_found(parser, "out")) {
+        out_filename = ap_get_str_value(parser, "out");
+    } else {
+        // Generar nombre de archivo por defecto usando el canal de referencia,
+        // que garantiza que el archivo existe y está siendo usado en este modo.
+        // Usar 'input_file' podría ser incorrecto si el modo no usa ese canal.
+        const char* filename_for_timestamp = c_info[ref_ch_idx] ? c_info[ref_ch_idx]->filename : input_file;
+        out_filename_generated = generate_default_output_filename(filename_for_timestamp, mode, ".png");
+        out_filename = out_filename_generated;
+    }
+
     ImageData final_image;
     // Variables para las bandas intermedias que necesitan ser liberadas
     DataF r_ch = {0}, g_ch = {0}, b_ch = {0};
+    
+    // Determinar si se debe aplicar corrección de Rayleigh
+    bool apply_rayleigh = ap_found(parser, "rayleigh");
 
     if (strcmp(mode, "truecolor") == 0) {
         LOG_INFO("Generando imagen en modo 'truecolor'...");
-        ImageData diurna = create_truecolor_rgb(c[1].fdata, c[2].fdata, c[3].fdata);
+        ImageData diurna;
+        if (apply_rayleigh) {
+            LOG_INFO("Aplicando corrección atmosférica de Rayleigh...");
+            diurna = create_truecolor_rgb_rayleigh(c[1].fdata, c[2].fdata, c[3].fdata, c_info[1]->filename, true);
+        } else {
+            diurna = create_truecolor_rgb(c[1].fdata, c[2].fdata, c[3].fdata);
+        }
         image_apply_histogram(diurna);
         if (gamma != 1.0) image_apply_gamma(diurna, gamma);
         write_image_png(out_filename, &diurna);
@@ -496,7 +510,13 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
 
     } else { // Modo "composite" (default)
         LOG_INFO("Generando imagen en modo 'composite'...");
-        ImageData diurna = create_truecolor_rgb(c[1].fdata, c[2].fdata, c[3].fdata);
+        ImageData diurna;
+        if (apply_rayleigh) {
+            LOG_INFO("Aplicando corrección atmosférica de Rayleigh...");
+            diurna = create_truecolor_rgb_rayleigh(c[1].fdata, c[2].fdata, c[3].fdata, c_info[1]->filename, true);
+        } else {
+            diurna = create_truecolor_rgb(c[1].fdata, c[2].fdata, c[3].fdata);
+        }
         image_apply_histogram(diurna);
         ImageData nocturna = create_nocturnal_pseudocolor(c[13]);
 
@@ -561,6 +581,7 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
     dataf_destroy(&g_ch);
     dataf_destroy(&b_ch);
     
+    if (out_filename_generated) free(out_filename_generated);
     image_destroy(&final_image);
     for (int i = 1; i <= 16; i++) {
         if (c_info[i]) datanc_destroy(&c[i]);

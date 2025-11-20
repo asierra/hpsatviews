@@ -10,6 +10,7 @@
 #include "reader_nc.h"
 #include "reader_cpt.h"
 #include "writer_png.h"
+#include "filename_utils.h"
 #include "reprojection.h"
 #include "image.h"
 #include "datanc.h"
@@ -31,7 +32,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     logger_init(log_level);
     LOG_DEBUG("Modo verboso activado para el comando de procesamiento.");
 
-    char *fnc01, *outfn;
+    char *fnc01;
     bool invert_values = false;
     bool apply_histogram = false;
     bool use_alpha = false;
@@ -51,7 +52,19 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         return -1;
     }
 
-    outfn = ap_get_str_value(parser, "out");
+    char* out_filename_generated = NULL;
+    const char* outfn;
+
+    if (ap_found(parser, "out")) {
+        outfn = ap_get_str_value(parser, "out");
+    } else {
+        // Generar nombre de archivo por defecto si no fue proporcionado
+        const char* mode_name = is_pseudocolor ? "pseudocolor" : "singlegray";
+        out_filename_generated = generate_default_output_filename(fnc01, mode_name, ".png");
+        outfn = out_filename_generated;
+    }
+
+
     invert_values = ap_found(parser, "invert");
     apply_histogram = ap_found(parser, "histo");
     use_alpha = ap_found(parser, "alpha");
@@ -179,6 +192,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     datanc_destroy(&c01);
     image_destroy(&imout);
     color_array_destroy(color_array);
+    if (out_filename_generated) free(out_filename_generated);
 
     return 0;
 }

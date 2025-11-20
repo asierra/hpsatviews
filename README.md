@@ -26,8 +26,13 @@ HPSATVIEWS es una aplicación de alto rendimiento controlada por línea de coman
   - `so2`: Detección de dióxido de azufre.
   - `night`: Visualización infrarroja nocturna.
   - `composite`: Mezcla inteligente día/noche de `truecolor` y `night`.
+- **Corrección Atmosférica de Rayleigh** - Eliminación de dispersión atmosférica en imágenes true color
+  - Compatible con modos `truecolor` y `composite`
+  - Implementación estándar siguiendo geo2grid/satpy
+  - Corrección selectiva: aplica a C01 (Blue) y C02 (Red), pero NO a C03 (NIR)
+  - Tablas LUT precalculadas para interpolación trilineal rápida
 - **Mejora de Histograma** - Optimización automática de contraste
-- **Corrección Gamma** - Control de luminosidad configurable
+- **Corrección Gamma** - Control de luminosidad configurable (por defecto: 1.0, recomendado: 2.0 para visualización)
 - **Reproyección Geográfica** - Conversión de proyección geoestacionaria a malla lat/lon uniforme
 - **Recorte Geográfico** - Extracción de regiones de interés por coordenadas geográficas
   - Compatible con datos originales y reproyectados
@@ -124,6 +129,9 @@ Genera compuestos RGB a partir de múltiples canales. El archivo de entrada pued
 # True color diurno
 ./hpsatviews rgb -m truecolor -o salida.png archivo.nc
 
+# True color con corrección atmosférica de Rayleigh (recomendado)
+./hpsatviews rgb -m truecolor --rayleigh -g 2 -o salida.png archivo.nc
+
 # Detección de ceniza volcánica
 ./hpsatviews rgb -m ash -o ceniza.png archivo.nc
 
@@ -135,6 +143,9 @@ Genera compuestos RGB a partir de múltiples canales. El archivo de entrada pued
 
 # Visualización nocturna
 ./hpsatviews rgb -m night -o night.png archivo.nc
+
+# Composición día/noche con Rayleigh
+./hpsatviews rgb -m composite --rayleigh -g 2 -o composite.png archivo.nc
 ```
 
 **Reproyección Geográfica:**
@@ -158,7 +169,8 @@ Genera compuestos RGB a partir de múltiples canales. El archivo de entrada pued
 - Ejemplo: CONUS central: `--clip -107.23 22.72 -93.84 14.94`
 
 **Opciones adicionales:**
-- `-g, --gamma <valor>` - Corrección gamma (por defecto: 1.8)
+- `--rayleigh` - Aplicar corrección atmosférica de Rayleigh (solo modos truecolor/composite)
+- `-g, --gamma <valor>` - Corrección gamma (por defecto: 1.0, recomendado con Rayleigh: 2.0)
 - `-v, --verbose` - Modo verboso con logging detallado
 - `-o, --out <archivo>` - Nombre del archivo de salida
 
@@ -189,12 +201,15 @@ hpsatviews/
 ├── 📡 reader_nc.h/.c     # Lectura de archivos NetCDF GOES
 ├── 💾 writer_png.h/.c    # Escritura de archivos PNG
 ├── 🌈 datanc.h/.c        # Estructuras de datos y algoritmos
-├── � reprojection.h/.c  # Reproyección geoestacionaria a geográfica
+├── 🗺️ reprojection.h/.c  # Reproyección geoestacionaria a geográfica
 ├── 🎨 rgb.h/.c           # Generación de compuestos RGB
-├── �🌅 truecolor_rgb.c    # Generación de imágenes RGB
+├── 🌅 truecolor_rgb.c    # Generación de imágenes RGB true color
+├── ☁️ rayleigh.h/.c       # Corrección atmosférica de Rayleigh
+├── 📊 rayleigh_lut.h/.c  # Manejo de tablas LUT para Rayleigh
 ├── 🌙 nocturnal_pseudocolor.c # Imágenes infrarrojas nocturnas
 ├── 🌗 daynight_mask.c    # Cálculo de máscara día/noche
 ├── ⚙️ args.h/.c          # Procesamiento de argumentos
+├── 📁 rayleigh_lut_C*.bin # Tablas LUT precalculadas (C01, C02)
 └── 📖 README.md          # Este archivo
 ```
 
@@ -251,9 +266,26 @@ LOG_ERROR("Error al abrir archivo: %s", error_msg);
 
 ### Procesamiento True Color RGB
 1. **Lectura de canales** C01 (azul), C02 (rojo), C03 (vegetal)
-2. **Normalización radiométrica** con factores de escala NetCDF
-3. **Corrección gamma** para visualización óptima
-4. **Mejora de histograma** opcional
+2. **Downsampling** de C01, C02, C03 a resolución común (2km)
+3. **Canal verde sintético** usando coeficientes EDC: `0.45706946*C01 + 0.48358168*C02 + 0.06038137*C03`
+4. **Normalización radiométrica** con factores de escala NetCDF
+5. **Corrección gamma** para visualización óptima (recomendado: 2.0)
+6. **Mejora de histograma** opcional
+
+### Corrección Atmosférica de Rayleigh
+1. **Cálculo de geometría solar**: SZA (Solar Zenith Angle) y SAA (Solar Azimuth Angle)
+2. **Cálculo de geometría del satélite**: VZA (View Zenith Angle) y VAA (View Azimuth Angle)
+3. **Cálculo de azimut relativo**: RAA = |SAA - VAA| normalizado a [0, 180]
+4. **Interpolación trilinear en LUT**: Busca valor de Rayleigh para (SZA, VZA, RAA)
+5. **Aplicación selectiva**:
+   - ✅ **C01 (Blue)**: Corrección aplicada (más afectado por dispersión Rayleigh)
+   - ✅ **C02 (Red)**: Corrección aplicada  
+   - ❌ **C03 (NIR)**: SIN corrección (dispersión Rayleigh es despreciable en NIR)
+6. **Verde sintético con canales corregidos**: Combina C01/C02 corregidos + C03 original
+7. **Enmascaramiento nocturno**: Píxeles con SZA > 88° se marcan como noche (valor 0)
+8. **Actualización de rangos**: Recalcula fmin/fmax después de corrección para normalización correcta
+
+**Estándar seguido**: Implementación compatible con geo2grid/satpy para resultados científicos reproducibles.
 
 ### Visualización Infrarroja Nocturna
 1. **Conversión radiancia a temperatura** usando ecuación de Planck
@@ -326,6 +358,41 @@ DataF reproj = reproject_to_geographics_with_nav(&data, &navla, &navlo,
 // Buscar píxel más cercano a coordenada geográfica
 int x, y;
 reprojection_find_pixel_for_coord(&navla, &navlo, target_lat, target_lon, &x, &y);
+```
+
+### Geometría Solar y de Satélite (para Corrección Rayleigh)
+```c
+// 1. Calcular navegación (lat/lon) desde archivo NetCDF
+DataF navla, navlo;
+compute_navigation_nc("OR_ABI-L1b-RadF-M6C01_G19_s2025....nc", &navla, &navlo);
+
+// 2. Calcular ángulos solares (Solar Zenith y Azimuth)
+DataF sza, saa;  // Solar Zenith Angle, Solar Azimuth Angle
+compute_solar_angles_nc("OR_ABI-L1b-RadF-M6C01_G19_s2025....nc", 
+                        &navla, &navlo, &sza, &saa);
+
+// 3. Calcular ángulos del satélite (View Zenith y Azimuth)
+DataF vza, vaa;  // View Zenith Angle, View Azimuth Angle
+compute_satellite_angles_nc("OR_ABI-L1b-RadF-M6C01_G19_s2025....nc",
+                            &navla, &navlo, &vza, &vaa);
+
+// 4. Calcular azimut relativo (diferencia entre sol y satélite)
+DataF raa;  // Relative Azimuth Angle
+compute_relative_azimuth(&saa, &vaa, &raa);
+
+// 5. Aplicar corrección atmosférica de Rayleigh (cuando esté disponible la LUT)
+// RayleighLUT lut = rayleigh_lut_load("rayleigh_lut_C01.bin");
+// apply_rayleigh_correction(&reflectance_image, &sza, &vza, &raa, &lut);
+// rayleigh_lut_destroy(&lut);
+
+// Liberar memoria
+dataf_destroy(&navla);
+dataf_destroy(&navlo);
+dataf_destroy(&sza);
+dataf_destroy(&saa);
+dataf_destroy(&vza);
+dataf_destroy(&vaa);
+dataf_destroy(&raa);
 ```
 
 ---

@@ -186,7 +186,6 @@ void image_apply_histogram(ImageData im) {
   }
 }
 
-
 void image_apply_gamma(ImageData im, float gamma) {
   size_t size = im.width * im.height;
   unsigned char nvalues[256];
