@@ -205,7 +205,6 @@ hpsatviews/
 ├── 🎨 rgb.h/.c           # Generación de compuestos RGB
 ├── 🌅 truecolor_rgb.c    # Generación de imágenes RGB true color
 ├── ☁️ rayleigh.h/.c       # Corrección atmosférica de Rayleigh
-├── 📊 rayleigh_lut.h/.c  # Manejo de tablas LUT para Rayleigh
 ├── 🌙 nocturnal_pseudocolor.c # Imágenes infrarrojas nocturnas
 ├── 🌗 daynight_mask.c    # Cálculo de máscara día/noche
 ├── ⚙️ args.h/.c          # Procesamiento de argumentos
