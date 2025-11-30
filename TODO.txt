@@ -67,3 +67,9 @@ algoritmo sería calcular las esquinas en coordenadas geoestacionarias,
 las que sí están en el mapa, como la inferior izquierda y la superior
 derecha y con ellas asignar la esquina superior izquierda.
 
+Encontrar una manera de tener en memoria los bin de raleigh para no
+tener que leerlos de disco en tiempo de ejecución. Y falta corregir el
+brillo al final pues salel un poco oscuras.
+
+
+
