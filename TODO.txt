@@ -56,3 +56,14 @@ Conviene dejarlo como float o crear una malla byte?
 Completar el tema de paletas, que en datos discretos como fase de
 nube, los colores deben corresponder específicamente a valores
 numéricos.
+
+
+Sat Nov 29 12:49:28 PM CST 2025
+
+Comparando las salidas con y sin proyección, cuando recortamos sin
+projección se mocha una buena parte porque forza la esquina izquierda
+superior a que exista y tiene que poner una parte del globo. Un mejor
+algoritmo sería calcular las esquinas en coordenadas geoestacionarias,
+las que sí están en el mapa, como la inferior izquierda y la superior
+derecha y con ellas asignar la esquina superior izquierda.
+
