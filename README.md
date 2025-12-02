@@ -30,13 +30,14 @@ HPSATVIEWS es una aplicación de alto rendimiento controlada por línea de coman
   - Compatible con modos `truecolor` y `composite`
   - Implementación estándar siguiendo geo2grid/satpy
   - Corrección selectiva: aplica a C01 (Blue) y C02 (Red), pero NO a C03 (NIR)
-  - Tablas LUT precalculadas para interpolación trilineal rápida
+  - Tablas LUT embebidas en el ejecutable para máximo rendimiento (sin I/O en disco)
 - **Mejora de Histograma** - Optimización automática de contraste
 - **Corrección Gamma** - Control de luminosidad configurable (por defecto: 1.0, recomendado: 2.0 para visualización)
 - **Reproyección Geográfica** - Conversión de proyección geoestacionaria a malla lat/lon uniforme
 - **Recorte Geográfico** - Extracción de regiones de interés por coordenadas geográficas
   - Compatible con datos originales y reproyectados
   - Optimizado: recorta antes de reproyectar para máxima eficiencia
+  - Inferencia inteligente de esquinas cuando el dominio se extiende fuera del disco visible
 
 ### Rendimiento
 - ⚡ **Ultra rápido**: Procesamiento en fracciones de segundo
@@ -167,6 +168,7 @@ Genera compuestos RGB a partir de múltiples canales. El archivo de entrada pued
 - Coordenadas en grados decimales
 - Longitud oeste es negativa
 - Ejemplo: CONUS central: `--clip -107.23 22.72 -93.84 14.94`
+- **Nota**: Para dominios amplios que se extienden más allá del disco visible del satélite, las esquinas fuera del disco se infieren automáticamente usando geometría rectangular, garantizando recortes precisos incluso cuando parte del dominio no es visible desde el satélite
 
 **Opciones adicionales:**
 - `--rayleigh` - Aplicar corrección atmosférica de Rayleigh (solo modos truecolor/composite)
@@ -205,10 +207,10 @@ hpsatviews/
 ├── 🎨 rgb.h/.c           # Generación de compuestos RGB
 ├── 🌅 truecolor_rgb.c    # Generación de imágenes RGB true color
 ├── ☁️ rayleigh.h/.c       # Corrección atmosférica de Rayleigh
+├── 📦 rayleigh_lut_embedded.h/.c # LUTs de Rayleigh embebidas (C01, C02, C03)
 ├── 🌙 nocturnal_pseudocolor.c # Imágenes infrarrojas nocturnas
 ├── 🌗 daynight_mask.c    # Cálculo de máscara día/noche
 ├── ⚙️ args.h/.c          # Procesamiento de argumentos
-├── 📁 rayleigh_lut_C*.bin # Tablas LUT precalculadas (C01, C02)
 └── 📖 README.md          # Este archivo
 ```
 
@@ -379,10 +381,11 @@ compute_satellite_angles_nc("OR_ABI-L1b-RadF-M6C01_G19_s2025....nc",
 DataF raa;  // Relative Azimuth Angle
 compute_relative_azimuth(&saa, &vaa, &raa);
 
-// 5. Aplicar corrección atmosférica de Rayleigh (cuando esté disponible la LUT)
-// RayleighLUT lut = rayleigh_lut_load("rayleigh_lut_C01.bin");
-// apply_rayleigh_correction(&reflectance_image, &sza, &vza, &raa, &lut);
-// rayleigh_lut_destroy(&lut);
+// 5. Aplicar corrección atmosférica de Rayleigh
+// Las LUTs están embebidas en el ejecutable, se cargan automáticamente
+RayleighLUT lut = rayleigh_lut_load("rayleigh_lut_C01.bin");  // Detecta C01/C02/C03 automáticamente
+apply_rayleigh_correction(&reflectance_image, &sza, &vza, &raa, &lut);
+rayleigh_lut_destroy(&lut);
 
 // Liberar memoria
 dataf_destroy(&navla);
