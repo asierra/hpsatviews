@@ -165,9 +165,82 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
                 ix_end = (int)(((clip_lon_max - navlo.fmin) / lon_range) * imout.width);
                 iy_end = (int)(((navla.fmax - clip_lat_min) / lat_range) * imout.height);
             } else {
-                // Caso original: usar búsqueda de píxeles
-                reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_max, clip_lon_min, &ix_start, &iy_start);
-                reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_min, clip_lon_max, &ix_end, &iy_end);
+                // Caso original: usar búsqueda de píxeles con inferencia de esquinas
+                // Buscar las 4 esquinas del dominio
+                int ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br;
+                reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_max, clip_lon_min, &ix_tl, &iy_tl);
+                reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_max, clip_lon_max, &ix_tr, &iy_tr);
+                reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_min, clip_lon_min, &ix_bl, &iy_bl);
+                reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_min, clip_lon_max, &ix_br, &iy_br);
+                
+                LOG_DEBUG("Píxeles de las esquinas (raw): TL(%d,%d), TR(%d,%d), BL(%d,%d), BR(%d,%d)", 
+                          ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br);
+                
+                // Inferir esquinas inválidas usando función de rgb.c
+                // Nota: La función infer_missing_corners está en rgb.c como static,
+                // así que replicamos la lógica simplificada aquí
+                bool ul_invalid = (ix_tl < 0 || iy_tl < 0);
+                bool ur_invalid = (ix_tr < 0 || iy_tr < 0);
+                bool ll_invalid = (ix_bl < 0 || iy_bl < 0);
+                bool lr_invalid = (ix_br < 0 || iy_br < 0);
+                
+                int valid_count = 4 - (ul_invalid + ur_invalid + ll_invalid + lr_invalid);
+                
+                if (valid_count >= 2) {
+                    // Inferir esquinas inválidas
+                    if (ul_invalid && !ll_invalid && !ur_invalid) {
+                        ix_tl = ix_bl;
+                        iy_tl = iy_tr;
+                        LOG_INFO("Esquina UL inferida desde LL y UR: (%d, %d)", ix_tl, iy_tl);
+                    }
+                    if (ur_invalid && !ul_invalid && !lr_invalid) {
+                        ix_tr = ix_br;
+                        iy_tr = iy_tl;
+                        LOG_INFO("Esquina UR inferida desde UL y LR: (%d, %d)", ix_tr, iy_tr);
+                    }
+                    if (ll_invalid && !ul_invalid && !lr_invalid) {
+                        ix_bl = ix_tl;
+                        iy_bl = iy_br;
+                        LOG_INFO("Esquina LL inferida desde UL y LR: (%d, %d)", ix_bl, iy_bl);
+                    }
+                    if (lr_invalid && !ur_invalid && !ll_invalid) {
+                        ix_br = ix_tr;
+                        iy_br = iy_bl;
+                        LOG_INFO("Esquina LR inferida desde UR y LL: (%d, %d)", ix_br, iy_br);
+                    }
+                    
+                    // Calcular bounding box
+                    int min_ix = ix_tl;
+                    if (ix_tr < min_ix) min_ix = ix_tr;
+                    if (ix_bl < min_ix) min_ix = ix_bl;
+                    if (ix_br < min_ix) min_ix = ix_br;
+                    
+                    int max_ix = ix_tl;
+                    if (ix_tr > max_ix) max_ix = ix_tr;
+                    if (ix_bl > max_ix) max_ix = ix_bl;
+                    if (ix_br > max_ix) max_ix = ix_br;
+                    
+                    int min_iy = iy_tl;
+                    if (iy_tr < min_iy) min_iy = iy_tr;
+                    if (iy_bl < min_iy) min_iy = iy_bl;
+                    if (iy_br < min_iy) min_iy = iy_br;
+                    
+                    int max_iy = iy_tl;
+                    if (iy_tr > max_iy) max_iy = iy_tr;
+                    if (iy_bl > max_iy) max_iy = iy_bl;
+                    if (iy_br > max_iy) max_iy = iy_br;
+                    
+                    ix_start = (min_ix >= 0) ? min_ix : 0;
+                    iy_start = (min_iy >= 0) ? min_iy : 0;
+                    ix_end = max_ix;
+                    iy_end = max_iy;
+                } else {
+                    LOG_ERROR("Dominio de clip fuera del disco visible (solo %d esquinas válidas). Ignorando --clip.", valid_count);
+                    ix_start = 0;
+                    iy_start = 0;
+                    ix_end = imout.width;
+                    iy_end = imout.height;
+                }
             }
 
             unsigned int crop_width = (ix_end > ix_start) ? (ix_end - ix_start) : 0;

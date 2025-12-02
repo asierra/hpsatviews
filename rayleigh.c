@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include <omp.h>
 #include "datanc.h"
 #include "logger.h"
 #include "rayleigh.h"
+#include "rayleigh_lut_embedded.h"
 
 /**
  * Realiza una interpolación trilineal rápida sobre la LUT.
@@ -209,6 +211,85 @@ void apply_rayleigh_correction(DataF *img, const DataF *sza, const DataF *vza, c
 }
 
 /**
+ * Carga una LUT de Rayleigh desde datos embebidos en memoria.
+ * 
+ * Formato del archivo:
+ * - Header (48 bytes): 9 floats (min, max, step) + 3 ints (dimensiones)
+ * - Data: Array 3D float32 [sza][vza][azimuth]
+ * 
+ * @param data Puntero a los datos binarios embebidos
+ * @param data_len Longitud de los datos en bytes
+ * @param name Nombre descriptivo para logs (ej: "C01")
+ * @return Estructura RayleighLUT cargada (table será NULL si falla)
+ */
+static RayleighLUT rayleigh_lut_load_from_memory(const unsigned char *data, unsigned int data_len, const char *name) {
+    RayleighLUT lut = {0};
+    
+    if (!data || data_len < 48) {
+        LOG_ERROR("Datos embebidos inválidos para LUT %s", name);
+        return lut;
+    }
+    
+    // Copiar datos a un buffer para leer el header
+    const unsigned char *ptr = data;
+    
+    // Leer header (48 bytes: 9 floats + 3 ints)
+    memcpy(&lut.sz_min, ptr, sizeof(float)); ptr += sizeof(float);
+    memcpy(&lut.sz_max, ptr, sizeof(float)); ptr += sizeof(float);
+    memcpy(&lut.sz_step, ptr, sizeof(float)); ptr += sizeof(float);
+    memcpy(&lut.vz_min, ptr, sizeof(float)); ptr += sizeof(float);
+    memcpy(&lut.vz_max, ptr, sizeof(float)); ptr += sizeof(float);
+    memcpy(&lut.vz_step, ptr, sizeof(float)); ptr += sizeof(float);
+    memcpy(&lut.az_min, ptr, sizeof(float)); ptr += sizeof(float);
+    memcpy(&lut.az_max, ptr, sizeof(float)); ptr += sizeof(float);
+    memcpy(&lut.az_step, ptr, sizeof(float)); ptr += sizeof(float);
+    memcpy(&lut.n_sz, ptr, sizeof(int)); ptr += sizeof(int);
+    memcpy(&lut.n_vz, ptr, sizeof(int)); ptr += sizeof(int);
+    memcpy(&lut.n_az, ptr, sizeof(int)); ptr += sizeof(int);
+    
+    // Validar dimensiones
+    if (lut.n_sz <= 0 || lut.n_vz <= 0 || lut.n_az <= 0 ||
+        lut.n_sz > 1000 || lut.n_vz > 1000 || lut.n_az > 1000) {
+        LOG_ERROR("Dimensiones inválidas en LUT %s: %dx%dx%d", name, lut.n_sz, lut.n_vz, lut.n_az);
+        lut.n_sz = lut.n_vz = lut.n_az = 0;
+        return lut;
+    }
+    
+    // Alocar memoria para la tabla
+    size_t table_size = (size_t)lut.n_sz * lut.n_vz * lut.n_az;
+    size_t expected_size = 48 + table_size * sizeof(float);
+    
+    if (data_len != expected_size) {
+        LOG_ERROR("Tamaño de datos embebidos incorrecto para LUT %s: esperado %zu, obtenido %u", 
+                  name, expected_size, data_len);
+        lut.n_sz = lut.n_vz = lut.n_az = 0;
+        return lut;
+    }
+    
+    lut.table = malloc(table_size * sizeof(float));
+    if (!lut.table) {
+        LOG_ERROR("Falla de memoria al alocar LUT %s (%zu valores)", name, table_size);
+        lut.n_sz = lut.n_vz = lut.n_az = 0;
+        return lut;
+    }
+    
+    // Copiar datos de la tabla
+    memcpy(lut.table, ptr, table_size * sizeof(float));
+    
+    LOG_INFO("LUT de Rayleigh %s cargada desde datos embebidos", name);
+    LOG_INFO("  Dimensiones: %d × %d × %d = %zu valores", 
+             lut.n_sz, lut.n_vz, lut.n_az, table_size);
+    LOG_INFO("  Solar Zenith: %.1f° - %.1f° (step: %.2f°)", 
+             lut.sz_min, lut.sz_max, lut.sz_step);
+    LOG_INFO("  View Zenith: %.1f° - %.1f° (step: %.2f°)", 
+             lut.vz_min, lut.vz_max, lut.vz_step);
+    LOG_INFO("  Azimuth: %.0f° - %.0f° (step: %.1f°)", 
+             lut.az_min, lut.az_max, lut.az_step);
+    
+    return lut;
+}
+
+/**
  * Carga una LUT de Rayleigh desde un archivo binario.
  * 
  * Formato del archivo:
@@ -221,6 +302,16 @@ void apply_rayleigh_correction(DataF *img, const DataF *sza, const DataF *vza, c
 RayleighLUT rayleigh_lut_load(const char *filename) {
     RayleighLUT lut = {0};
     
+    // Determinar qué LUT embebida usar basándose en el nombre del archivo
+    if (strstr(filename, "C01") || strstr(filename, "c01")) {
+        return rayleigh_lut_load_from_memory(rayleigh_lut_C01_bin, rayleigh_lut_C01_bin_len, "C01");
+    } else if (strstr(filename, "C02") || strstr(filename, "c02")) {
+        return rayleigh_lut_load_from_memory(rayleigh_lut_C02_bin, rayleigh_lut_C02_bin_len, "C02");
+    } else if (strstr(filename, "C03") || strstr(filename, "c03")) {
+        return rayleigh_lut_load_from_memory(rayleigh_lut_C03_bin, rayleigh_lut_C03_bin_len, "C03");
+    }
+    
+    // Fallback: intentar cargar desde archivo (para compatibilidad)
     FILE *f = fopen(filename, "rb");
     if (!f) {
         LOG_ERROR("No se pudo abrir LUT de Rayleigh: %s", filename);

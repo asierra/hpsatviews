@@ -201,6 +201,160 @@ int find_channel_filenames(const char *dirnm, ChannelSet* channelset, bool is_l2
 }
 
 /**
+ * @brief Infiere coordenadas de esquinas inválidas a partir de esquinas válidas.
+ * 
+ * Cuando una región de clip es muy amplia y alguna esquina queda fuera del disco
+ * visible del satélite, esta función usa geometría rectangular para estimar las
+ * coordenadas geoestacionarias (píxeles) de las esquinas faltantes a partir de
+ * las esquinas válidas.
+ * 
+ * Geometría: En un dominio rectangular (lat/lon), las esquinas comparten coordenadas:
+ *   - UL y LL comparten la misma columna X (misma longitud)
+ *   - UL y UR comparten la misma fila Y (misma latitud)
+ *   - UR y LR comparten la misma columna X
+ *   - LL y LR comparten la misma fila Y
+ * 
+ * @param ix_tl, iy_tl [in/out] Coords Upper Left
+ * @param ix_tr, iy_tr [in/out] Coords Upper Right
+ * @param ix_bl, iy_bl [in/out] Coords Lower Left
+ * @param ix_br, iy_br [in/out] Coords Lower Right
+ * @return Número de esquinas que fueron inferidas (0-4), o -1 si el dominio está completamente fuera
+ */
+static int infer_missing_corners(int* ix_tl, int* iy_tl,
+                                 int* ix_tr, int* iy_tr,
+                                 int* ix_bl, int* iy_bl,
+                                 int* ix_br, int* iy_br) {
+    // Identificar esquinas inválidas
+    bool ul_invalid = (*ix_tl < 0 || *iy_tl < 0);
+    bool ur_invalid = (*ix_tr < 0 || *iy_tr < 0);
+    bool ll_invalid = (*ix_bl < 0 || *iy_bl < 0);
+    bool lr_invalid = (*ix_br < 0 || *iy_br < 0);
+    
+    int valid_count = 4 - (ul_invalid + ur_invalid + ll_invalid + lr_invalid);
+    int inferred = 0;
+    
+    // Si tenemos menos de 2 esquinas válidas, el dominio está fuera del disco
+    if (valid_count < 2) {
+        LOG_ERROR("Dominio de clip completamente fuera del disco visible (solo %d esquinas válidas)", valid_count);
+        return -1;
+    }
+    
+    // Si todas las esquinas son válidas, no hay nada que inferir
+    if (valid_count == 4) {
+        return 0;
+    }
+    
+    LOG_INFO("Inferencia de esquinas: %d válidas, %d inválidas", valid_count, 4 - valid_count);
+    
+    // Inferir Upper Left (UL)
+    if (ul_invalid) {
+        if (!ll_invalid && !ur_invalid) {
+            // Caso ideal: LL y UR válidas
+            *ix_tl = *ix_bl;  // Misma columna que LL (misma longitud)
+            *iy_tl = *iy_tr;  // Misma fila que UR (misma latitud)
+            LOG_INFO("  UL inferida desde LL y UR: (%d, %d)", *ix_tl, *iy_tl);
+            inferred++;
+        } else if (!ll_invalid && !lr_invalid) {
+            // LL y LR válidas: usar columna de LL y estimar fila desde LR
+            *ix_tl = *ix_bl;
+            // Calcular offset vertical aproximado (asumiendo rectángulo)
+            int delta_x = *ix_br - *ix_bl;
+            if (delta_x > 0) {
+                // Proporción aproximada para mantener aspecto rectangular
+                *iy_tl = *iy_bl - abs(*iy_br - *iy_bl);
+            } else {
+                *iy_tl = *iy_bl;
+            }
+            LOG_INFO("  UL inferida desde LL y LR: (%d, %d)", *ix_tl, *iy_tl);
+            inferred++;
+        } else if (!ur_invalid && !lr_invalid) {
+            // UR y LR válidas: usar fila de UR y columna estimada desde LR
+            *iy_tl = *iy_tr;
+            int delta_y = *iy_br - *iy_tr;
+            if (delta_y > 0) {
+                *ix_tl = *ix_tr - abs(*ix_br - *ix_tr);
+            } else {
+                *ix_tl = *ix_tr;
+            }
+            LOG_INFO("  UL inferida desde UR y LR: (%d, %d)", *ix_tl, *iy_tl);
+            inferred++;
+        }
+    }
+    
+    // Inferir Upper Right (UR)
+    if (ur_invalid) {
+        if (!ul_invalid && !lr_invalid) {
+            *ix_tr = *ix_br;  // Misma columna que LR
+            *iy_tr = *iy_tl;  // Misma fila que UL
+            LOG_INFO("  UR inferida desde UL y LR: (%d, %d)", *ix_tr, *iy_tr);
+            inferred++;
+        } else if (!ul_invalid && !ll_invalid) {
+            *iy_tr = *iy_tl;
+            int delta_y = *iy_bl - *iy_tl;
+            if (delta_y > 0) {
+                *ix_tr = *ix_tl + abs(*ix_bl - *ix_tl);
+            } else {
+                *ix_tr = *ix_tl;
+            }
+            LOG_INFO("  UR inferida desde UL y LL: (%d, %d)", *ix_tr, *iy_tr);
+            inferred++;
+        } else if (!ll_invalid && !lr_invalid) {
+            *ix_tr = *ix_br;
+            int delta_x = *ix_br - *ix_bl;
+            if (delta_x > 0) {
+                *iy_tr = *iy_bl - abs(*iy_br - *iy_bl);
+            } else {
+                *iy_tr = *iy_bl;
+            }
+            LOG_INFO("  UR inferida desde LL y LR: (%d, %d)", *ix_tr, *iy_tr);
+            inferred++;
+        }
+    }
+    
+    // Inferir Lower Left (LL)
+    if (ll_invalid) {
+        if (!ul_invalid && !lr_invalid) {
+            *ix_bl = *ix_tl;  // Misma columna que UL
+            *iy_bl = *iy_br;  // Misma fila que LR
+            LOG_INFO("  LL inferida desde UL y LR: (%d, %d)", *ix_bl, *iy_bl);
+            inferred++;
+        } else if (!ul_invalid && !ur_invalid) {
+            *iy_bl = *iy_tl + abs(*iy_tr - *iy_tl);
+            *ix_bl = *ix_tl;
+            LOG_INFO("  LL inferida desde UL y UR: (%d, %d)", *ix_bl, *iy_bl);
+            inferred++;
+        } else if (!ur_invalid && !lr_invalid) {
+            *ix_bl = *ix_br - abs(*ix_tr - *ix_br);
+            *iy_bl = *iy_br;
+            LOG_INFO("  LL inferida desde UR y LR: (%d, %d)", *ix_bl, *iy_bl);
+            inferred++;
+        }
+    }
+    
+    // Inferir Lower Right (LR)
+    if (lr_invalid) {
+        if (!ur_invalid && !ll_invalid) {
+            *ix_br = *ix_tr;  // Misma columna que UR
+            *iy_br = *iy_bl;  // Misma fila que LL
+            LOG_INFO("  LR inferida desde UR y LL: (%d, %d)", *ix_br, *iy_br);
+            inferred++;
+        } else if (!ul_invalid && !ur_invalid) {
+            *ix_br = *ix_tr;
+            *iy_br = *iy_tl + abs(*iy_tr - *iy_tl);
+            LOG_INFO("  LR inferida desde UL y UR: (%d, %d)", *ix_br, *iy_br);
+            inferred++;
+        } else if (!ul_invalid && !ll_invalid) {
+            *ix_br = *ix_tl + abs(*ix_bl - *ix_tl);
+            *iy_br = *iy_bl;
+            LOG_INFO("  LR inferida desde UL y LL: (%d, %d)", *ix_br, *iy_br);
+            inferred++;
+        }
+    }
+    
+    return inferred;
+}
+
+/**
  * @brief Calcula el bounding box que contiene las 4 esquinas de un área de recorte.
  * 
  * @param ix_tl, iy_tl Coordenadas de la esquina superior izquierda
@@ -365,12 +519,27 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
         reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_min, clip_lon_min, &ix_bl, &iy_bl);
         reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_min, clip_lon_max, &ix_br, &iy_br);
 
-        LOG_DEBUG("Píxeles pre-reproj: TL(%d,%d), TR(%d,%d), BL(%d,%d), BR(%d,%d)", 
+        LOG_DEBUG("Píxeles pre-reproj (raw): TL(%d,%d), TR(%d,%d), BL(%d,%d), BR(%d,%d)", 
                   ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br);
 
-        // Calcular bounding box usando función auxiliar
-        calculate_bounding_box(ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br,
-                               &clip_x_start, &clip_y_start, &clip_width, &clip_height);
+        // Inferir esquinas inválidas (si alguna quedó fuera del disco visible)
+        int inferred_count = infer_missing_corners(&ix_tl, &iy_tl, &ix_tr, &iy_tr,
+                                                   &ix_bl, &iy_bl, &ix_br, &iy_br);
+        if (inferred_count < 0) {
+            LOG_ERROR("Dominio de clip fuera del disco visible. Ignorando --clip para este paso.");
+            // Continuar sin recortar estableciendo dimensiones a cero
+            clip_width = 0;
+            clip_height = 0;
+        } else {
+            if (inferred_count > 0) {
+                LOG_INFO("Inferidas %d esquinas. Píxeles finales: TL(%d,%d), TR(%d,%d), BL(%d,%d), BR(%d,%d)",
+                         inferred_count, ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br);
+            }
+            
+            // Calcular bounding box usando función auxiliar
+            calculate_bounding_box(ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br,
+                                   &clip_x_start, &clip_y_start, &clip_width, &clip_height);
+        }
 
         LOG_INFO("Recortando datos pre-reproyección: start[%u, %u], size[%u, %u]", 
                  clip_x_start, clip_y_start, clip_width, clip_height);
@@ -552,13 +721,28 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
             reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_min, clip_lon_min, &ix_bl, &iy_bl);
             reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_min, clip_lon_max, &ix_br, &iy_br);
 
-            LOG_DEBUG("Píxeles de las esquinas: TL(%d,%d), TR(%d,%d), BL(%d,%d), BR(%d,%d)", 
+            LOG_DEBUG("Píxeles de las esquinas (raw): TL(%d,%d), TR(%d,%d), BL(%d,%d), BR(%d,%d)", 
                       ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br);
 
-            // Calcular bounding box usando función auxiliar
-            unsigned int x_start, y_start, crop_width, crop_height;
-            calculate_bounding_box(ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br,
-                                   &x_start, &y_start, &crop_width, &crop_height);
+            // Inferir esquinas inválidas (si alguna quedó fuera del disco visible)
+            int inferred_count = infer_missing_corners(&ix_tl, &iy_tl, &ix_tr, &iy_tr,
+                                                       &ix_bl, &iy_bl, &ix_br, &iy_br);
+            
+            unsigned int x_start = 0, y_start = 0, crop_width = 0, crop_height = 0;
+            
+            if (inferred_count < 0) {
+                LOG_WARN("Dominio de clip fuera del disco. Ignorando recorte POST-procesamiento.");
+                // No recortar: crop_width y crop_height quedan en 0
+            } else {
+                if (inferred_count > 0) {
+                    LOG_INFO("Inferidas %d esquinas para recorte POST. Coords finales: TL(%d,%d), TR(%d,%d), BL(%d,%d), BR(%d,%d)",
+                             inferred_count, ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br);
+                }
+                
+                // Calcular bounding box usando función auxiliar
+                calculate_bounding_box(ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br,
+                                       &x_start, &y_start, &crop_width, &crop_height);
+            }
 
             LOG_INFO("Dimensiones de recorte en píxeles: start[%u, %u], size[%u, %u]", 
                      x_start, y_start, crop_width, crop_height);
