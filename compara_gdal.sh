@@ -17,6 +17,9 @@ rm -f a2_sp_gdal.tif a2_rp_gdal.tif a2_sp_gdal.png a2_rp_gdal.png
     --clip -126.7976178202817 38.2939198810346 -78.4256323272443 9.6021231973635 \
     -o a2_sp_hpsv.png \
     "$DATASET"
+    
+mapdrawer --bounds -126.7976178202817 38.2939198810346 -78.4256323272443 9.6021231973635 \
+    --layer COASTLINE:cyan:0.5  --crs goes16 a2_sp_hpsv.png
 
 # 1. Crear GeoTIFF recortado (Proyección nativa GOES preservada)
 gdalwarp \
@@ -50,7 +53,10 @@ gdal_translate \
     --clip -126.7976178202817 38.2939198810346 -78.4256323272443 9.6021231973635 \
     -o a2_rp_hpsv.png \
     "$DATASET"
-
+    
+mapdrawer --bounds -126.7976178202817 38.2939198810346 -78.4256323272443 9.6021231973635 \
+    --layer COASTLINE:cyan:0.5  a2_rp_hpsv.png
+    
 # 1. Crear GeoTIFF reproyectado a EPSG:4326
 gdalwarp \
     -t_srs EPSG:4326 \
@@ -69,6 +75,6 @@ gdal_rasterize \
 # 3. Convertir a PNG para visualización
 gdal_translate \
     -of PNG \
-    -scale 0 100 0 255 \
+    -scale 0 5 0 255 \
     a2_rp_gdal.tif \
     a2_rp_gdal.png
