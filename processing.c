@@ -18,6 +18,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <limits.h>
 
 ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha, const CPTData* cpt);
 ImageData create_single_grayb(DataB c01, bool invert_value, bool use_alpha, const CPTData* cpt);
@@ -54,13 +55,40 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
 
     char* out_filename_generated = NULL;
     const char* outfn;
+    
+    // Primero necesitamos saber si hay reproyección para el nombre de archivo
+    do_reprojection = ap_found(parser, "geographics");
 
     if (ap_found(parser, "out")) {
         outfn = ap_get_str_value(parser, "out");
     } else {
         // Generar nombre de archivo por defecto si no fue proporcionado
         const char* mode_name = is_pseudocolor ? "pseudocolor" : "singlegray";
-        out_filename_generated = generate_default_output_filename(fnc01, mode_name, ".png");
+        char* base_filename = generate_default_output_filename(fnc01, mode_name, ".png");
+        
+        // Si hay reproyección, agregar sufijo _geo antes de la extensión
+        if (do_reprojection && base_filename) {
+            char* dot = strrchr(base_filename, '.');
+            if (dot) {
+                size_t prefix_len = dot - base_filename;
+                size_t total_len = strlen(base_filename) + 5;
+                out_filename_generated = (char*)malloc(total_len);
+                if (out_filename_generated) {
+                    strncpy(out_filename_generated, base_filename, prefix_len);
+                    out_filename_generated[prefix_len] = '\0';
+                    strcat(out_filename_generated, "_geo");
+                    strcat(out_filename_generated, dot);
+                    free(base_filename);
+                } else {
+                    out_filename_generated = base_filename;
+                }
+            } else {
+                out_filename_generated = base_filename;
+            }
+        } else {
+            out_filename_generated = base_filename;
+        }
+        
         outfn = out_filename_generated;
     }
 
@@ -68,7 +96,6 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     invert_values = ap_found(parser, "invert");
     apply_histogram = ap_found(parser, "histo");
     use_alpha = ap_found(parser, "alpha");
-    do_reprojection = ap_found(parser, "geographics");
     gamma = ap_get_dbl_value(parser, "gamma");
     scale = ap_get_int_value(parser, "scale");
 
@@ -100,12 +127,79 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         return -1;
     }
 
+    // Variables para navegación y recorte PRE-reproyección
+    DataF navla, navlo;
+    bool has_clip = false;
+    bool nav_loaded = false;
+    float clip_lon_min = 0, clip_lat_max = 0, clip_lon_max = 0, clip_lat_min = 0;
+    
+    // Si hay clip, cargar navegación primero
+    if (ap_found(parser, "clip") && ap_count(parser, "clip") == 4) {
+        clip_lon_min = atof(ap_get_str_value_at_index(parser, "clip", 0));
+        clip_lat_max = atof(ap_get_str_value_at_index(parser, "clip", 1));
+        clip_lon_max = atof(ap_get_str_value_at_index(parser, "clip", 2));
+        clip_lat_min = atof(ap_get_str_value_at_index(parser, "clip", 3));
+        has_clip = true;
+        
+        if (compute_navigation_nc(fnc01, &navla, &navlo) == 0) {
+            nav_loaded = true;
+        } else {
+            LOG_WARN("No se pudo cargar la navegación para el recorte. Ignorando --clip.");
+            has_clip = false;
+        }
+    }
+
     ImageData imout;
 
     if (c01.is_float) {
         // --- RUTA PARA DATOS FLOAT ---
+        
+        // Si tenemos clip + reprojection, hacer clip PRE-reproyección
+        if (do_reprojection && has_clip && nav_loaded) {
+            // Hacer recorte en proyección nativa PRIMERO
+            LOG_INFO("Aplicando recorte PRE-reproyección: lon[%.3f, %.3f], lat[%.3f, %.3f]",
+                     clip_lon_min, clip_lon_max, clip_lat_min, clip_lat_max);
+            
+            // Usar función compartida de muestreo denso
+            int clip_x_start, clip_y_start, clip_width, clip_height;
+            int valid_samples = reprojection_find_bounding_box(&navla, &navlo,
+                                                                 clip_lon_min, clip_lat_max,
+                                                                 clip_lon_max, clip_lat_min,
+                                                                 &clip_x_start, &clip_y_start,
+                                                                 &clip_width, &clip_height);
+            
+            // Recortar datos y navegación
+            if (valid_samples >= 4 && clip_width > 0 && clip_height > 0) {
+                DataF clipped_data = dataf_crop(&c01.fdata, clip_x_start, clip_y_start, clip_width, clip_height);
+                DataF clipped_navla = dataf_crop(&navla, clip_x_start, clip_y_start, clip_width, clip_height);
+                DataF clipped_navlo = dataf_crop(&navlo, clip_x_start, clip_y_start, clip_width, clip_height);
+                
+                dataf_destroy(&c01.fdata);
+                dataf_destroy(&navla);
+                dataf_destroy(&navlo);
+                
+                c01.fdata = clipped_data;
+                navla = clipped_navla;
+                navlo = clipped_navlo;
+                
+                LOG_INFO("Recorte PRE-reproyección: [%d,%d] size %dx%d (desde %d muestras válidas)", 
+                         clip_x_start, clip_y_start, clip_width, clip_height, valid_samples);
+            }
+        }
+        
         if (do_reprojection) {
-            DataF reprojected_data = reproject_to_geographics(&c01.fdata, fnc01, NULL, NULL, NULL, NULL);
+            DataF reprojected_data;
+            if (has_clip && nav_loaded) {
+                // Usar navegación ya recortada
+                reprojected_data = reproject_to_geographics_with_nav(&c01.fdata, &navla, &navlo,
+                                                                      c01.native_resolution_km,
+                                                                      NULL, NULL, NULL, NULL);
+            } else {
+                // Reproyectar todo el dataset
+                reprojected_data = reproject_to_geographics(&c01.fdata, fnc01, 
+                                                             c01.native_resolution_km,
+                                                             NULL, NULL, NULL, NULL);
+            }
             if (reprojected_data.data_in) {
                 dataf_destroy(&c01.fdata);
                 c01.fdata = reprojected_data;
@@ -134,123 +228,75 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     if (gamma != 1.0) image_apply_gamma(imout, gamma);
     if (apply_histogram) image_apply_histogram(imout);
 
-    // --- LÓGICA DE RECORTE ---
-    if (ap_found(parser, "clip")) {
-        DataF navla, navlo;
-        bool nav_loaded = false;
-        if (ap_count(parser, "clip") == 4) {
-            // Cargar navegación solo si es necesario
-            if (compute_navigation_nc(fnc01, &navla, &navlo) == 0) {
-                nav_loaded = true;
-            } else {
-                LOG_WARN("No se pudo cargar la navegación para el recorte. Ignorando --clip.");
-            }
-        }
-
-        if (nav_loaded) {
-            float clip_lon_min = atof(ap_get_str_value_at_index(parser, "clip", 0));
-            float clip_lat_max = atof(ap_get_str_value_at_index(parser, "clip", 1));
-            float clip_lon_max = atof(ap_get_str_value_at_index(parser, "clip", 2));
-            float clip_lat_min = atof(ap_get_str_value_at_index(parser, "clip", 3));
-
-            LOG_INFO("Aplicando recorte geográfico: lon[%.3f, %.3f], lat[%.3f, %.3f]", clip_lon_min, clip_lon_max, clip_lat_min, clip_lat_max);
-
-            int ix_start, iy_start, ix_end, iy_end;
-            if (do_reprojection) {
-                // Caso reproyectado: usar interpolación lineal
-                float lon_range = navlo.fmax - navlo.fmin;
-                float lat_range = navla.fmax - navla.fmin;
-                ix_start = (int)(((clip_lon_min - navlo.fmin) / lon_range) * imout.width);
-                iy_start = (int)(((navla.fmax - clip_lat_max) / lat_range) * imout.height);
-                ix_end = (int)(((clip_lon_max - navlo.fmin) / lon_range) * imout.width);
-                iy_end = (int)(((navla.fmax - clip_lat_min) / lat_range) * imout.height);
-            } else {
-                // Caso original: usar búsqueda de píxeles con inferencia de esquinas
-                // Buscar las 4 esquinas del dominio
-                int ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br;
-                reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_max, clip_lon_min, &ix_tl, &iy_tl);
-                reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_max, clip_lon_max, &ix_tr, &iy_tr);
-                reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_min, clip_lon_min, &ix_bl, &iy_bl);
-                reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_min, clip_lon_max, &ix_br, &iy_br);
-                
-                LOG_DEBUG("Píxeles de las esquinas (raw): TL(%d,%d), TR(%d,%d), BL(%d,%d), BR(%d,%d)", 
-                          ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br);
-                
-                // Inferir esquinas inválidas usando función de rgb.c
-                // Nota: La función infer_missing_corners está en rgb.c como static,
-                // así que replicamos la lógica simplificada aquí
-                bool ul_invalid = (ix_tl < 0 || iy_tl < 0);
-                bool ur_invalid = (ix_tr < 0 || iy_tr < 0);
-                bool ll_invalid = (ix_bl < 0 || iy_bl < 0);
-                bool lr_invalid = (ix_br < 0 || iy_br < 0);
-                
-                int valid_count = 4 - (ul_invalid + ur_invalid + ll_invalid + lr_invalid);
-                
-                if (valid_count >= 2) {
-                    // Inferir esquinas inválidas
-                    if (ul_invalid && !ll_invalid && !ur_invalid) {
-                        ix_tl = ix_bl;
-                        iy_tl = iy_tr;
-                        LOG_INFO("Esquina UL inferida desde LL y UR: (%d, %d)", ix_tl, iy_tl);
-                    }
-                    if (ur_invalid && !ul_invalid && !lr_invalid) {
-                        ix_tr = ix_br;
-                        iy_tr = iy_tl;
-                        LOG_INFO("Esquina UR inferida desde UL y LR: (%d, %d)", ix_tr, iy_tr);
-                    }
-                    if (ll_invalid && !ul_invalid && !lr_invalid) {
-                        ix_bl = ix_tl;
-                        iy_bl = iy_br;
-                        LOG_INFO("Esquina LL inferida desde UL y LR: (%d, %d)", ix_bl, iy_bl);
-                    }
-                    if (lr_invalid && !ur_invalid && !ll_invalid) {
-                        ix_br = ix_tr;
-                        iy_br = iy_bl;
-                        LOG_INFO("Esquina LR inferida desde UR y LL: (%d, %d)", ix_br, iy_br);
-                    }
-                    
-                    // Calcular bounding box
-                    int min_ix = ix_tl;
-                    if (ix_tr < min_ix) min_ix = ix_tr;
-                    if (ix_bl < min_ix) min_ix = ix_bl;
-                    if (ix_br < min_ix) min_ix = ix_br;
-                    
-                    int max_ix = ix_tl;
-                    if (ix_tr > max_ix) max_ix = ix_tr;
-                    if (ix_bl > max_ix) max_ix = ix_bl;
-                    if (ix_br > max_ix) max_ix = ix_br;
-                    
-                    int min_iy = iy_tl;
-                    if (iy_tr < min_iy) min_iy = iy_tr;
-                    if (iy_bl < min_iy) min_iy = iy_bl;
-                    if (iy_br < min_iy) min_iy = iy_br;
-                    
-                    int max_iy = iy_tl;
-                    if (iy_tr > max_iy) max_iy = iy_tr;
-                    if (iy_bl > max_iy) max_iy = iy_bl;
-                    if (iy_br > max_iy) max_iy = iy_br;
-                    
-                    ix_start = (min_ix >= 0) ? min_ix : 0;
-                    iy_start = (min_iy >= 0) ? min_iy : 0;
-                    ix_end = max_ix;
-                    iy_end = max_iy;
-                } else {
-                    LOG_ERROR("Dominio de clip fuera del disco visible (solo %d esquinas válidas). Ignorando --clip.", valid_count);
-                    ix_start = 0;
-                    iy_start = 0;
-                    ix_end = imout.width;
-                    iy_end = imout.height;
-                }
-            }
-
+    // --- LÓGICA DE RECORTE POST-procesamiento ---
+    if (has_clip && nav_loaded) {
+        if (do_reprojection) {
+            // POST-clip para reproyección: ajustar al dominio exacto solicitado
+            // La navegación recortada puede tener extensión ligeramente mayor
+            LOG_INFO("Aplicando POST-clip para ajustar a dominio exacto: lon[%.3f, %.3f], lat[%.3f, %.3f]",
+                     clip_lon_min, clip_lon_max, clip_lat_min, clip_lat_max);
+            
+            // Usar interpolación lineal en la malla reproyectada
+            float lon_range = navlo.fmax - navlo.fmin;
+            float lat_range = navla.fmax - navla.fmin;
+            
+            int ix_start = (int)(((clip_lon_min - navlo.fmin) / lon_range) * (float)imout.width);
+            int iy_start = (int)(((navla.fmax - clip_lat_max) / lat_range) * (float)imout.height);
+            int ix_end = (int)(((clip_lon_max - navlo.fmin) / lon_range) * (float)imout.width);
+            int iy_end = (int)(((navla.fmax - clip_lat_min) / lat_range) * (float)imout.height);
+            
+            // Asegurar que los índices estén dentro de los límites
+            if (ix_start < 0) ix_start = 0;
+            if (iy_start < 0) iy_start = 0;
+            if (ix_end > (int)imout.width) ix_end = imout.width;
+            if (iy_end > (int)imout.height) iy_end = imout.height;
+            
             unsigned int crop_width = (ix_end > ix_start) ? (ix_end - ix_start) : 0;
             unsigned int crop_height = (iy_end > iy_start) ? (iy_end - iy_start) : 0;
-            LOG_INFO("Dimensiones de recorte en píxeles: start[%u, %u], size[%u, %u]", ix_start, iy_start, crop_width, crop_height);
+            
+            LOG_INFO("POST-clip: start[%d, %d], size[%u, %u]", ix_start, iy_start, crop_width, crop_height);
+            
+            ImageData cropped_image = image_crop(&imout, ix_start, iy_start, crop_width, crop_height);
+            if (cropped_image.data) {
+                image_destroy(&imout);
+                imout = cropped_image;
+            }
+        } else {
+            // POST-clip para caso sin reproyección
+            LOG_INFO("Aplicando recorte POST-procesamiento: lon[%.3f, %.3f], lat[%.3f, %.3f]",
+                     clip_lon_min, clip_lon_max, clip_lat_min, clip_lat_max);
+
+            int ix_start, iy_start, crop_w, crop_h;
+            int valid_samples = reprojection_find_bounding_box(&navla, &navlo,
+                                                                 clip_lon_min, clip_lat_max,
+                                                                 clip_lon_max, clip_lat_min,
+                                                                 &ix_start, &iy_start,
+                                                                 &crop_w, &crop_h);
+            
+            unsigned int crop_width, crop_height;
+            if (valid_samples < 4) {
+                LOG_ERROR("Dominio de clip fuera del disco visible (solo %d muestras válidas). Ignorando --clip.", valid_samples);
+                crop_width = 0;
+                crop_height = 0;
+            } else {
+                crop_width = (unsigned int)crop_w;
+                crop_height = (unsigned int)crop_h;
+                LOG_INFO("Bounding box desde %d muestras válidas: start[%d, %d], size[%u, %u]", 
+                         valid_samples, ix_start, iy_start, crop_width, crop_height);
+            }
 
             ImageData cropped_image = image_crop(&imout, ix_start, iy_start, crop_width, crop_height);
-            if (cropped_image.data) { image_destroy(&imout); imout = cropped_image; }
+            if (cropped_image.data) {
+                image_destroy(&imout);
+                imout = cropped_image;
+            }
         }
-        dataf_destroy(&navla); dataf_destroy(&navlo);
+    }
+    
+    // Liberar navegación si fue cargada
+    if (nav_loaded) {
+        dataf_destroy(&navla);
+        dataf_destroy(&navlo);
     }
 
     if (is_pseudocolor && color_array) {

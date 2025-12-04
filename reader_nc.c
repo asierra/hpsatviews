@@ -47,6 +47,19 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
   LOG_INFO("NetCDF dimensions: %lux%lu (total: %lu)", width,
            height, total_size);
 
+  // Leer resolución espacial nativa del sensor (atributo global)
+  char spatial_res_str[128];
+  datanc->native_resolution_km = 0.0f; // Por defecto
+  if ((retval = nc_get_att_text(ncid, NC_GLOBAL, "spatial_resolution", spatial_res_str)) == NC_NOERR) {
+    spatial_res_str[127] = '\0'; // Asegurar terminación
+    // El atributo típicamente es algo como "1km at nadir" o "2km at nadir"
+    float res_val;
+    if (sscanf(spatial_res_str, "%fkm", &res_val) == 1) {
+      datanc->native_resolution_km = res_val;
+      LOG_INFO("Native sensor resolution: %.1f km", datanc->native_resolution_km);
+    }
+  }
+
   // Obtenemos el id de la variable
   int rad_varid;
   if ((retval = nc_inq_varid(ncid, variable, &rad_varid)))

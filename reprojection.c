@@ -10,6 +10,7 @@
 #include "reader_nc.h"
 #include "logger.h"
 #include <float.h>
+#include <limits.h>
 #include <stddef.h>
 #include <omp.h>
 #include <math.h>
@@ -20,12 +21,14 @@
  *
  * @param source_data La malla de datos de origen a reproyectar.
  * @param nav_reference_file Ruta a un archivo NetCDF para calcular la malla de navegación (lat/lon).
+ * @param native_resolution_km Resolución nativa del sensor en km (0 para usar default de 1 km).
  * @return Una nueva estructura DataF con los datos reproyectados y con huecos rellenados.
  *         El llamador es responsable de liberar esta estructura con dataf_destroy().
  *         Retorna una DataF vacía en caso de fallo. Los parámetros out_* contendrán los
  *         límites geográficos de la malla reproyectada.
  */
 DataF reproject_to_geographics(const DataF* source_data, const char* nav_reference_file,
+                               float native_resolution_km,
                                float* out_lon_min, float* out_lon_max,
                                float* out_lat_min, float* out_lat_max) {
     LOG_INFO("Iniciando reproyección a geográficas...");
@@ -37,6 +40,7 @@ DataF reproject_to_geographics(const DataF* source_data, const char* nav_referen
     }
     
     DataF result = reproject_to_geographics_with_nav(source_data, &navla, &navlo, 
+                                                      native_resolution_km,
                                                       out_lon_min, out_lon_max, 
                                                       out_lat_min, out_lat_max);
     
@@ -52,9 +56,11 @@ DataF reproject_to_geographics(const DataF* source_data, const char* nav_referen
  * @param source_data La malla de datos de origen a reproyectar.
  * @param navla Puntero a la malla de latitudes pre-calculada.
  * @param navlo Puntero a la malla de longitudes pre-calculada.
+ * @param native_resolution_km Resolución nativa del sensor en km (0 para usar default de 1 km).
  * @return Una nueva estructura DataF con los datos reproyectados y con huecos rellenados.
  */
 DataF reproject_to_geographics_with_nav(const DataF* source_data, const DataF* navla, const DataF* navlo,
+                                        float native_resolution_km,
                                         float* out_lon_min, float* out_lon_max,
                                         float* out_lat_min, float* out_lat_max) {
     if (!source_data || !navla || !navlo || !navla->data_in || !navlo->data_in) {
@@ -70,22 +76,51 @@ DataF reproject_to_geographics_with_nav(const DataF* source_data, const DataF* n
     if (out_lat_min) *out_lat_min = navla->fmin;
     if (out_lat_max) *out_lat_max = navla->fmax;
 
-    // Calcular tamaño de salida basado en la resolución aproximada
-    // Usamos un factor que mantiene aproximadamente la misma densidad de píxeles
-    // que la imagen original en términos de grados por píxel
+    // Calcular tamaño de salida basado en resolución geográfica deseada
     float lon_range = navlo->fmax - navlo->fmin;
     float lat_range = navla->fmax - navla->fmin;
     
-    // Calcular la resolución promedio de la entrada (grados por píxel)
-    float input_lon_res = lon_range / (float)navlo->width;
-    float input_lat_res = lat_range / (float)navla->height;
+    // Calcular la latitud central para corrección geográfica precisa
+    float lat_center = (navla->fmin + navla->fmax) / 2.0f;
+    float lat_rad = lat_center * (M_PI / 180.0f);
     
-    // Para la salida, usar una resolución similar o ligeramente mejor
-    size_t width = (size_t)(lon_range / input_lon_res);
-    size_t height = (size_t)(lat_range / input_lat_res);
+    // Fórmula WGS84 para km/grado (más precisa que constante 111)
+    // Usamos solo km_per_deg_lat para obtener resolución "cuadrada" en grados
+    // (igual que hace GDAL)
+    float km_per_deg_lat = 111.132954f - 0.559822f * cosf(2.0f * lat_rad);
     
-    LOG_INFO("Tamaño de salida calculado: %zu x %zu (entrada: %zu x %zu)", 
-             width, height, navlo->width, navla->height);
+    // Usar la resolución nativa del sensor (del atributo spatial_resolution)
+    // Si no está disponible, usar 1.0 km como default razonable para GOES-R ABI
+    float target_res_km = (native_resolution_km > 0.0f) ? native_resolution_km : 1.0f;
+    
+    // Resolución en grados (cuadrada, igual para lon y lat)
+    float target_res_deg = target_res_km / km_per_deg_lat;
+    
+    LOG_INFO("Resolución objetivo: %.3f km = %.6f° (nativa del sensor), lat_center=%.2f°, "
+             "km/deg_lat=%.3f",
+             target_res_km, target_res_deg, lat_center, km_per_deg_lat);
+    
+    // Calcular dimensiones de salida usando la misma resolución en grados para ambos ejes
+    size_t width = (size_t)(lon_range / target_res_deg + 0.5f);
+    size_t height = (size_t)(lat_range / target_res_deg + 0.5f);
+    
+    // Asegurar dimensiones mínimas razonables
+    if (width < 10) width = 10;
+    if (height < 10) height = 10;
+    
+    // Limitar dimensiones máximas para evitar consumo excesivo de memoria
+    const size_t MAX_DIM = 10000;
+    if (width > MAX_DIM) {
+        LOG_WARN("Ancho calculado (%zu) excede el máximo (%zu). Limitando.", width, MAX_DIM);
+        width = MAX_DIM;
+    }
+    if (height > MAX_DIM) {
+        LOG_WARN("Alto calculado (%zu) excede el máximo (%zu). Limitando.", height, MAX_DIM);
+        height = MAX_DIM;
+    }
+    
+    LOG_INFO("Tamaño de salida calculado: %zu x %zu (entrada: %zu x %zu, res objetivo: %.2f km)", 
+             width, height, navlo->width, navla->height, target_res_km);
 
     DataF datagg = dataf_create(width, height);
     if (datagg.data_in == NULL) {
@@ -262,4 +297,81 @@ void reprojection_find_pixel_for_coord(const DataF* navla, const DataF* navlo,
 
     *out_ix = best_ix;
     *out_iy = best_iy;
+}
+
+/**
+ * @brief Calcula el bounding box para un dominio geográfico usando muestreo denso de bordes.
+ */
+int reprojection_find_bounding_box(const DataF* navla, const DataF* navlo,
+                                   float clip_lon_min, float clip_lat_max,
+                                   float clip_lon_max, float clip_lat_min,
+                                   int* out_x_start, int* out_y_start,
+                                   int* out_width, int* out_height) {
+    const int SAMPLES_PER_EDGE = 20;
+    int min_ix = INT_MAX, max_ix = INT_MIN;
+    int min_iy = INT_MAX, max_iy = INT_MIN;
+    int valid_samples = 0;
+    
+    // Muestrear los 4 bordes del dominio geográfico
+    for (int s = 0; s <= SAMPLES_PER_EDGE; s++) {
+        float t = (float)s / (float)SAMPLES_PER_EDGE;
+        int ix, iy;
+        
+        // Borde SUPERIOR (lat_max, lon varía)
+        float lon = clip_lon_min + t * (clip_lon_max - clip_lon_min);
+        reprojection_find_pixel_for_coord(navla, navlo, clip_lat_max, lon, &ix, &iy);
+        if (ix >= 0 && iy >= 0) {
+            if (ix < min_ix) min_ix = ix;
+            if (ix > max_ix) max_ix = ix;
+            if (iy < min_iy) min_iy = iy;
+            if (iy > max_iy) max_iy = iy;
+            valid_samples++;
+        }
+        
+        // Borde INFERIOR (lat_min, lon varía)
+        reprojection_find_pixel_for_coord(navla, navlo, clip_lat_min, lon, &ix, &iy);
+        if (ix >= 0 && iy >= 0) {
+            if (ix < min_ix) min_ix = ix;
+            if (ix > max_ix) max_ix = ix;
+            if (iy < min_iy) min_iy = iy;
+            if (iy > max_iy) max_iy = iy;
+            valid_samples++;
+        }
+        
+        // Borde IZQUIERDO (lon_min, lat varía)
+        float lat = clip_lat_min + t * (clip_lat_max - clip_lat_min);
+        reprojection_find_pixel_for_coord(navla, navlo, lat, clip_lon_min, &ix, &iy);
+        if (ix >= 0 && iy >= 0) {
+            if (ix < min_ix) min_ix = ix;
+            if (ix > max_ix) max_ix = ix;
+            if (iy < min_iy) min_iy = iy;
+            if (iy > max_iy) max_iy = iy;
+            valid_samples++;
+        }
+        
+        // Borde DERECHO (lon_max, lat varía)
+        reprojection_find_pixel_for_coord(navla, navlo, lat, clip_lon_max, &ix, &iy);
+        if (ix >= 0 && iy >= 0) {
+            if (ix < min_ix) min_ix = ix;
+            if (ix > max_ix) max_ix = ix;
+            if (iy < min_iy) min_iy = iy;
+            if (iy > max_iy) max_iy = iy;
+            valid_samples++;
+        }
+    }
+    
+    // Devolver resultados
+    if (valid_samples >= 4 && min_ix < INT_MAX && min_iy < INT_MAX) {
+        *out_x_start = min_ix;
+        *out_y_start = min_iy;
+        *out_width = max_ix - min_ix + 1;
+        *out_height = max_iy - min_iy + 1;
+    } else {
+        *out_x_start = 0;
+        *out_y_start = 0;
+        *out_width = 0;
+        *out_height = 0;
+    }
+    
+    return valid_samples;
 }

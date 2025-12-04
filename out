@@ -1,0 +1,143 @@
+Hago un recorte y reproyecto y sigue apareciendo un rectángulo deformado. Te comparto la salida verbosa.
+
+$ ./hpsatviews rgb --mode ash /data/ceniza/2019/spring/OR_ABI-L2-CMIPC-M3C01_G16_s20190871342161_e20190871344534_c20190871345000.nc --clip -107.23 22.72 -93.84 14.94 -r -v
+[2025-12-04 10:56:47.626] DEBUG: (rgb.c:223) Modo verboso activado para el comando 'rgb'.
+[2025-12-04 10:56:47.626] DEBUG: (rgb.c:194) Encontrado archivo para canal C11: /data/ceniza/2019/spring/OR_ABI-L2-CMIPC-M3C11_G16_s20190871342161_e20190871344534_c20190871344580.nc
+[2025-12-04 10:56:47.626] DEBUG: (rgb.c:194) Encontrado archivo para canal C13: /data/ceniza/2019/spring/OR_ABI-L2-CMIPC-M3C13_G16_s20190871342161_e20190871344546_c20190871344589.nc
+[2025-12-04 10:56:47.626] DEBUG: (rgb.c:194) Encontrado archivo para canal C14: /data/ceniza/2019/spring/OR_ABI-L2-CMIPC-M3C14_G16_s20190871342161_e20190871344534_c20190871344592.nc
+[2025-12-04 10:56:47.626] DEBUG: (rgb.c:194) Encontrado archivo para canal C15: /data/ceniza/2019/spring/OR_ABI-L2-CMIPC-M3C15_G16_s20190871342161_e20190871344540_c20190871345000.nc
+[2025-12-04 10:56:47.630] INFO : (reader_nc.c:47) NetCDF dimensions: 2500x1500 (total: 3750000)
+[2025-12-04 10:56:47.630] INFO : (reader_nc.c:65) NetCDF scaling: factor=0.0521643, offset=127.69, fill_value=-1
+[2025-12-04 10:56:47.678] INFO : (reader_nc.c:212) Data range: min=200.824, max=299.884, NonData=1e+32, invalid_count=47162
+[2025-12-04 10:56:47.682] INFO : (reader_nc.c:47) NetCDF dimensions: 2500x1500 (total: 3750000)
+[2025-12-04 10:56:47.682] INFO : (reader_nc.c:65) NetCDF scaling: factor=0.0614533, offset=89.62, fill_value=-1
+[2025-12-04 10:56:47.727] INFO : (reader_nc.c:212) Data range: min=201.649, max=302.556, NonData=1e+32, invalid_count=47162
+[2025-12-04 10:56:47.730] INFO : (reader_nc.c:47) NetCDF dimensions: 2500x1500 (total: 3750000)
+[2025-12-04 10:56:47.730] INFO : (reader_nc.c:65) NetCDF scaling: factor=0.0598507, offset=96.19, fill_value=-1
+[2025-12-04 10:56:47.774] INFO : (reader_nc.c:212) Data range: min=201.707, max=301.658, NonData=1e+32, invalid_count=47162
+[2025-12-04 10:56:47.777] INFO : (reader_nc.c:47) NetCDF dimensions: 2500x1500 (total: 3750000)
+[2025-12-04 10:56:47.777] INFO : (reader_nc.c:65) NetCDF scaling: factor=0.0595608, offset=97.38, fill_value=-1
+[2025-12-04 10:56:47.821] INFO : (reader_nc.c:212) Data range: min=201.075, max=298.1, NonData=1e+32, invalid_count=47162
+[2025-12-04 10:56:48.164] INFO : (rgb.c:332) Aplicando recorte PRE-reproyección: lon[-107.230, -93.840], lat[14.940, 22.720]
+[2025-12-04 10:56:48.167] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [309, 1115] para coord [22.720, -107.230] (dist=0.011299, valid=3702838/3750000)
+[2025-12-04 10:56:48.169] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [335, 1114] para coord [22.720, -106.561] (dist=0.010334, valid=3702838/3750000)
+[2025-12-04 10:56:48.172] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [362, 1113] para coord [22.720, -105.891] (dist=0.006565, valid=3702838/3750000)
+[2025-12-04 10:56:48.174] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [389, 1112] para coord [22.720, -105.222] (dist=0.006989, valid=3702838/3750000)
+[2025-12-04 10:56:48.177] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [416, 1111] para coord [22.720, -104.552] (dist=0.002250, valid=3702838/3750000)
+[2025-12-04 10:56:48.180] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [443, 1110] para coord [22.720, -103.882] (dist=0.009492, valid=3702838/3750000)
+[2025-12-04 10:56:48.182] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [471, 1109] para coord [22.720, -103.213] (dist=0.002969, valid=3702838/3750000)
+[2025-12-04 10:56:48.185] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [499, 1108] para coord [22.720, -102.544] (dist=0.003094, valid=3702838/3750000)
+[2025-12-04 10:56:48.188] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [527, 1107] para coord [22.720, -101.874] (dist=0.009101, valid=3702838/3750000)
+[2025-12-04 10:56:48.191] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [556, 1106] para coord [22.720, -101.204] (dist=0.002618, valid=3702838/3750000)
+[2025-12-04 10:56:48.196] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [585, 1105] para coord [22.720, -100.535] (dist=0.007653, valid=3702838/3750000)
+[2025-12-04 10:56:48.201] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [614, 1104] para coord [22.720, -99.866] (dist=0.007139, valid=3702838/3750000)
+[2025-12-04 10:56:48.204] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [643, 1103] para coord [22.720, -99.196] (dist=0.002869, valid=3702838/3750000)
+[2025-12-04 10:56:48.207] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [672, 1102] para coord [22.720, -98.526] (dist=0.011596, valid=3702838/3750000)
+[2025-12-04 10:56:48.209] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [702, 1101] para coord [22.720, -97.857] (dist=0.008726, valid=3702838/3750000)
+[2025-12-04 10:56:48.212] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [732, 1101] para coord [22.720, -97.188] (dist=0.010198, valid=3702838/3750000)
+[2025-12-04 10:56:48.215] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [762, 1100] para coord [22.720, -96.518] (dist=0.007085, valid=3702838/3750000)
+[2025-12-04 10:56:48.218] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [793, 1099] para coord [22.720, -95.848] (dist=0.010822, valid=3702838/3750000)
+[2025-12-04 10:56:48.221] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [823, 1098] para coord [22.720, -95.179] (dist=0.003516, valid=3702838/3750000)
+[2025-12-04 10:56:48.225] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [854, 1097] para coord [22.720, -94.509] (dist=0.007228, valid=3702838/3750000)
+[2025-12-04 10:56:48.228] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [885, 1097] para coord [22.720, -93.840] (dist=0.009646, valid=3702838/3750000)
+[2025-12-04 10:56:48.232] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [227, 1499] para coord [14.940, -107.230] (dist=0.029589, valid=3702838/3750000)
+[2025-12-04 10:56:48.235] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [254, 1499] para coord [14.940, -106.561] (dist=0.015628, valid=3702838/3750000)
+[2025-12-04 10:56:48.238] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [282, 1499] para coord [14.940, -105.891] (dist=0.005556, valid=3702838/3750000)
+[2025-12-04 10:56:48.241] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [311, 1498] para coord [14.940, -105.222] (dist=0.010524, valid=3702838/3750000)
+[2025-12-04 10:56:48.243] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [339, 1497] para coord [14.940, -104.552] (dist=0.007973, valid=3702838/3750000)
+[2025-12-04 10:56:48.246] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [368, 1497] para coord [14.940, -103.882] (dist=0.008488, valid=3702838/3750000)
+[2025-12-04 10:56:48.249] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [397, 1496] para coord [14.940, -103.213] (dist=0.006011, valid=3702838/3750000)
+[2025-12-04 10:56:48.251] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [427, 1495] para coord [14.940, -102.544] (dist=0.006390, valid=3702838/3750000)
+[2025-12-04 10:56:48.254] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [457, 1494] para coord [14.940, -101.874] (dist=0.013026, valid=3702838/3750000)
+[2025-12-04 10:56:48.257] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [486, 1494] para coord [14.940, -101.204] (dist=0.011436, valid=3702838/3750000)
+[2025-12-04 10:56:48.261] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [517, 1493] para coord [14.940, -100.535] (dist=0.005058, valid=3702838/3750000)
+[2025-12-04 10:56:48.264] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [547, 1492] para coord [14.940, -99.866] (dist=0.010393, valid=3702838/3750000)
+[2025-12-04 10:56:48.269] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [578, 1492] para coord [14.940, -99.196] (dist=0.006341, valid=3702838/3750000)
+[2025-12-04 10:56:48.272] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [609, 1491] para coord [14.940, -98.526] (dist=0.004126, valid=3702838/3750000)
+[2025-12-04 10:56:48.274] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [641, 1490] para coord [14.940, -97.857] (dist=0.012867, valid=3702838/3750000)
+[2025-12-04 10:56:48.277] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [672, 1490] para coord [14.940, -97.188] (dist=0.003383, valid=3702838/3750000)
+[2025-12-04 10:56:48.280] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [704, 1489] para coord [14.940, -96.518] (dist=0.005902, valid=3702838/3750000)
+[2025-12-04 10:56:48.283] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [736, 1489] para coord [14.940, -95.848] (dist=0.008301, valid=3702838/3750000)
+[2025-12-04 10:56:48.285] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [768, 1488] para coord [14.940, -95.179] (dist=0.002227, valid=3702838/3750000)
+[2025-12-04 10:56:48.288] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [800, 1488] para coord [14.940, -94.509] (dist=0.011657, valid=3702838/3750000)
+[2025-12-04 10:56:48.291] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [833, 1487] para coord [14.940, -93.840] (dist=0.002348, valid=3702838/3750000)
+[2025-12-04 10:56:48.294] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [227, 1499] para coord [14.940, -107.230] (dist=0.029589, valid=3702838/3750000)
+[2025-12-04 10:56:48.296] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [230, 1481] para coord [15.329, -107.230] (dist=0.008305, valid=3702838/3750000)
+[2025-12-04 10:56:48.301] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [233, 1461] para coord [15.718, -107.230] (dist=0.007269, valid=3702838/3750000)
+[2025-12-04 10:56:48.304] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [237, 1441] para coord [16.107, -107.230] (dist=0.004758, valid=3702838/3750000)
+[2025-12-04 10:56:48.307] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [240, 1422] para coord [16.496, -107.230] (dist=0.012734, valid=3702838/3750000)
+[2025-12-04 10:56:48.310] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [244, 1402] para coord [16.885, -107.230] (dist=0.002982, valid=3702838/3750000)
+[2025-12-04 10:56:48.312] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [248, 1382] para coord [17.274, -107.230] (dist=0.006829, valid=3702838/3750000)
+[2025-12-04 10:56:48.315] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [252, 1363] para coord [17.663, -107.230] (dist=0.008895, valid=3702838/3750000)
+[2025-12-04 10:56:48.318] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [256, 1343] para coord [18.052, -107.230] (dist=0.010948, valid=3702838/3750000)
+[2025-12-04 10:56:48.320] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [260, 1324] para coord [18.441, -107.230] (dist=0.009225, valid=3702838/3750000)
+[2025-12-04 10:56:48.323] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [264, 1305] para coord [18.830, -107.230] (dist=0.010289, valid=3702838/3750000)
+[2025-12-04 10:56:48.326] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [268, 1285] para coord [19.219, -107.230] (dist=0.010462, valid=3702838/3750000)
+[2025-12-04 10:56:48.329] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [272, 1266] para coord [19.608, -107.230] (dist=0.008438, valid=3702838/3750000)
+[2025-12-04 10:56:48.332] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [276, 1247] para coord [19.997, -107.230] (dist=0.013013, valid=3702838/3750000)
+[2025-12-04 10:56:48.334] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [281, 1228] para coord [20.386, -107.230] (dist=0.005632, valid=3702838/3750000)
+[2025-12-04 10:56:48.337] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [285, 1209] para coord [20.775, -107.230] (dist=0.010156, valid=3702838/3750000)
+[2025-12-04 10:56:48.341] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [290, 1190] para coord [21.164, -107.230] (dist=0.007722, valid=3702838/3750000)
+[2025-12-04 10:56:48.344] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [294, 1172] para coord [21.553, -107.230] (dist=0.012551, valid=3702838/3750000)
+[2025-12-04 10:56:48.347] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [299, 1153] para coord [21.942, -107.230] (dist=0.004817, valid=3702838/3750000)
+[2025-12-04 10:56:48.350] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [304, 1134] para coord [22.331, -107.230] (dist=0.002836, valid=3702838/3750000)
+[2025-12-04 10:56:48.353] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [309, 1115] para coord [22.720, -107.230] (dist=0.011299, valid=3702838/3750000)
+[2025-12-04 10:56:48.356] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [833, 1487] para coord [14.940, -93.840] (dist=0.002348, valid=3702838/3750000)
+[2025-12-04 10:56:48.359] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [835, 1467] para coord [15.329, -93.840] (dist=0.004422, valid=3702838/3750000)
+[2025-12-04 10:56:48.361] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [837, 1447] para coord [15.718, -93.840] (dist=0.007938, valid=3702838/3750000)
+[2025-12-04 10:56:48.364] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [840, 1427] para coord [16.107, -93.840] (dist=0.009812, valid=3702838/3750000)
+[2025-12-04 10:56:48.367] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [842, 1407] para coord [16.496, -93.840] (dist=0.004690, valid=3702838/3750000)
+[2025-12-04 10:56:48.370] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [844, 1387] para coord [16.885, -93.840] (dist=0.003488, valid=3702838/3750000)
+[2025-12-04 10:56:48.372] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [847, 1367] para coord [17.274, -93.840] (dist=0.009628, valid=3702838/3750000)
+[2025-12-04 10:56:48.375] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [849, 1347] para coord [17.663, -93.840] (dist=0.006320, valid=3702838/3750000)
+[2025-12-04 10:56:48.378] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [851, 1328] para coord [18.052, -93.840] (dist=0.010765, valid=3702838/3750000)
+[2025-12-04 10:56:48.381] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [854, 1308] para coord [18.441, -93.840] (dist=0.001695, valid=3702838/3750000)
+[2025-12-04 10:56:48.386] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [857, 1288] para coord [18.830, -93.840] (dist=0.012094, valid=3702838/3750000)
+[2025-12-04 10:56:48.388] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [859, 1269] para coord [19.219, -93.840] (dist=0.003138, valid=3702838/3750000)
+[2025-12-04 10:56:48.391] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [862, 1249] para coord [19.608, -93.840] (dist=0.009397, valid=3702838/3750000)
+[2025-12-04 10:56:48.394] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [865, 1230] para coord [19.997, -93.840] (dist=0.010635, valid=3702838/3750000)
+[2025-12-04 10:56:48.396] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [867, 1211] para coord [20.386, -93.840] (dist=0.006406, valid=3702838/3750000)
+[2025-12-04 10:56:48.399] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [870, 1192] para coord [20.775, -93.840] (dist=0.008946, valid=3702838/3750000)
+[2025-12-04 10:56:48.402] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [873, 1172] para coord [21.164, -93.840] (dist=0.008426, valid=3702838/3750000)
+[2025-12-04 10:56:48.405] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [876, 1153] para coord [21.553, -93.840] (dist=0.007458, valid=3702838/3750000)
+[2025-12-04 10:56:48.407] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [879, 1134] para coord [21.942, -93.840] (dist=0.008005, valid=3702838/3750000)
+[2025-12-04 10:56:48.410] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [882, 1115] para coord [22.331, -93.840] (dist=0.009577, valid=3702838/3750000)
+[2025-12-04 10:56:48.413] DEBUG: (reprojection.c:259) reprojection_find_pixel_for_coord: encontrado píxel [885, 1097] para coord [22.720, -93.840] (dist=0.009646, valid=3702838/3750000)
+[2025-12-04 10:56:48.413] INFO : (rgb.c:416) Bounding box calculado desde 84 muestras válidas: start[227, 1097], size[658, 402]
+[2025-12-04 10:56:48.413] INFO : (rgb.c:420) Recortando datos pre-reproyección: start[227, 1097], size[658, 402]
+[2025-12-04 10:56:48.415] INFO : (rgb.c:441) Iniciando reproyección para todos los canales...
+[2025-12-04 10:56:48.415] INFO : (reprojection.c:65) Datos de navegación pre-calculada. Extensión: lat[14.714, 23.196], lon[-109.525, -92.781]
+[2025-12-04 10:56:48.415] INFO : (reprojection.c:87) Tamaño de salida calculado: 658 x 402 (entrada: 658 x 402)
+[2025-12-04 10:56:48.416] DEBUG: (reprojection.c:121) Bucle de reproyección terminado.
+[2025-12-04 10:56:48.416] INFO : (reprojection.c:125) Iniciando relleno de huecos (interpolación de vecinos)...
+[2025-12-04 10:56:48.416] INFO : (reprojection.c:162) Relleno de huecos terminado.
+[2025-12-04 10:56:48.416] INFO : (reprojection.c:65) Datos de navegación pre-calculada. Extensión: lat[14.714, 23.196], lon[-109.525, -92.781]
+[2025-12-04 10:56:48.417] INFO : (reprojection.c:87) Tamaño de salida calculado: 658 x 402 (entrada: 658 x 402)
+[2025-12-04 10:56:48.417] DEBUG: (reprojection.c:121) Bucle de reproyección terminado.
+[2025-12-04 10:56:48.417] INFO : (reprojection.c:125) Iniciando relleno de huecos (interpolación de vecinos)...
+[2025-12-04 10:56:48.417] INFO : (reprojection.c:162) Relleno de huecos terminado.
+[2025-12-04 10:56:48.417] INFO : (reprojection.c:65) Datos de navegación pre-calculada. Extensión: lat[14.714, 23.196], lon[-109.525, -92.781]
+[2025-12-04 10:56:48.417] INFO : (reprojection.c:87) Tamaño de salida calculado: 658 x 402 (entrada: 658 x 402)
+[2025-12-04 10:56:48.418] DEBUG: (reprojection.c:121) Bucle de reproyección terminado.
+[2025-12-04 10:56:48.418] INFO : (reprojection.c:125) Iniciando relleno de huecos (interpolación de vecinos)...
+[2025-12-04 10:56:48.418] INFO : (reprojection.c:162) Relleno de huecos terminado.
+[2025-12-04 10:56:48.418] INFO : (reprojection.c:65) Datos de navegación pre-calculada. Extensión: lat[14.714, 23.196], lon[-109.525, -92.781]
+[2025-12-04 10:56:48.418] INFO : (reprojection.c:87) Tamaño de salida calculado: 658 x 402 (entrada: 658 x 402)
+[2025-12-04 10:56:48.421] DEBUG: (reprojection.c:121) Bucle de reproyección terminado.
+[2025-12-04 10:56:48.421] INFO : (reprojection.c:125) Iniciando relleno de huecos (interpolación de vecinos)...
+[2025-12-04 10:56:48.421] INFO : (reprojection.c:162) Relleno de huecos terminado.
+[2025-12-04 10:56:48.421] INFO : (rgb.c:489) Creando navegación para la malla geográfica final...
+[2025-12-04 10:56:48.422] INFO : (rgb.c:492) Reproyección completada.
+[2025-12-04 10:56:48.422] INFO : (rgb.c:537) Generando imagen en modo 'ash'...
+[2025-12-04 10:56:48.494] INFO : (rgb.c:685) Imagen guardada en: out20190871342-ash.png
+[2025-12-04 10:56:48.494] DEBUG: (main.c:131) Logger inicializado en modo verboso.
+Thu 2019-03-28 13:43:34 GMT
+Exito decodificando /data/ceniza/2019/spring/OR_ABI-L2-CMIPC-M3C11_G16_s20190871342161_e20190871344534_c20190871344580.nc!
+Thu 2019-03-28 13:43:35 GMT
+Exito decodificando /data/ceniza/2019/spring/OR_ABI-L2-CMIPC-M3C13_G16_s20190871342161_e20190871344546_c20190871344589.nc!
+Thu 2019-03-28 13:43:34 GMT
+Exito decodificando /data/ceniza/2019/spring/OR_ABI-L2-CMIPC-M3C14_G16_s20190871342161_e20190871344534_c20190871344592.nc!
+Thu 2019-03-28 13:43:35 GMT
+Exito decodificando /data/ceniza/2019/spring/OR_ABI-L2-CMIPC-M3C15_G16_s20190871342161_e20190871344540_c20190871345000.nc!
+corners -151.642 14.5713  -52.9469 56.6392 (valid: 3702838/3750000)
+Exito creando navegación con /data/ceniza/2019/spring/OR_ABI-L2-CMIPC-M3C15_G16_s20190871342161_e20190871344540_c20190871345000.nc!

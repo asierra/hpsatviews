@@ -46,6 +46,7 @@ typedef struct {
   bool is_float; // True if fdata is valid, false if bdata is valid
   int year, mon, day, hour, min, sec;
   unsigned char band_id;
+  float native_resolution_km; // Resolución nativa del sensor en km (0 si desconocida)
 } DataNC;
 
 

@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <limits.h>
 
 
 // --- Estructuras para manejo de canales (antes en main.c) ---
@@ -200,201 +201,20 @@ int find_channel_filenames(const char *dirnm, ChannelSet* channelset, bool is_l2
     return 0;
 }
 
-/**
- * @brief Infiere coordenadas de esquinas inválidas a partir de esquinas válidas.
+/*
+ * NOTA: Las funciones infer_missing_corners() y calculate_bounding_box() fueron 
+ * reemplazadas por una estrategia mejorada de MUESTREO DENSO DE BORDES.
  * 
- * Cuando una región de clip es muy amplia y alguna esquina queda fuera del disco
- * visible del satélite, esta función usa geometría rectangular para estimar las
- * coordenadas geoestacionarias (píxeles) de las esquinas faltantes a partir de
- * las esquinas válidas.
+ * La estrategia anterior solo evaluaba las 4 esquinas del dominio geográfico,
+ * lo cual generaba un bounding box rectangular que no capturaba correctamente
+ * la deformación del rectángulo geográfico al mapear al espacio geoestacionario.
  * 
- * Geometría: En un dominio rectangular (lat/lon), las esquinas comparten coordenadas:
- *   - UL y LL comparten la misma columna X (misma longitud)
- *   - UL y UR comparten la misma fila Y (misma latitud)
- *   - UR y LR comparten la misma columna X
- *   - LL y LR comparten la misma fila Y
+ * La nueva estrategia muestrea múltiples puntos (20 por defecto) a lo largo de
+ * cada uno de los 4 bordes del dominio geográfico, encontrando así el verdadero
+ * bounding box que contiene TODOS los píxeles del dominio, no solo sus esquinas.
  * 
- * @param ix_tl, iy_tl [in/out] Coords Upper Left
- * @param ix_tr, iy_tr [in/out] Coords Upper Right
- * @param ix_bl, iy_bl [in/out] Coords Lower Left
- * @param ix_br, iy_br [in/out] Coords Lower Right
- * @return Número de esquinas que fueron inferidas (0-4), o -1 si el dominio está completamente fuera
+ * Ver las implementaciones en las secciones de clipping PRE y POST reproyección.
  */
-static int infer_missing_corners(int* ix_tl, int* iy_tl,
-                                 int* ix_tr, int* iy_tr,
-                                 int* ix_bl, int* iy_bl,
-                                 int* ix_br, int* iy_br) {
-    // Identificar esquinas inválidas
-    bool ul_invalid = (*ix_tl < 0 || *iy_tl < 0);
-    bool ur_invalid = (*ix_tr < 0 || *iy_tr < 0);
-    bool ll_invalid = (*ix_bl < 0 || *iy_bl < 0);
-    bool lr_invalid = (*ix_br < 0 || *iy_br < 0);
-    
-    int valid_count = 4 - (ul_invalid + ur_invalid + ll_invalid + lr_invalid);
-    int inferred = 0;
-    
-    // Si tenemos menos de 2 esquinas válidas, el dominio está fuera del disco
-    if (valid_count < 2) {
-        LOG_ERROR("Dominio de clip completamente fuera del disco visible (solo %d esquinas válidas)", valid_count);
-        return -1;
-    }
-    
-    // Si todas las esquinas son válidas, no hay nada que inferir
-    if (valid_count == 4) {
-        return 0;
-    }
-    
-    LOG_INFO("Inferencia de esquinas: %d válidas, %d inválidas", valid_count, 4 - valid_count);
-    
-    // Inferir Upper Left (UL)
-    if (ul_invalid) {
-        if (!ll_invalid && !ur_invalid) {
-            // Caso ideal: LL y UR válidas
-            *ix_tl = *ix_bl;  // Misma columna que LL (misma longitud)
-            *iy_tl = *iy_tr;  // Misma fila que UR (misma latitud)
-            LOG_INFO("  UL inferida desde LL y UR: (%d, %d)", *ix_tl, *iy_tl);
-            inferred++;
-        } else if (!ll_invalid && !lr_invalid) {
-            // LL y LR válidas: usar columna de LL y estimar fila desde LR
-            *ix_tl = *ix_bl;
-            // Calcular offset vertical aproximado (asumiendo rectángulo)
-            int delta_x = *ix_br - *ix_bl;
-            if (delta_x > 0) {
-                // Proporción aproximada para mantener aspecto rectangular
-                *iy_tl = *iy_bl - abs(*iy_br - *iy_bl);
-            } else {
-                *iy_tl = *iy_bl;
-            }
-            LOG_INFO("  UL inferida desde LL y LR: (%d, %d)", *ix_tl, *iy_tl);
-            inferred++;
-        } else if (!ur_invalid && !lr_invalid) {
-            // UR y LR válidas: usar fila de UR y columna estimada desde LR
-            *iy_tl = *iy_tr;
-            int delta_y = *iy_br - *iy_tr;
-            if (delta_y > 0) {
-                *ix_tl = *ix_tr - abs(*ix_br - *ix_tr);
-            } else {
-                *ix_tl = *ix_tr;
-            }
-            LOG_INFO("  UL inferida desde UR y LR: (%d, %d)", *ix_tl, *iy_tl);
-            inferred++;
-        }
-    }
-    
-    // Inferir Upper Right (UR)
-    if (ur_invalid) {
-        if (!ul_invalid && !lr_invalid) {
-            *ix_tr = *ix_br;  // Misma columna que LR
-            *iy_tr = *iy_tl;  // Misma fila que UL
-            LOG_INFO("  UR inferida desde UL y LR: (%d, %d)", *ix_tr, *iy_tr);
-            inferred++;
-        } else if (!ul_invalid && !ll_invalid) {
-            *iy_tr = *iy_tl;
-            int delta_y = *iy_bl - *iy_tl;
-            if (delta_y > 0) {
-                *ix_tr = *ix_tl + abs(*ix_bl - *ix_tl);
-            } else {
-                *ix_tr = *ix_tl;
-            }
-            LOG_INFO("  UR inferida desde UL y LL: (%d, %d)", *ix_tr, *iy_tr);
-            inferred++;
-        } else if (!ll_invalid && !lr_invalid) {
-            *ix_tr = *ix_br;
-            int delta_x = *ix_br - *ix_bl;
-            if (delta_x > 0) {
-                *iy_tr = *iy_bl - abs(*iy_br - *iy_bl);
-            } else {
-                *iy_tr = *iy_bl;
-            }
-            LOG_INFO("  UR inferida desde LL y LR: (%d, %d)", *ix_tr, *iy_tr);
-            inferred++;
-        }
-    }
-    
-    // Inferir Lower Left (LL)
-    if (ll_invalid) {
-        if (!ul_invalid && !lr_invalid) {
-            *ix_bl = *ix_tl;  // Misma columna que UL
-            *iy_bl = *iy_br;  // Misma fila que LR
-            LOG_INFO("  LL inferida desde UL y LR: (%d, %d)", *ix_bl, *iy_bl);
-            inferred++;
-        } else if (!ul_invalid && !ur_invalid) {
-            *iy_bl = *iy_tl + abs(*iy_tr - *iy_tl);
-            *ix_bl = *ix_tl;
-            LOG_INFO("  LL inferida desde UL y UR: (%d, %d)", *ix_bl, *iy_bl);
-            inferred++;
-        } else if (!ur_invalid && !lr_invalid) {
-            *ix_bl = *ix_br - abs(*ix_tr - *ix_br);
-            *iy_bl = *iy_br;
-            LOG_INFO("  LL inferida desde UR y LR: (%d, %d)", *ix_bl, *iy_bl);
-            inferred++;
-        }
-    }
-    
-    // Inferir Lower Right (LR)
-    if (lr_invalid) {
-        if (!ur_invalid && !ll_invalid) {
-            *ix_br = *ix_tr;  // Misma columna que UR
-            *iy_br = *iy_bl;  // Misma fila que LL
-            LOG_INFO("  LR inferida desde UR y LL: (%d, %d)", *ix_br, *iy_br);
-            inferred++;
-        } else if (!ul_invalid && !ur_invalid) {
-            *ix_br = *ix_tr;
-            *iy_br = *iy_tl + abs(*iy_tr - *iy_tl);
-            LOG_INFO("  LR inferida desde UL y UR: (%d, %d)", *ix_br, *iy_br);
-            inferred++;
-        } else if (!ul_invalid && !ll_invalid) {
-            *ix_br = *ix_tl + abs(*ix_bl - *ix_tl);
-            *iy_br = *iy_bl;
-            LOG_INFO("  LR inferida desde UL y LL: (%d, %d)", *ix_br, *iy_br);
-            inferred++;
-        }
-    }
-    
-    return inferred;
-}
-
-/**
- * @brief Calcula el bounding box que contiene las 4 esquinas de un área de recorte.
- * 
- * @param ix_tl, iy_tl Coordenadas de la esquina superior izquierda
- * @param ix_tr, iy_tr Coordenadas de la esquina superior derecha
- * @param ix_bl, iy_bl Coordenadas de la esquina inferior izquierda
- * @param ix_br, iy_br Coordenadas de la esquina inferior derecha
- * @param x_start, y_start Salida: coordenadas de inicio del bounding box
- * @param width, height Salida: dimensiones del bounding box
- */
-static void calculate_bounding_box(int ix_tl, int iy_tl, int ix_tr, int iy_tr,
-                                   int ix_bl, int iy_bl, int ix_br, int iy_br,
-                                   unsigned int* x_start, unsigned int* y_start,
-                                   unsigned int* width, unsigned int* height) {
-    // Encontrar min/max de x
-    int min_ix = ix_tl;
-    if (ix_tr < min_ix) min_ix = ix_tr;
-    if (ix_bl < min_ix) min_ix = ix_bl;
-    if (ix_br < min_ix) min_ix = ix_br;
-    
-    int max_ix = ix_tl;
-    if (ix_tr > max_ix) max_ix = ix_tr;
-    if (ix_bl > max_ix) max_ix = ix_bl;
-    if (ix_br > max_ix) max_ix = ix_br;
-    
-    // Encontrar min/max de y
-    int min_iy = iy_tl;
-    if (iy_tr < min_iy) min_iy = iy_tr;
-    if (iy_bl < min_iy) min_iy = iy_bl;
-    if (iy_br < min_iy) min_iy = iy_br;
-    
-    int max_iy = iy_tl;
-    if (iy_tr > max_iy) max_iy = iy_tr;
-    if (iy_bl > max_iy) max_iy = iy_bl;
-    if (iy_br > max_iy) max_iy = iy_br;
-    
-    *x_start = (min_ix >= 0) ? (unsigned int)min_ix : 0;
-    *y_start = (min_iy >= 0) ? (unsigned int)min_iy : 0;
-    *width = (max_ix > min_ix) ? (unsigned int)(max_ix - min_ix) : 0;
-    *height = (max_iy > min_iy) ? (unsigned int)(max_iy - min_iy) : 0;
-}
 
 int run_rgb(ArgParser* parser) { // This is the correct, single definition
     // Inicializar el logger aquí para que los mensajes DEBUG se muestren
@@ -406,6 +226,9 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
     bool do_reprojection = ap_found(parser, "geographics");
     float gamma = ap_get_dbl_value(parser, "gamma");
     const char* mode = ap_get_str_value(parser, "mode");
+    bool apply_histogram = ap_found(parser, "histo");
+    int scale = ap_get_int_value(parser, "scale");
+    bool use_alpha = ap_found(parser, "alpha");
 
 
     if (ap_has_args(parser)) {
@@ -512,33 +335,31 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
         LOG_INFO("Aplicando recorte PRE-reproyección: lon[%.3f, %.3f], lat[%.3f, %.3f]", 
                  clip_lon_min, clip_lon_max, clip_lat_min, clip_lat_max);
 
-        // Encontrar las 4 esquinas en el espacio geoestacionario
-        int ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br;
-        reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_max, clip_lon_min, &ix_tl, &iy_tl);
-        reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_max, clip_lon_max, &ix_tr, &iy_tr);
-        reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_min, clip_lon_min, &ix_bl, &iy_bl);
-        reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_min, clip_lon_max, &ix_br, &iy_br);
-
-        LOG_DEBUG("Píxeles pre-reproj (raw): TL(%d,%d), TR(%d,%d), BL(%d,%d), BR(%d,%d)", 
-                  ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br);
-
-        // Inferir esquinas inválidas (si alguna quedó fuera del disco visible)
-        int inferred_count = infer_missing_corners(&ix_tl, &iy_tl, &ix_tr, &iy_tr,
-                                                   &ix_bl, &iy_bl, &ix_br, &iy_br);
-        if (inferred_count < 0) {
-            LOG_ERROR("Dominio de clip fuera del disco visible. Ignorando --clip para este paso.");
-            // Continuar sin recortar estableciendo dimensiones a cero
+        // ESTRATEGIA MEJORADA: Muestrear densamente los bordes del dominio geográfico
+        // En lugar de solo 4 esquinas, evaluamos múltiples puntos a lo largo de cada borde.
+        // Esto asegura que capturamos toda la deformación del rectángulo geográfico
+        // cuando se mapea al espacio geoestacionario.
+        
+        int clip_x_start_int, clip_y_start_int, clip_w, clip_h;
+        int valid_samples = reprojection_find_bounding_box(&navla, &navlo,
+                                                             clip_lon_min, clip_lat_max,
+                                                             clip_lon_max, clip_lat_min,
+                                                             &clip_x_start_int, &clip_y_start_int,
+                                                             &clip_w, &clip_h);
+        
+        if (valid_samples < 4) {
+            LOG_ERROR("Dominio de clip fuera del disco visible (solo %d muestras válidas).", 
+                     valid_samples);
             clip_width = 0;
             clip_height = 0;
         } else {
-            if (inferred_count > 0) {
-                LOG_INFO("Inferidas %d esquinas. Píxeles finales: TL(%d,%d), TR(%d,%d), BL(%d,%d), BR(%d,%d)",
-                         inferred_count, ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br);
-            }
+            clip_x_start = (unsigned int)clip_x_start_int;
+            clip_y_start = (unsigned int)clip_y_start_int;
+            clip_width = (unsigned int)clip_w;
+            clip_height = (unsigned int)clip_h;
             
-            // Calcular bounding box usando función auxiliar
-            calculate_bounding_box(ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br,
-                                   &clip_x_start, &clip_y_start, &clip_width, &clip_height);
+            LOG_INFO("Bounding box calculado desde %d muestras válidas: start[%u, %u], size[%u, %u]",
+                     valid_samples, clip_x_start, clip_y_start, clip_width, clip_height);
         }
 
         LOG_INFO("Recortando datos pre-reproyección: start[%u, %u], size[%u, %u]", 
@@ -574,10 +395,12 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
                     DataF repro;
                     if (first_repro) {
                         repro = reproject_to_geographics_with_nav(&c[i].fdata, &navla, &navlo, 
+                                                                   c[i].native_resolution_km,
                                                                    &lon_min, &lon_max, &lat_min, &lat_max);
                         first_repro = false;
                     } else {
                         repro = reproject_to_geographics_with_nav(&c[i].fdata, &navla, &navlo, 
+                                                                   c[i].native_resolution_km,
                                                                    NULL, NULL, NULL, NULL);
                     }
                     dataf_destroy(&c[i].fdata);
@@ -592,10 +415,14 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
                 if (c_info[i]) {
                     DataF repro;
                     if (first_repro) {
-                        repro = reproject_to_geographics(&c[i].fdata, nav_ref, &lon_min, &lon_max, &lat_min, &lat_max);
+                        repro = reproject_to_geographics(&c[i].fdata, nav_ref, 
+                                                          c[i].native_resolution_km,
+                                                          &lon_min, &lon_max, &lat_min, &lat_max);
                         first_repro = false;
                     } else {
-                        repro = reproject_to_geographics(&c[i].fdata, nav_ref, NULL, NULL, NULL, NULL);
+                        repro = reproject_to_geographics(&c[i].fdata, nav_ref, 
+                                                          c[i].native_resolution_km,
+                                                          NULL, NULL, NULL, NULL);
                     }
                     dataf_destroy(&c[i].fdata);
                     c[i].fdata = repro;
@@ -614,6 +441,55 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
         create_navigation_from_reprojected_bounds(&navla, &navlo, final_width, final_height, lon_min, lon_max, lat_min, lat_max);
 
         LOG_INFO("Reproyección completada.");
+        
+        // RECORTE POST-REPROYECCIÓN: Eliminar píxeles fuera del dominio solicitado
+        if (has_clip) {
+            float clip_lon_min = atof(ap_get_str_value_at_index(parser, "clip", 0));
+            float clip_lat_max = atof(ap_get_str_value_at_index(parser, "clip", 1));
+            float clip_lon_max = atof(ap_get_str_value_at_index(parser, "clip", 2));
+            float clip_lat_min = atof(ap_get_str_value_at_index(parser, "clip", 3));
+            
+            LOG_INFO("Aplicando recorte POST-reproyección al dominio solicitado: lon[%.3f, %.3f], lat[%.3f, %.3f]",
+                     clip_lon_min, clip_lon_max, clip_lat_min, clip_lat_max);
+            
+            // Los datos están en una malla geográfica regular, podemos usar interpolación lineal
+            float lon_range = lon_max - lon_min;
+            float lat_range = lat_max - lat_min;
+            
+            // Calcular índices usando la extensión de la reproyección
+            int ix_start = (int)(((clip_lon_min - lon_min) / lon_range) * final_width);
+            int iy_start = (int)(((lat_max - clip_lat_max) / lat_range) * final_height);
+            int ix_end = (int)(((clip_lon_max - lon_min) / lon_range) * final_width);
+            int iy_end = (int)(((lat_max - clip_lat_min) / lat_range) * final_height);
+            
+            // Asegurar que estén dentro de los límites
+            if (ix_start < 0) ix_start = 0;
+            if (iy_start < 0) iy_start = 0;
+            if (ix_end > (int)final_width) ix_end = final_width;
+            if (iy_end > (int)final_height) iy_end = final_height;
+            
+            unsigned int crop_x = (unsigned int)ix_start;
+            unsigned int crop_y = (unsigned int)iy_start;
+            unsigned int crop_w = (unsigned int)(ix_end - ix_start);
+            unsigned int crop_h = (unsigned int)(iy_end - iy_start);
+            
+            LOG_INFO("Recorte POST-reproj: start[%u, %u], size[%u, %u]", crop_x, crop_y, crop_w, crop_h);
+            
+            // Recortar todos los canales reproyectados
+            for (int i = 1; i <= 16; i++) {
+                if (c_info[i]) {
+                    DataF cropped = dataf_crop(&c[i].fdata, crop_x, crop_y, crop_w, crop_h);
+                    dataf_destroy(&c[i].fdata);
+                    c[i].fdata = cropped;
+                }
+            }
+            
+            // Actualizar navegación para reflejar el nuevo dominio
+            dataf_destroy(&navla);
+            dataf_destroy(&navlo);
+            create_navigation_from_reprojected_bounds(&navla, &navlo, crop_w, crop_h, 
+                                                     clip_lon_min, clip_lon_max, clip_lat_min, clip_lat_max);
+        }
     }
 
     char* out_filename_generated = NULL;
@@ -626,7 +502,34 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
         // que garantiza que el archivo existe y está siendo usado en este modo.
         // Usar 'input_file' podría ser incorrecto si el modo no usa ese canal.
         const char* filename_for_timestamp = c_info[ref_ch_idx] ? c_info[ref_ch_idx]->filename : input_file;
-        out_filename_generated = generate_default_output_filename(filename_for_timestamp, mode, ".png");
+        char* base_filename = generate_default_output_filename(filename_for_timestamp, mode, ".png");
+        
+        // Si hay reproyección, agregar sufijo _geo antes de la extensión
+        if (do_reprojection && base_filename) {
+            // Buscar la posición del último punto (extensión)
+            char* dot = strrchr(base_filename, '.');
+            if (dot) {
+                size_t prefix_len = dot - base_filename;
+                size_t total_len = strlen(base_filename) + 5; // +4 para "_geo" +1 para '\0'
+                out_filename_generated = (char*)malloc(total_len);
+                if (out_filename_generated) {
+                    // Copiar la parte antes de la extensión
+                    strncpy(out_filename_generated, base_filename, prefix_len);
+                    out_filename_generated[prefix_len] = '\0';
+                    // Agregar sufijo y extensión
+                    strcat(out_filename_generated, "_geo");
+                    strcat(out_filename_generated, dot);
+                    free(base_filename);
+                } else {
+                    out_filename_generated = base_filename;
+                }
+            } else {
+                out_filename_generated = base_filename;
+            }
+        } else {
+            out_filename_generated = base_filename;
+        }
+        
         out_filename = out_filename_generated;
     }
 
@@ -646,7 +549,7 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
         } else {
             diurna = create_truecolor_rgb(c[1].fdata, c[2].fdata, c[3].fdata);
         }
-        image_apply_histogram(diurna);
+        if (apply_histogram) image_apply_histogram(diurna);
         if (gamma != 1.0) image_apply_gamma(diurna, gamma);
         write_image_png(out_filename, &diurna);
         final_image = diurna;
@@ -686,7 +589,7 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
         } else {
             diurna = create_truecolor_rgb(c[1].fdata, c[2].fdata, c[3].fdata);
         }
-        image_apply_histogram(diurna);
+        if (apply_histogram) image_apply_histogram(diurna);
         ImageData nocturna = create_nocturnal_pseudocolor(c[13]);
 
         float dnratio;
@@ -714,38 +617,28 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
             LOG_INFO("Aplicando recorte POST-procesamiento (sin reproyección): lon[%.3f, %.3f], lat[%.3f, %.3f]", 
                      clip_lon_min, clip_lon_max, clip_lat_min, clip_lat_max);
 
-            // Datos originales (cuadrícula geoestacionaria) - búsqueda de píxeles
-            int ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br;
-            reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_max, clip_lon_min, &ix_tl, &iy_tl);
-            reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_max, clip_lon_max, &ix_tr, &iy_tr);
-            reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_min, clip_lon_min, &ix_bl, &iy_bl);
-            reprojection_find_pixel_for_coord(&navla, &navlo, clip_lat_min, clip_lon_max, &ix_br, &iy_br);
-
-            LOG_DEBUG("Píxeles de las esquinas (raw): TL(%d,%d), TR(%d,%d), BL(%d,%d), BR(%d,%d)", 
-                      ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br);
-
-            // Inferir esquinas inválidas (si alguna quedó fuera del disco visible)
-            int inferred_count = infer_missing_corners(&ix_tl, &iy_tl, &ix_tr, &iy_tr,
-                                                       &ix_bl, &iy_bl, &ix_br, &iy_br);
+            // Usar función compartida de muestreo denso
+            int x_start_int, y_start_int, crop_w, crop_h;
+            int valid_samples = reprojection_find_bounding_box(&navla, &navlo,
+                                                                 clip_lon_min, clip_lat_max,
+                                                                 clip_lon_max, clip_lat_min,
+                                                                 &x_start_int, &y_start_int,
+                                                                 &crop_w, &crop_h);
             
             unsigned int x_start = 0, y_start = 0, crop_width = 0, crop_height = 0;
             
-            if (inferred_count < 0) {
-                LOG_WARN("Dominio de clip fuera del disco. Ignorando recorte POST-procesamiento.");
-                // No recortar: crop_width y crop_height quedan en 0
+            if (valid_samples < 4) {
+                LOG_WARN("Dominio de clip fuera del disco (solo %d muestras válidas). Ignorando recorte POST-procesamiento.",
+                         valid_samples);
             } else {
-                if (inferred_count > 0) {
-                    LOG_INFO("Inferidas %d esquinas para recorte POST. Coords finales: TL(%d,%d), TR(%d,%d), BL(%d,%d), BR(%d,%d)",
-                             inferred_count, ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br);
-                }
+                x_start = (unsigned int)x_start_int;
+                y_start = (unsigned int)y_start_int;
+                crop_width = (unsigned int)crop_w;
+                crop_height = (unsigned int)crop_h;
                 
-                // Calcular bounding box usando función auxiliar
-                calculate_bounding_box(ix_tl, iy_tl, ix_tr, iy_tr, ix_bl, iy_bl, ix_br, iy_br,
-                                       &x_start, &y_start, &crop_width, &crop_height);
+                LOG_INFO("Bounding box desde %d muestras válidas: start[%u, %u], size[%u, %u]",
+                         valid_samples, x_start, y_start, crop_width, crop_height);
             }
-
-            LOG_INFO("Dimensiones de recorte en píxeles: start[%u, %u], size[%u, %u]", 
-                     x_start, y_start, crop_width, crop_height);
 
             ImageData cropped_image = image_crop(&final_image, x_start, y_start, crop_width, crop_height);
             if (cropped_image.data) {
@@ -759,6 +652,16 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
 
     write_image_png(out_filename, &final_image);
     LOG_INFO("Imagen guardada en: %s", out_filename);
+    
+    // TODO: Implementar soporte para --scale y --alpha en modo RGB
+    // El escalado requiere funciones de interpolación para ImageData
+    // El canal alfa requiere cambiar bpp de 3 a 4 y gestionar transparencia
+    if (scale != 1) {
+        LOG_WARN("La opción --scale aún no está implementada para el comando rgb.");
+    }
+    if (use_alpha) {
+        LOG_WARN("La opción --alpha aún no está implementada para el comando rgb.");
+    }
 
     // Liberar las bandas intermedias creadas para los modos especiales
     dataf_destroy(&r_ch);

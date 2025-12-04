@@ -2,31 +2,51 @@
 
 # Comparar resultados de hpsatviews y gdal
 
-# Recorte
-
 # Dataset
-DATASET="/data/input/abi/l1b/fd/OR_ABI-L1b-RadF-M6C01_G19_s20253231800210_e20253231809518_c20253231809563.nc"
+DATASET="/data/input/abi/l1b/fd/OR_ABI-L1b-RadF-M6C01_G19_s20253361800210_e20253361809518_c20253361809549.nc"
+#DATASET="/data/ceniza/2019/spring/OR_ABI-L2-CMIPC-M3C01_G16_s20190871342161_e20190871344534_c20190871345000.nc"
+
+# Variable del NetCDF a usar (depende del tipo de producto)
+NCVAR="Rad"    # Para productos L1b (Radiance)
+#NCVAR="CMI"   # Para productos L2 (Cloud and Moisture Imagery)
+
+# Coordenadas de recorte: lon_min lat_max lon_max lat_min
+CLIP_COORDS="-126.7976178202817 38.2939198810346 -78.4256323272443 9.6021231973635"
+# Ejemplos de otras regiones:
+# México centro: "-107.23 22.72 -93.84 14.94"
+# Golfo de México: "-98.0 30.0 -80.0 18.0"
+#CLIP_COORDS="-107.23 22.72 -93.84 14.94"
+
+# Comprueba que existe DATASET
+if [ ! -f "$DATASET" ]; then
+    echo "ERROR: Dataset no encontrado: $DATASET"
+    exit 1
+fi
 
 # Eliminar archivos que inhiben a gdal
 rm -f a2_sp_gdal.tif a2_rp_gdal.tif a2_sp_gdal.png a2_rp_gdal.png
+
+# Convertir coordenadas para gdalwarp (te requiere: xmin ymin xmax ymax)
+read LON_MIN LAT_MAX LON_MAX LAT_MIN <<< "$CLIP_COORDS"
+GDAL_TE="$LON_MIN $LAT_MIN $LON_MAX $LAT_MAX"
 
 # ---------------------------------------------------------
 # CASO 1: Recorte sin reproyección (Mantiene proyección GOES)
 # ---------------------------------------------------------
 ./hpsatviews singlegray \
-    --clip -126.7976178202817 38.2939198810346 -78.4256323272443 9.6021231973635 \
+    --clip $CLIP_COORDS \
     -o a2_sp_hpsv.png \
-    "$DATASET"
+    "$DATASET" -v
     
-mapdrawer --bounds -126.7976178202817 38.2939198810346 -78.4256323272443 9.6021231973635 \
+mapdrawer --bounds $CLIP_COORDS \
     --layer COASTLINE:cyan:0.5  --crs goes16 a2_sp_hpsv.png
 
 # 1. Crear GeoTIFF recortado (Proyección nativa GOES preservada)
 gdalwarp \
-    -te -126.7976178202817 9.6021231973635 -78.4256323272443 38.2939198810346 \
+    -te $GDAL_TE \
     -te_srs EPSG:4326 \
     -crop_to_cutline \
-    "NETCDF:\"$DATASET\":Rad" \
+    "NETCDF:\"$DATASET\":$NCVAR" \
     a2_sp_gdal.tif
 
 # 2. DIBUJAR MAPA (Usando shapefile reproyectado a GOES)
@@ -50,18 +70,18 @@ gdal_translate \
 # ---------------------------------------------------------
 ./hpsatviews singlegray \
     --geographics \
-    --clip -126.7976178202817 38.2939198810346 -78.4256323272443 9.6021231973635 \
+    --clip $CLIP_COORDS \
     -o a2_rp_hpsv.png \
     "$DATASET"
     
-mapdrawer --bounds -126.7976178202817 38.2939198810346 -78.4256323272443 9.6021231973635 \
+mapdrawer --bounds $CLIP_COORDS \
     --layer COASTLINE:cyan:0.5  a2_rp_hpsv.png
     
 # 1. Crear GeoTIFF reproyectado a EPSG:4326
 gdalwarp \
     -t_srs EPSG:4326 \
-    -te -126.7976178202817 9.6021231973635 -78.4256323272443 38.2939198810346 \
-    "NETCDF:\"$DATASET\":Rad" \
+    -te $GDAL_TE \
+    "NETCDF:\"$DATASET\":$NCVAR" \
     a2_rp_gdal.tif
 
 # 2. DIBUJAR MAPA (Usando shapefile estándar WGS84)

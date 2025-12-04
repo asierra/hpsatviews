@@ -47,12 +47,18 @@ int main(int argc, char *argv[]) {
                                  "  -o, --out <archivo>     Archivo de salida PNG (defecto: rgb_composite.png).\n"
                                  "  -c, --clip <coords>     Recorta la imagen a una ventana geográfica. Formato: lon_min lat_max lon_max lat_min.\n"
                                  "  -g, --gamma <valor>     Corrección gamma a aplicar (defecto: 1.0, sin corrección).\n"
+                                 "  -h, --histo             Aplica ecualización de histograma.\n"
+                                 "  -s, --scale <factor>    Factor de escala. >1 para ampliar, <0 para reducir (defecto: 1, sin implementar).\n"
+                                 "  -a, --alpha             Añade un canal alfa (sin implementar).\n"
                                  "  -r, --geographics       Reproyecta la salida a coordenadas geográficas.\n"
                                  "      --rayleigh          Aplica corrección atmosférica de Rayleigh (solo modos truecolor/composite).");
         ap_add_str_opt(rgb_cmd, "mode m", "composite");
         ap_add_str_opt(rgb_cmd, "out o", "rgb_composite.png");
         ap_add_multi_str_opt(rgb_cmd, "clip c", 4);
         ap_add_dbl_opt(rgb_cmd, "gamma g", 1.0);
+        ap_add_flag(rgb_cmd, "histo h");
+        ap_add_int_opt(rgb_cmd, "scale s", 1);
+        ap_add_flag(rgb_cmd, "alpha a");
         ap_add_flag(rgb_cmd, "geographics r");
         ap_add_flag(rgb_cmd, "rayleigh");
         ap_add_flag(rgb_cmd, "verbose v"); // Corregido a 'v' minúscula
@@ -65,7 +71,6 @@ int main(int argc, char *argv[]) {
         ap_add_multi_str_opt(cmd_parser, "clip c", 4);
         ap_add_dbl_opt(cmd_parser, "gamma g", 1.0);
         ap_add_flag(cmd_parser, "histo h");
-        ap_add_flag(cmd_parser, "invert i");
         ap_add_int_opt(cmd_parser, "scale s", 1);
         ap_add_flag(cmd_parser, "geographics r");
         ap_add_flag(cmd_parser, "verbose v"); // Corregido a 'v' minúscula
@@ -81,9 +86,8 @@ int main(int argc, char *argv[]) {
                                 "  -o, --out <archivo>     Archivo de salida PNG (defecto: output.png).\n"
                                 "  -c, --clip <coords>     Recorta la imagen a una ventana geográfica. Formato: lon_min lat_max lon_max lat_min.\n"
                                 "  -g, --gamma <valor>     Corrección gamma a aplicar (defecto: 1.0).\n"
-                                 "  -a, --alpha             Añade un canal alfa (funcionalidad futura).\n"
+                                "  -a, --alpha             Añade un canal alfa (funcionalidad futura).\n"
                                 "  -h, --histo             Aplica ecualización de histograma.\n"
-                                "  -i, --invert            Invierte los valores (blanco y negro).\n"
                                 "  -s, --scale <factor>    Factor de escala. >1 para ampliar, <0 para reducir (defecto: 1).\n"
                                 "  -r, --geographics       Reproyecta la salida a coordenadas geográficas.");
         add_common_opts(pc_cmd);
@@ -108,6 +112,7 @@ int main(int argc, char *argv[]) {
                                 "  -s, --scale <factor>    Factor de escala. >1 para ampliar, <0 para reducir (defecto: 1).\n"
                                 "  -r, --geographics       Reproyecta la salida a coordenadas geográficas.");
         add_common_opts(sg_cmd);
+        ap_add_flag(sg_cmd, "invert i");
         ap_add_flag(sg_cmd, "alpha a");
         // La opción 'verbose' ya está en common_opts
         ap_set_cmd_callback(sg_cmd, cmd_singlegray);

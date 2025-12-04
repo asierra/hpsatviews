@@ -170,23 +170,78 @@ Genera compuestos RGB a partir de múltiples canales. El archivo de entrada pued
 - Ejemplo: CONUS central: `--clip -107.23 22.72 -93.84 14.94`
 - **Nota**: Para dominios amplios que se extienden más allá del disco visible del satélite, las esquinas fuera del disco se infieren automáticamente usando geometría rectangular, garantizando recortes precisos incluso cuando parte del dominio no es visible desde el satélite
 
-**Opciones adicionales:**
-- `--rayleigh` - Aplicar corrección atmosférica de Rayleigh (solo modos truecolor/composite)
-- `-g, --gamma <valor>` - Corrección gamma (por defecto: 1.0, recomendado con Rayleigh: 2.0)
+**Opciones del comando rgb:**
+- `-m, --mode <modo>` - Modo de operación (composite, truecolor, night, ash, airmass, so2)
+- `-o, --out <archivo>` - Nombre del archivo de salida (defecto: rgb_composite.png)
+- `-c, --clip <coords>` - Recortar región geográfica (lon_min lat_max lon_max lat_min)
+- `-g, --gamma <valor>` - Corrección gamma (defecto: 1.0, recomendado con Rayleigh: 2.0)
+- `-h, --histo` - Aplicar ecualización de histograma (opcional, antes hardcodeado)
+- `-s, --scale <factor>` - Factor de escalado (>1 ampliar, <0 reducir) - **Pendiente implementación**
+- `-a, --alpha` - Añadir canal alfa para transparencia - **Pendiente implementación**
+- `-r, --geographics` - Reproyectar a coordenadas geográficas lat/lon
+- `--rayleigh` - Aplicar corrección atmosférica de Rayleigh (solo truecolor/composite)
 - `-v, --verbose` - Modo verboso con logging detallado
-- `-o, --out <archivo>` - Nombre del archivo de salida
 
-### Imagen en Escala de Grises
+### Comando `pseudocolor`
+
+Genera imágenes con paleta de colores a partir de un solo canal.
+
+```bash
+./hpsatviews pseudocolor -p paleta.cpt archivo_GOES.nc -o salida.png
+```
+
+**Opciones del comando pseudocolor:**
+- `-p, --cpt <archivo>` - Archivo de paleta de colores (.cpt) - **Requerido**
+- `-o, --out <archivo>` - Archivo de salida PNG (defecto: output.png)
+- `-c, --clip <coords>` - Recortar región geográfica
+- `-g, --gamma <valor>` - Corrección gamma (defecto: 1.0)
+- `-h, --histo` - Aplicar ecualización de histograma
+- `-s, --scale <factor>` - Factor de escalado (>1 ampliar, <0 reducir)
+- `-a, --alpha` - Añadir canal alfa (funcionalidad futura)
+- `-r, --geographics` - Reproyectar a coordenadas geográficas
+- `-v, --verbose` - Modo verboso
+
+**Nota:** La opción `--invert` fue eliminada de pseudocolor (no tiene sentido con paletas de colores).
+
+### Comando `singlegray`
+
+Genera imágenes en escala de grises a partir de un solo canal.
+
 ```bash
 ./hpsatviews singlegray archivo_GOES_L1b.nc -o salida.png
 ```
 
-**Opciones disponibles:**
-- `-i, --invert` - Invertir valores
-- `-h, --histo` - Aplicar mejora de histograma
-- `-g, --gamma <valor>` - Corrección gamma
-- `-s, --scale <factor>` - Factor de escalado
-- `-a, --alpha` - Canal alpha para transparencia
+**Opciones del comando singlegray:**
+- `-o, --out <archivo>` - Archivo de salida PNG (defecto: output.png)
+- `-c, --clip <coords>` - Recortar región geográfica
+- `-g, --gamma <valor>` - Corrección gamma (defecto: 1.0)
+- `-h, --histo` - Aplicar ecualización de histograma
+- `-i, --invert` - Invertir valores (blanco ↔ negro)
+- `-s, --scale <factor>` - Factor de escalado (>1 ampliar, <0 reducir)
+- `-a, --alpha` - Añadir canal alfa para transparencia
+- `-r, --geographics` - Reproyectar a coordenadas geográficas
+- `-v, --verbose` - Modo verboso
+
+### Estandarización de Opciones (Diciembre 2025)
+
+Los tres comandos (`rgb`, `pseudocolor`, `singlegray`) comparten ahora un conjunto consistente de opciones:
+
+**Opciones comunes:**
+- `-o, --out` - Archivo de salida
+- `-c, --clip` - Recorte geográfico
+- `-g, --gamma` - Corrección gamma
+- `-h, --histo` - Ecualización de histograma
+- `-s, --scale` - Factor de escalado
+- `-a, --alpha` - Canal alfa
+- `-r, --geographics` - Reproyección geográfica
+- `-v, --verbose` - Logging detallado
+
+**Opciones exclusivas:**
+- `rgb`: `-m/--mode` (modo de composición), `--rayleigh` (corrección atmosférica)
+- `pseudocolor`: `-p/--cpt` (paleta de colores)
+- `singlegray`: `-i/--invert` (inversión blanco/negro)
+
+Esta estandarización mejora la consistencia de la interfaz y facilita el aprendizaje del uso del programa.
 
 ---
 
@@ -463,6 +518,37 @@ Consulta el archivo [LICENSE](LICENSE) para más detalles.
 📧 asierra@unam.mx  
 🏛️ Laboratorio Nacional de Observación de la Tierra, UNAM  
 🔗 [GitHub](https://github.com/asierra)
+
+---
+
+## 📅 Historial de Cambios
+
+### Diciembre 2025 - Estandarización de CLI y Optimización de Clipping
+
+**Estandarización de interfaz de línea de comandos:**
+- ✅ Unificadas opciones `--histo`, `--scale`, `--alpha` en los tres comandos
+- ✅ Comando `rgb` ahora soporta `--histo` como opción (antes hardcodeado en truecolor/composite)
+- ✅ Eliminada opción `--invert` de `pseudocolor` (sin sentido con paletas de colores)
+- ✅ Opción `--invert` permanece exclusiva de `singlegray`
+- ⏳ Opciones `--scale` y `--alpha` registradas en `rgb` pero pendientes de implementación
+
+**Mejoras en clipping y reproyección:**
+- ✅ Estrategia de recorte optimizada: PRE-clip en espacio geoestacionario antes de reproyectar
+- ✅ Muestreo denso de bordes (84 puntos) para cálculo preciso de bounding box
+- ✅ Función compartida `reprojection_find_bounding_box()` elimina ~200 líneas de código duplicado
+- ✅ POST-clip fino para ajuste exacto al dominio solicitado
+- ✅ Inferencia inteligente de esquinas cuando el dominio se extiende fuera del disco visible
+
+**Cálculo de resolución mejorado:**
+- ✅ Lectura de `spatial_resolution` desde metadatos NetCDF (campo `native_resolution_km`)
+- ✅ Fórmula WGS84 para conversión km/grado dependiente de latitud: `111.132954 - 0.559822×cos(2×lat)`
+- ✅ Resolución cuadrática (igual para lon/lat) para compatibilidad con GDAL
+- ✅ Precisión de dimensiones: <1% de diferencia vs GDAL sin reproyección, ~10% con reproyección
+
+**Resultados de validación:**
+- Sin reproyección: 1316×805 vs 1317×808 GDAL (diferencia <0.3%)
+- Con reproyección: 1482×861 vs 1352×785 GDAL (diferencia ~10%, aceptable)
+- Coherencia geográfica confirmada con fronteras de mapdrawer
 
 ---
 
