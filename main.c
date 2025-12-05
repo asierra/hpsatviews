@@ -13,6 +13,11 @@
 #include "logger.h"
 #include "rgb.h"
 #include "processing.h"
+#include "clip_loader.h"
+
+// Ruta por defecto (se puede definir en un header global o pasar como macro -D)
+#define RUTA_CLIPS "/usr/local/share/lanot/docs/recortes_coordenadas.csv"
+
 
 // --- Callbacks para los comandos ---
 int cmd_rgb(char* cmd_name, ArgParser* cmd_parser) {
@@ -27,12 +32,45 @@ int cmd_singlegray(char* cmd_name, ArgParser* cmd_parser) {
     return run_processing(cmd_parser, false); // false = is_pseudocolor
 }
 
+// --- Función helper para opciones comunes ---
+static void add_common_opts(ArgParser* cmd_parser) {
+    ap_add_str_opt(cmd_parser, "out o", NULL);
+    ap_add_flag(cmd_parser, "geotiff t");
+    ap_add_str_opt(cmd_parser, "clip c", NULL);
+    ap_add_dbl_opt(cmd_parser, "gamma g", 1.0);
+    ap_add_flag(cmd_parser, "histo h");
+    ap_add_int_opt(cmd_parser, "scale s", 1);
+    ap_add_flag(cmd_parser, "geographics r");
+    ap_add_flag(cmd_parser, "verbose v");
+}
+
 int main(int argc, char *argv[]) {
+    // Verificar --list-clips antes de parsear (para salir rápido)
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--list-clips") == 0) {
+            printf("Recortes geográficos disponibles:\n\n");
+            listar_clips_disponibles(RUTA_CLIPS);
+            return 0;
+        }
+    }
+    
     ArgParser *parser = ap_new_parser();
-    ap_set_helptext(parser, "Usanza: hpsatviews <comando> [opciones]\n\nComandos:\n"
+    ap_set_helptext(parser, "Usanza: hpsatviews <comando> [opciones]\n\n"
+                            "Comandos:\n"
                             "  rgb          Genera una imagen RGB (ej. color verdadero con composición día/noche).\n"
                             "  pseudocolor  Genera una imagen con paleta de colores a partir de un canal.\n"
                             "  singlegray   Genera una imagen en escala de grises de un solo canal.\n\n"
+                            "Opciones globales:\n"
+                            "  --list-clips            Muestra los recortes geográficos predefinidos disponibles.\n\n"
+                            "Opciones comunes (disponibles en todos los comandos):\n"
+                            "  -o, --out <archivo>     Archivo de salida (defecto: autogenerado).\n"
+                            "  -t, --geotiff           Generar salida en formato GeoTIFF (en vez de PNG).\n"
+                            "  -c, --clip <valor>      Recortar imagen. Puede ser una clave (ej. 'mexico') o\n"
+                            "                          coordenadas entre comillas: \"lon_min lat_max lon_max lat_min\".\n"
+                            "  -g, --gamma <valor>     Corrección gamma (defecto: 1.0).\n"
+                            "  -h, --histo             Aplica ecualización de histograma.\n"
+                            "  -r, --geographics       Reproyecta la salida a coordenadas geográficas.\n"
+                            "  -v, --verbose           Modo verboso (muestra información detallada).\n\n"
                             "Use 'hpsatviews help <comando>' para más información sobre un comando específico.");
     ap_set_version(parser, "3.0");
 
@@ -40,13 +78,15 @@ int main(int argc, char *argv[]) {
     ArgParser *rgb_cmd = ap_new_cmd(parser, "rgb");
     if (rgb_cmd) {
         ap_set_helptext(rgb_cmd, "Usanza: hpsatviews rgb [opciones] <Archivo NetCDF de referencia>\n\n"
-                                 "Genera una imagen de color verdadero día/noche. Requiere archivos C01, C02, C03, C13 en el mismo directorio.\n\n"
+                                 "Genera un compuesto RGB. Requiere varios canales en el mismo directorio.\n\n"
                                  "Opciones:\n"
                                  "  -m, --mode <modo>       Modo de operación. Opciones disponibles:\n"
                                  "                          'composite' (defecto), 'truecolor', 'night', 'ash', 'airmass', 'so2'.\n"
                                  "  -o, --out <archivo>     Archivo de salida (defecto: autogenerado con extensión .png o .tif).\n"
                                  "  -t, --geotiff           Generar salida en formato GeoTIFF (en vez de PNG).\n"
-                                 "  -c, --clip <coords>     Recorta la imagen a una ventana geográfica. Formato: lon_min lat_max lon_max lat_min.\n"
+                                 "  -c, --clip <valor>      Recorta la imagen a una ventana geográfica.\n"
+                                 "                          Puede ser una clave (ej. 'mexico') o 4 coordenadas\n"
+                                 "                          entre comillas: \"lon_min lat_max lon_max lat_min\".\n"
                                  "  -g, --gamma <valor>     Corrección gamma a aplicar (defecto: 1.0, sin corrección).\n"
                                  "  -h, --histo             Aplica ecualización de histograma.\n"
                                  "  -s, --scale <factor>    Factor de escala. >1 para ampliar, <0 para reducir (defecto: 1, sin implementar).\n"
@@ -56,7 +96,7 @@ int main(int argc, char *argv[]) {
         ap_add_str_opt(rgb_cmd, "mode m", "composite");
         ap_add_str_opt(rgb_cmd, "out o", NULL);
         ap_add_flag(rgb_cmd, "geotiff t");
-        ap_add_multi_str_opt(rgb_cmd, "clip c", 4);
+        ap_add_str_opt(rgb_cmd, "clip c", NULL);
         ap_add_dbl_opt(rgb_cmd, "gamma g", 1.0);
         ap_add_flag(rgb_cmd, "histo h");
         ap_add_int_opt(rgb_cmd, "scale s", 1);
@@ -65,18 +105,6 @@ int main(int argc, char *argv[]) {
         ap_add_flag(rgb_cmd, "rayleigh");
         ap_add_flag(rgb_cmd, "verbose v");
         ap_set_cmd_callback(rgb_cmd, cmd_rgb);
-    }
-
-    // --- Opciones comunes para singlegray y pseudocolor ---
-    void add_common_opts(ArgParser* cmd_parser) {
-        ap_add_str_opt(cmd_parser, "out o", NULL);
-        ap_add_flag(cmd_parser, "geotiff t");
-        ap_add_multi_str_opt(cmd_parser, "clip c", 4);
-        ap_add_dbl_opt(cmd_parser, "gamma g", 1.0);
-        ap_add_flag(cmd_parser, "histo h");
-        ap_add_int_opt(cmd_parser, "scale s", 1);
-        ap_add_flag(cmd_parser, "geographics r");
-        ap_add_flag(cmd_parser, "verbose v");
     }
 
     // --- Comando 'pseudocolor' ---
@@ -88,7 +116,8 @@ int main(int argc, char *argv[]) {
                                 "  -p, --cpt <archivo>     Aplica una paleta de colores (archivo .cpt). Requerido.\n"
                                 "  -o, --out <archivo>     Archivo de salida (defecto: autogenerado con extensión .png o .tif).\n"
                                 "  -t, --geotiff           Generar salida en formato GeoTIFF (en vez de PNG).\n"
-                                "  -c, --clip <coords>     Recorta la imagen a una ventana geográfica. Formato: lon_min lat_max lon_max lat_min.\n"
+                                "  -c, --clip <coords>     Recorta la imagen a una ventana geográfica.\n"
+                                "                          Puede ser una clave (ej. 'CDMX') o 4 coordenadas: lon_min lat_max lon_max lat_min.\n"
                                 "  -g, --gamma <valor>     Corrección gamma a aplicar (defecto: 1.0).\n"
                                 "  -a, --alpha             Añade un canal alfa (funcionalidad futura).\n"
                                 "  -h, --histo             Aplica ecualización de histograma.\n"
@@ -108,7 +137,8 @@ int main(int argc, char *argv[]) {
                                 "Opciones:\n"
                                 "  -o, --out <archivo>     Archivo de salida (defecto: autogenerado con extensión .png o .tif).\n"
                                 "  -t, --geotiff           Generar salida en formato GeoTIFF (en vez de PNG).\n"
-                                "  -c, --clip <coords>     Recorta la imagen a una ventana geográfica. Formato: lon_min lat_max lon_max lat_min.\n"
+                                "  -c, --clip <coords>     Recorta la imagen a una ventana geográfica.\n"
+                                "                          Puede ser una clave (ej. 'CDMX') o 4 coordenadas: lon_min lat_max lon_max lat_min.\n"
                                 "  -g, --gamma <valor>     Corrección gamma a aplicar (defecto: 1.0).\n"
                                 "  -h, --histo             Aplica ecualización de histograma.\n"
                                 "  -i, --invert            Invierte los valores (blanco y negro).\n"

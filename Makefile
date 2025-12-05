@@ -9,7 +9,7 @@ TARGET = hpsatviews
 DEPS = args.h datanc.h image.h logger.h processing.h reader_cpt.h \
        reader_nc.h reprojection.h rayleigh.h rgb.h writer_png.h \
        filename_utils.h rayleigh_lut_embedded.h \
-       writer_geotiff.h
+       writer_geotiff.h clip_loader.h
 
 # Archivos objeto a compilar.
 # Se incluyen los nuevos módulos y se eliminan los 'main' antiguos.
@@ -31,7 +31,8 @@ OBJS = main.o \
        truecolor_rgb.o \
        writer_geotiff.o \
        writer_png.o \
-       filename_utils.o
+       filename_utils.o \
+       clip_loader.o
 
 .PHONY: all clean
 

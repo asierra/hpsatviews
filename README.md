@@ -146,6 +146,19 @@ GeoTIFF es compatible con todas las opciones: `--clip`, `-r`, `--rayleigh`, `-g`
 
 El programa funciona con un único ejecutable `hpsatviews` y tres subcomandos principales: `rgb`, `pseudocolor` y `singlegray`.
 
+### Ver Ayuda y Recortes Disponibles
+
+```bash
+# Ayuda general
+./hpsatviews --help
+
+# Listar recortes geográficos predefinidos
+./hpsatviews --list-clips
+
+# Ayuda de un comando específico
+./hpsatviews rgb --help
+```
+
 ### Comando `rgb`
 
 Genera compuestos RGB a partir de múltiples canales. El archivo de entrada puede ser cualquier canal (L1b o L2) del instante de tiempo deseado; el programa encontrará los demás automáticamente.
@@ -192,18 +205,42 @@ Genera compuestos RGB a partir de múltiples canales. El archivo de entrada pued
 ```
 
 **Recorte Geográfico:**
-```bash
-# Recortar región de interés (sin reproyección)
-./hpsatviews rgb -m ash --clip -107.23 22.72 -93.84 14.94 -o recorte.png archivo.nc
 
-# Recortar Y reproyectar (orden optimizado: recorta primero, luego reproyecta)
-./hpsatviews rgb -m ash --clip -107.23 22.72 -93.84 14.94 -r -o recorte_reproj.png archivo.nc
+El recorte geográfico soporta dos formatos:
+
+1. **Clave predefinida** (recomendado):
+```bash
+# Usar un recorte predefinido por su clave
+./hpsatviews rgb -m ash -c mexico -o recorte.png archivo.nc
+
+# Ver claves disponibles
+./hpsatviews --list-clips
+
+# Ejemplos de claves disponibles: mexico, local, caribe, a1, a2, etc.
 ```
 
-**Formato del recorte:** `--clip lon_min lat_max lon_max lat_min`
+2. **Coordenadas directas**:
+```bash
+# Con comas (sin comillas)
+./hpsatviews rgb -m ash -c -107.23,22.72,-93.84,14.94 -o recorte.png archivo.nc
+
+# Con espacios (CON comillas)
+./hpsatviews rgb -m ash -c "-107.23 22.72 -93.84 14.94" -o recorte.png archivo.nc
+```
+
+**Recorte + Reproyección:**
+```bash
+# Usando clave predefinida (orden optimizado: recorta primero, luego reproyecta)
+./hpsatviews rgb -m ash -c mexico -r -o recorte_reproj.png archivo.nc
+
+# Usando coordenadas
+./hpsatviews rgb -m ash -c -107.23,22.72,-93.84,14.94 -r -o recorte_reproj.png archivo.nc
+```
+
+**Formato del recorte con coordenadas:** `lon_min,lat_max,lon_max,lat_min` o `"lon_min lat_max lon_max lat_min"`
 - Coordenadas en grados decimales
 - Longitud oeste es negativa
-- Ejemplo: CONUS central: `--clip -107.23 22.72 -93.84 14.94`
+- Ejemplo: CONUS central: `-107.23,22.72,-93.84,14.94`
 - **Nota**: Para dominios amplios que se extienden más allá del disco visible del satélite, las esquinas fuera del disco se infieren automáticamente usando geometría rectangular, garantizando recortes precisos incluso cuando parte del dominio no es visible desde el satélite
 
 **Formato de Salida:**
@@ -220,7 +257,10 @@ Genera compuestos RGB a partir de múltiples canales. El archivo de entrada pued
 - `-m, --mode <modo>` - Modo de operación (composite, truecolor, night, ash, airmass, so2)
 - `-o, --out <archivo>` - Nombre del archivo de salida (defecto: rgb_composite.png)
 - `-t, --tif` - Generar GeoTIFF georreferenciado (también automático con extensión .tif)
-- `-c, --clip <coords>` - Recortar región geográfica (lon_min lat_max lon_max lat_min)
+- `-c, --clip <valor>` - Recortar región geográfica. Puede ser:
+  - Una clave predefinida (ej: `mexico`, `caribe`, `a1`) - usar `--list-clips` para ver disponibles
+  - Coordenadas con comas: `lon_min,lat_max,lon_max,lat_min`
+  - Coordenadas con espacios: `"lon_min lat_max lon_max lat_min"` (con comillas)
 - `-g, --gamma <valor>` - Corrección gamma (defecto: 1.0, recomendado con Rayleigh: 2.0)
 - `-h, --histo` - Aplicar ecualización de histograma (opcional, antes hardcodeado)
 - `-s, --scale <factor>` - Factor de escalado (>1 ampliar, <0 reducir) - **Pendiente implementación**
@@ -241,7 +281,7 @@ Genera imágenes con paleta de colores a partir de un solo canal.
 - `-p, --cpt <archivo>` - Archivo de paleta de colores (.cpt) - **Requerido**
 - `-o, --out <archivo>` - Archivo de salida (defecto: output.png; .tif para GeoTIFF)
 - `-t, --tif` - Generar GeoTIFF georreferenciado (también automático con extensión .tif)
-- `-c, --clip <coords>` - Recortar región geográfica
+- `-c, --clip <valor>` - Recortar región geográfica (clave predefinida o coordenadas)
 - `-g, --gamma <valor>` - Corrección gamma (defecto: 1.0)
 - `-h, --histo` - Aplicar ecualización de histograma
 - `-s, --scale <factor>` - Factor de escalado (>1 ampliar, <0 reducir)
@@ -262,7 +302,7 @@ Genera imágenes en escala de grises a partir de un solo canal.
 **Opciones del comando singlegray:**
 - `-o, --out <archivo>` - Archivo de salida (defecto: output.png; .tif para GeoTIFF)
 - `-t, --tif` - Generar GeoTIFF georreferenciado (también automático con extensión .tif)
-- `-c, --clip <coords>` - Recortar región geográfica
+- `-c, --clip <valor>` - Recortar región geográfica (clave predefinida o coordenadas)
 - `-g, --gamma <valor>` - Corrección gamma (defecto: 1.0)
 - `-h, --histo` - Aplicar ecualización de histograma
 - `-i, --invert` - Invertir valores (blanco ↔ negro)
@@ -278,13 +318,16 @@ Los tres comandos (`rgb`, `pseudocolor`, `singlegray`) comparten ahora un conjun
 **Opciones comunes:**
 - `-o, --out` - Archivo de salida (PNG o GeoTIFF según extensión)
 - `-t, --tif` - Generar GeoTIFF georreferenciado
-- `-c, --clip` - Recorte geográfico
+- `-c, --clip` - Recorte geográfico (clave predefinida o coordenadas numéricas)
 - `-g, --gamma` - Corrección gamma
 - `-h, --histo` - Ecualización de histograma
 - `-s, --scale` - Factor de escalado
 - `-a, --alpha` - Canal alfa
 - `-r, --geographics` - Reproyección geográfica
 - `-v, --verbose` - Logging detallado
+
+**Opciones globales:**
+- `--list-clips` - Muestra los recortes geográficos predefinidos disponibles (sale inmediatamente)
 
 **Opciones exclusivas:**
 - `rgb`: `-m/--mode` (modo de composición), `--rayleigh` (corrección atmosférica)
@@ -321,6 +364,7 @@ hpsatviews/
 ├── ☁️ rayleigh.h/.c                # Corrección atmosférica de dispersión Rayleigh
 ├── 📦 rayleigh_lut_embedded.h/.c  # LUTs de Rayleigh embebidas (C01, C02, C03)
 ├── 🧰 filename_utils.h/.c         # Utilidades de manejo de nombres de archivo
+├── 📍 clip_loader.h/.c            # Carga de recortes geográficos predefinidos desde CSV
 │
 ├── 📋 singlegray.h/.c             # Módulo de procesamiento singlegray
 ├── 🎨 truecolor.h/.c              # Funciones auxiliares true color

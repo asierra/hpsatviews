@@ -77,5 +77,6 @@ Fri Dec  5 12:05:02 PM CST 2025
 Corregido el problema de las esquinas. Los luts de rayleigh ya están
 en el código en archivo .h.
 
-Solo falta corregir lo del brillo.
+Solo falta corregir lo del brillo, alpha y escala para todos los
+comandos.
 

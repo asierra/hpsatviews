@@ -15,6 +15,7 @@
 #include "reprojection.h"
 #include "image.h"
 #include "datanc.h"
+#include "clip_loader.h"
 #include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -27,6 +28,50 @@ ImageData create_single_grayb(DataB c01, bool invert_value, bool use_alpha, cons
 bool strinstr(const char *main_str, const char *sub) {
     return (main_str && sub && strstr(main_str, sub));
 }
+
+// --- Función helper para procesar coordenadas de clip ---
+static bool process_clip_coords(ArgParser* parser, const char* clip_csv_path, float clip_coords[4]) {
+    if (!ap_found(parser, "clip")) {
+        return false;
+    }
+    
+    const char* clip_value = ap_get_str_value(parser, "clip");
+    if (!clip_value || strlen(clip_value) == 0) {
+        return false;
+    }
+    
+    // Intentar parsear como 4 coordenadas separadas por comas o espacios
+    float coords[4];
+    int parsed = sscanf(clip_value, "%f%*[, ]%f%*[, ]%f%*[, ]%f", 
+                       &coords[0], &coords[1], &coords[2], &coords[3]);
+    
+    if (parsed == 4) {
+        // Son 4 coordenadas
+        for (int i = 0; i < 4; i++) {
+            clip_coords[i] = coords[i];
+        }
+        LOG_INFO("Usando recorte con coordenadas: lon[%.3f, %.3f], lat[%.3f, %.3f]",
+                 clip_coords[0], clip_coords[2], clip_coords[3], clip_coords[1]);
+        return true;
+    }
+    
+    // No se pudo parsear como coordenadas, intentar como clave
+    GeoClip clip = buscar_clip_por_clave(clip_csv_path, clip_value);
+    
+    if (!clip.encontrado) {
+        LOG_ERROR("No se encontró el recorte con clave '%s' en %s", clip_value, clip_csv_path);
+        LOG_ERROR("Formato esperado: clave (ej. 'mexico') o coordenadas \"lon_min,lat_max,lon_max,lat_min\"");
+        return false;
+    }
+    
+    LOG_INFO("Usando recorte '%s': %s", clip_value, clip.region);
+    clip_coords[0] = clip.ul_x;  // lon_min
+    clip_coords[1] = clip.ul_y;  // lat_max
+    clip_coords[2] = clip.lr_x;  // lon_max
+    clip_coords[3] = clip.lr_y;  // lat_min
+    return true;
+}
+
 
 int run_processing(ArgParser *parser, bool is_pseudocolor) {
     LogLevel log_level = ap_found(parser, "verbose") ? LOG_DEBUG : LOG_INFO;
@@ -120,11 +165,10 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
 
     // --- Navegación y Recorte ---
     DataF navla = {0}, navlo = {0};
-    bool has_clip = ap_found(parser, "clip") && ap_count(parser, "clip") == 4;
     bool nav_loaded = false;
     bool is_geotiff = force_geotiff || (outfn && (strstr(outfn, ".tif") || strstr(outfn, ".tiff")));
 
-    if (has_clip || is_geotiff || do_reprojection) {
+    if (ap_found(parser, "clip") || is_geotiff || do_reprojection) {
         if (compute_navigation_nc(fnc01, &navla, &navlo) == 0) {
             nav_loaded = true;
         } else {
@@ -141,9 +185,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     }
 
     float clip_coords[4] = {0};
-    if (has_clip) {
-        for(int i=0; i<4; i++) clip_coords[i] = atof(ap_get_str_value_at_index(parser, "clip", i));
-    }
+    bool has_clip = process_clip_coords(parser, "/usr/local/share/lanot/docs/recortes_coordenadas.csv", clip_coords);
     
     // --- Procesamiento de imagen ---
     ImageData imout = {0};
