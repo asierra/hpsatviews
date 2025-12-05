@@ -8,7 +8,7 @@ TARGET = hpsatviews
 # Archivos de cabecera. La regla de compilación depende de ellos.
 DEPS = args.h datanc.h image.h logger.h processing.h reader_cpt.h \
        reader_nc.h reprojection.h rayleigh.h rgb.h writer_png.h \
-       filename_utils.h rayleigh_lut_embedded.h projection_utils.h \
+       filename_utils.h rayleigh_lut_embedded.h \
        writer_geotiff.h
 
 # Archivos objeto a compilar.
@@ -29,7 +29,6 @@ OBJS = main.o \
        reader_nc.o \
        singlegray.o \
        truecolor_rgb.o \
-       projection_utils.o \
        writer_geotiff.o \
        writer_png.o \
        filename_utils.o

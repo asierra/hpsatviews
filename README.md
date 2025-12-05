@@ -107,68 +107,38 @@ make
 
 ---
 
-## 🖼️ Formatos de Salida Soportados
+## 📁 Formatos de Salida
 
-HPSatViews soporta dos formatos de salida principales para máxima flexibilidad.
+### PNG (Predeterminado)
+Formato de imagen rasterizada sin georreferenciación. Ideal para visualización rápida y distribución web.
 
-### PNG (por defecto)
+### GeoTIFF (Georreferenciado)
+Formato TIFF con metadatos de proyección completos, compatible con QGIS, GDAL, ArcGIS, etc.
 
-Formato de imagen estándar, ideal para visualización rápida y uso en web. No contiene georreferenciación.
+**Activación**:
+- **Explícita**: Flag `-t` o `--tif`
+- **Automática**: Extensión `.tif` en nombre de salida
 
+**Ejemplos**:
 ```bash
-# Genera una imagen PNG con nombre autogenerado
-./hpsatviews rgb -m ash archivo.nc
+# Opción explícita
+./hpsatviews rgb -m truecolor -t -o salida.tif archivo.nc
+
+# Detección automática por extensión
+./hpsatviews rgb -m truecolor -o salida.tif archivo.nc
+
+# PNG (sin -t y extensión .png)
+./hpsatviews rgb -m truecolor -o salida.png archivo.nc
 ```
 
-### GeoTIFF (georreferenciado)
+**Proyecciones Soportadas**:
+- **PROJ_GEOS**: Proyección geoestacionaria nativa del satélite (sin `-r`)
+- **PROJ_LATLON**: Proyección geográfica ecuirectangular (con `-r`)
 
-Formato estándar para datos geoespaciales. Las imágenes GeoTIFF generadas por HPSatViews son 100% compatibles con software GIS como QGIS, ArcGIS, y librerías como GDAL y Rasterio.
+Ambas incluyen metadatos completos (WKT, GeoTransform) para correcta georreferenciación.
 
-La salida GeoTIFF se puede activar de dos maneras:
-
-**Opción 1: Extensión explícita**
-
-Si el nombre de archivo proporcionado con `-o` termina en `.tif` o `.tiff`, el formato GeoTIFF se usará automáticamente.
-
-```bash
-# Nombre con extensión .tif o .tiff
-./hpsatviews rgb -m ash -o salida.tif archivo.nc
-./hpsatviews singlegray -o recorte.tiff archivo.nc --clip -107 22 -93 14
-```
-
-**Opción 2: Flag --geotiff (o -t)**
-
-Usar el flag `--geotiff` o su alias `-t` forzará la salida en formato GeoTIFF, usando un nombre de archivo autogenerado con la extensión `.tif`.
-
-```bash
-# Genera out<timestamp>-ash.tif en vez de .png
-./hpsatviews rgb -m ash --geotiff archivo.nc
-
-# Usando el alias -t
-./hpsatviews singlegray -t archivo.nc
-```
-
-**Combinaciones válidas**:
-
-El formato GeoTIFF es compatible con todas las demás opciones de procesamiento.
-
-```bash
-# Con recorte geográfico
-./hpsatviews rgb -m ash --clip -107 22 -93 14 -t archivo.nc
-
-# Con reproyección geográfica
-./hpsatviews rgb -m truecolor -r --geotiff archivo.nc
-
-# Pseudocolor con paleta CPT
-./hpsatviews pseudocolor -p paleta.cpt --geotiff archivo.nc
-```
-
-**Proyecciones Soportadas en GeoTIFF**:
-
-- **Geográfica** (EPSG:4326): Cuando se usa el flag `-r` o `--geographics`.
-- **Geoestacionaria** (GOES native): Proyección nativa del satélite si no se aplica reproyección.
-
-Ambas proyecciones incluyen metadatos completos de georreferenciación.
+**Compatibilidad**:
+GeoTIFF es compatible con todas las opciones: `--clip`, `-r`, `--rayleigh`, `-g`, `-h`, etc.
 
 ---
 
@@ -236,9 +206,20 @@ Genera compuestos RGB a partir de múltiples canales. El archivo de entrada pued
 - Ejemplo: CONUS central: `--clip -107.23 22.72 -93.84 14.94`
 - **Nota**: Para dominios amplios que se extienden más allá del disco visible del satélite, las esquinas fuera del disco se infieren automáticamente usando geometría rectangular, garantizando recortes precisos incluso cuando parte del dominio no es visible desde el satélite
 
+**Formato de Salida:**
+```bash
+# PNG (por defecto)
+./hpsatviews rgb -m truecolor -o salida.png archivo.nc
+
+# GeoTIFF georreferenciado (opción -t o extensión .tif)
+./hpsatviews rgb -m truecolor -t -o salida.tif archivo.nc
+./hpsatviews rgb -m truecolor -o salida.tif archivo.nc  # Detecta automáticamente
+```
+
 **Opciones del comando rgb:**
 - `-m, --mode <modo>` - Modo de operación (composite, truecolor, night, ash, airmass, so2)
 - `-o, --out <archivo>` - Nombre del archivo de salida (defecto: rgb_composite.png)
+- `-t, --tif` - Generar GeoTIFF georreferenciado (también automático con extensión .tif)
 - `-c, --clip <coords>` - Recortar región geográfica (lon_min lat_max lon_max lat_min)
 - `-g, --gamma <valor>` - Corrección gamma (defecto: 1.0, recomendado con Rayleigh: 2.0)
 - `-h, --histo` - Aplicar ecualización de histograma (opcional, antes hardcodeado)
@@ -258,7 +239,8 @@ Genera imágenes con paleta de colores a partir de un solo canal.
 
 **Opciones del comando pseudocolor:**
 - `-p, --cpt <archivo>` - Archivo de paleta de colores (.cpt) - **Requerido**
-- `-o, --out <archivo>` - Archivo de salida PNG (defecto: output.png)
+- `-o, --out <archivo>` - Archivo de salida (defecto: output.png; .tif para GeoTIFF)
+- `-t, --tif` - Generar GeoTIFF georreferenciado (también automático con extensión .tif)
 - `-c, --clip <coords>` - Recortar región geográfica
 - `-g, --gamma <valor>` - Corrección gamma (defecto: 1.0)
 - `-h, --histo` - Aplicar ecualización de histograma
@@ -278,7 +260,8 @@ Genera imágenes en escala de grises a partir de un solo canal.
 ```
 
 **Opciones del comando singlegray:**
-- `-o, --out <archivo>` - Archivo de salida PNG (defecto: output.png)
+- `-o, --out <archivo>` - Archivo de salida (defecto: output.png; .tif para GeoTIFF)
+- `-t, --tif` - Generar GeoTIFF georreferenciado (también automático con extensión .tif)
 - `-c, --clip <coords>` - Recortar región geográfica
 - `-g, --gamma <valor>` - Corrección gamma (defecto: 1.0)
 - `-h, --histo` - Aplicar ecualización de histograma
@@ -293,7 +276,8 @@ Genera imágenes en escala de grises a partir de un solo canal.
 Los tres comandos (`rgb`, `pseudocolor`, `singlegray`) comparten ahora un conjunto consistente de opciones:
 
 **Opciones comunes:**
-- `-o, --out` - Archivo de salida
+- `-o, --out` - Archivo de salida (PNG o GeoTIFF según extensión)
+- `-t, --tif` - Generar GeoTIFF georreferenciado
 - `-c, --clip` - Recorte geográfico
 - `-g, --gamma` - Corrección gamma
 - `-h, --histo` - Ecualización de histograma
@@ -315,25 +299,46 @@ Esta estandarización mejora la consistencia de la interfaz y facilita el aprend
 
 ```
 hpsatviews/
-├── 📄 main.c              # Programa principal
-├── 📄 singlegraymain.c    # Utilidad escala de grises
-├── 📚 libhpsatviews.a     # Biblioteca principal
-├── 🔧 Makefile           # Sistema de construcción
-├── 📊 logger.h/.c        # Sistema de logging
-├── 🖼️ image.h/.c         # Estructuras y manipulación de imágenes
-├── 📡 reader_nc.h/.c     # Lectura de archivos NetCDF GOES
-├── 💾 writer_png.h/.c    # Escritura de archivos PNG
-├── 🌈 datanc.h/.c        # Estructuras de datos y algoritmos
-├── 🗺️ reprojection.h/.c  # Reproyección geoestacionaria a geográfica
-├── 🎨 rgb.h/.c           # Generación de compuestos RGB
-├── 🌅 truecolor_rgb.c    # Generación de imágenes RGB true color
-├── ☁️ rayleigh.h/.c       # Corrección atmosférica de Rayleigh
-├── 📦 rayleigh_lut_embedded.h/.c # LUTs de Rayleigh embebidas (C01, C02, C03)
-├── 🌙 nocturnal_pseudocolor.c # Imágenes infrarrojas nocturnas
-├── 🌗 daynight_mask.c    # Cálculo de máscara día/noche
-├── ⚙️ args.h/.c          # Procesamiento de argumentos
-└── 📖 README.md          # Este archivo
+├── 📄 main.c                      # Programa principal con parseo de comandos
+├── 🔧 Makefile                    # Sistema de construcción con soporte GDAL
+├── 📊 logger.h/.c                 # Sistema de logging (DEBUG, INFO, WARN, ERROR)
+├── 🖼️ image.h/.c                  # Estructuras y manipulación de imágenes
+├── 🌈 datanc.h/.c                 # Estructuras de datos y algoritmos numéricos
+├── ⚙️ args.h/.c                   # Procesamiento de argumentos de línea de comandos
+│
+├── 📡 reader_nc.h/.c              # Lectura NetCDF + cálculo de metadatos de proyección
+├── 💾 writer_png.h/.c             # Escritura de archivos PNG
+├── 🗺️ writer_geotiff.h/.c         # Escritura de archivos GeoTIFF georreferenciados
+├── 📚 reader_cpt.h/.c             # Lectura de paletas CPT (Generic Mapping Tools)
+│
+├── 🗺️ reprojection.h/.c           # Reproyección geoestacionaria → geográfica
+├── 🎨 rgb.h/.c                    # Pipeline de compuestos RGB multicanal
+├── 🔬 processing.h/.c             # Pipeline singlegray y pseudocolor
+├── 🌅 truecolor_rgb.c             # Generación de true color con verde sintético
+├── 🌙 nocturnal_pseudocolor.c     # Imágenes infrarrojas nocturnas
+├── 🌗 daynight_mask.c             # Cálculo de máscara día/noche por ángulo solar
+│
+├── ☁️ rayleigh.h/.c                # Corrección atmosférica de dispersión Rayleigh
+├── 📦 rayleigh_lut_embedded.h/.c  # LUTs de Rayleigh embebidas (C01, C02, C03)
+├── 🧰 filename_utils.h/.c         # Utilidades de manejo de nombres de archivo
+│
+├── 📋 singlegray.h/.c             # Módulo de procesamiento singlegray
+├── 🎨 truecolor.h/.c              # Funciones auxiliares true color
+├── 📖 README.md                   # Documentación principal
+├── 📝 TODO.txt                    # Lista de tareas pendientes
+├── 📝 plan_rayleigh.md            # Plan de implementación Rayleigh
+├── 📝 PLAN_GEOTIFF.md             # Plan de implementación GeoTIFF
+├── 📝 PLAN_FIX_CLIP_CORNERS.md    # Plan de corrección de clipping
+└── 🧪 test_clip_fix.sh            # Script de testing para clipping
 ```
+
+**Archivos de datos embebidos**:
+- Las LUTs de Rayleigh están compiladas en el ejecutable (no se requieren archivos .bin externos)
+
+**Scripts auxiliares**:
+- `extract_rayleigh_lut.py` - Extracción de LUTs desde pyspectral (uso offline)
+- `compara_gdal.sh` - Comparación de salidas con GDAL
+- `valida_geotiff.py` - Validación de GeoTIFF generados
 
 ---
 

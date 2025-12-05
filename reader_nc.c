@@ -184,11 +184,14 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
       nc_inq_varid(ncid, "y", &y_varid_coord) == NC_NOERR) {
 
       // Leer scale_factor y add_offset de las coordenadas [cite: 3, 4]
-      float x_scale, x_offset, y_scale, y_offset;
-      nc_get_att_float(ncid, x_varid_coord, "scale_factor", &x_scale);
-      nc_get_att_float(ncid, x_varid_coord, "add_offset", &x_offset);
-      nc_get_att_float(ncid, y_varid_coord, "scale_factor", &y_scale);
-      nc_get_att_float(ncid, y_varid_coord, "add_offset", &y_offset);
+      // Aunque el NetCDF define scale_factor como float, al multiplicarlo
+      // por la altura del satélite (~35 millones de metros), la falta de 
+      // precisión del float introduce un error de desplazamiento de ~200m (0.2 px).
+      double x_scale, x_offset, y_scale, y_offset;       
+      nc_get_att_double(ncid, x_varid_coord, "scale_factor", &x_scale);
+      nc_get_att_double(ncid, x_varid_coord, "add_offset", &x_offset);
+      nc_get_att_double(ncid, y_varid_coord, "scale_factor", &y_scale);
+      nc_get_att_double(ncid, y_varid_coord, "add_offset", &y_offset);
 
       // Leer el valor crudo del primer píxel (índice 0) de X e Y
       // NetCDF GOES almacena las coordenadas en variables 1D 'x' y 'y'
@@ -198,8 +201,8 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
       nc_get_var1_short(ncid, y_varid_coord, index, &y0_raw);
 
       // Convertir a radianes (unidades de proyección)
-      double x0_rad = x0_raw * x_scale + x_offset;
-      double y0_rad = y0_raw * y_scale + y_offset;
+      double x0_rad = (double)x0_raw * x_scale + x_offset;
+      double y0_rad = (double)y0_raw * y_scale + y_offset;
 
       // --- Construcción del GeoTransform ---
       // GDAL requiere la esquina SUPERIOR IZQUIERDA del píxel, no el centro.
