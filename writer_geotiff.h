@@ -1,6 +1,6 @@
 /*
  * GeoTIFF writer module
- * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Copyright (c) 2025 Alejandro Aguilar Sierra (asierra@unam.mx)
  * Laboratorio Nacional de Observación de la Tierra, UNAM
  */
 #ifndef HPSATVIEWS_WRITER_GEOTIFF_H_
@@ -8,78 +8,53 @@
 
 #include "image.h"
 #include "datanc.h"
-#include "reader_cpt.h"
+#include "reader_cpt.h" // Asumo que aquí defines ColorArray
 
 /**
- * @brief Escribe una imagen RGB a formato GeoTIFF georreferenciado.
- * 
- * @param filename Nombre del archivo de salida (.tif o .tiff)
- * @param img Imagen RGB (bpp=3) a escribir
- * @param navla Malla de latitudes (navegación)
- * @param navlo Malla de longitudes (navegación)
- * @param nc_reference_file Archivo NetCDF de referencia para metadatos de proyección
- * @param is_geographic true si es proyección geográfica (EPSG:4326), false para geoestacionaria
- * @return 0 en éxito, código de error en fallo
+ * @brief Escribe una imagen RGB (3 canales) a formato GeoTIFF.
+ * * @param filename Ruta del archivo de salida (.tif).
+ * @param img Puntero a la imagen RGB (bpp=3).
+ * @param meta Metadatos originales (contienen proyección y geotransform base).
+ * @param offset_x Desplazamiento en X (píxeles) si la imagen es un recorte (crop).
+ * @param offset_y Desplazamiento en Y (píxeles) si la imagen es un recorte (crop).
+ * @return 0 en éxito, -1 en error.
  */
 int write_geotiff_rgb(const char* filename,
-                     const ImageData* img,
-                     const DataF* navla,
-                     const DataF* navlo,
-                     const char* nc_reference_file,
-                     bool is_geographic,
-                     unsigned crop_x_start,
-                     unsigned crop_y_start,
-                     int offset_x_pixels,
-                     int offset_y_pixels);
+                      const ImageData* img,
+                      const DataNC* meta,
+                      int offset_x,
+                      int offset_y);
 
 /**
- * @brief Escribe una imagen en escala de grises a formato GeoTIFF.
- * 
- * Para imágenes singlegray sin paleta. Escribe datos como UInt8 escalados.
- * 
- * @param filename Nombre del archivo de salida
- * @param img Imagen en escala de grises (bpp=1)
- * @param navla Malla de latitudes
- * @param navlo Malla de longitudes
- * @param nc_reference_file Archivo NetCDF de referencia
- * @param is_geographic true si es proyección geográfica, false para geoestacionaria
- * @return 0 en éxito, código de error en fallo
+ * @brief Escribe una imagen en escala de grises (1 canal) a formato GeoTIFF.
+ * * @param filename Ruta del archivo de salida.
+ * @param img Puntero a la imagen (bpp=1).
+ * @param meta Metadatos originales.
+ * @param offset_x Desplazamiento en X para recortes.
+ * @param offset_y Desplazamiento en Y para recortes.
+ * @return 0 en éxito, -1 en error.
  */
 int write_geotiff_gray(const char* filename,
-                      const ImageData* img,
-                      const DataF* navla,
-                      const DataF* navlo,
-                      const char* nc_reference_file,
-                      bool is_geographic,
-                      unsigned crop_x_start,
-                      unsigned crop_y_start,
-                      int offset_x_pixels,
-                      int offset_y_pixels);
+                       const ImageData* img,
+                       const DataNC* meta,
+                       int offset_x,
+                       int offset_y);
 
 /**
- * @brief Escribe una imagen indexada con paleta CPT a formato GeoTIFF.
- * 
- * Para imágenes pseudocolor. Escribe 1 banda indexada + Color Table GDAL.
- * 
- * @param filename Nombre del archivo de salida
- * @param img Imagen indexada (bpp=1, valores 0-N)
- * @param palette Paleta de colores dinámica (ColorArray)
- * @param navla Malla de latitudes
- * @param navlo Malla de longitudes
- * @param nc_reference_file Archivo NetCDF de referencia
- * @param is_geographic true si es proyección geográfica, false para geoestacionaria
- * @return 0 en éxito, código de error en fallo
+ * @brief Escribe una imagen indexada (Paleta de colores) a formato GeoTIFF.
+ * * @param filename Ruta del archivo de salida.
+ * @param img Puntero a la imagen indexada (bpp=1, valores 0-255).
+ * @param palette Paleta de colores a incrustar en el TIFF.
+ * @param meta Metadatos originales.
+ * @param offset_x Desplazamiento en X para recortes.
+ * @param offset_y Desplazamiento en Y para recortes.
+ * @return 0 en éxito, -1 en error.
  */
 int write_geotiff_indexed(const char* filename,
-                         const ImageData* img,
-                         const ColorArray* palette,
-                         const DataF* navla,
-                         const DataF* navlo,
-                         const char* nc_reference_file,
-                         bool is_geographic,
-                         unsigned crop_x_start,
-                         unsigned crop_y_start,
-                         int offset_x_pixels,
-                         int offset_y_pixels);
+                          const ImageData* img,
+                          const ColorArray* palette,
+                          const DataNC* meta,
+                          int offset_x,
+                          int offset_y);
 
 #endif /* HPSATVIEWS_WRITER_GEOTIFF_H_ */

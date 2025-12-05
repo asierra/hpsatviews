@@ -22,8 +22,7 @@
 #include <math.h>
 #include <limits.h>
 
-
-// --- Estructuras para manejo de canales (antes en main.c) ---
+// --- Estructuras para manejo de canales ---
 typedef struct {
     const char* name;
     char* filename;
@@ -37,16 +36,13 @@ typedef struct {
 
 // --- Prototipos de funciones internas ---
 ImageData create_truecolor_rgb(DataF B, DataF R, DataF NiR);
+ImageData create_truecolor_rgb_rayleigh(DataF B, DataF R, DataF NiR, const char* filename, bool apply);
 ImageData create_nocturnal_pseudocolor(DataNC datanc);
+ImageData blend_images(ImageData bottom, ImageData top, ImageData mask);
 
-/**
- * @brief Normaliza un DataF a un buffer de 8 bits (0-255).
- *
- * @param data Puntero al DataF de entrada.
- * @param min_val El valor de los datos que se mapeará a 0.
- * @param max_val El valor de los datos que se mapeará a 255.
- * @return Un puntero a un nuevo buffer de `unsigned char`. El llamador es responsable de liberarlo.
- */
+// NOTA: Eliminamos el prototipo local de image_crop para usar el de image.h
+
+// --- Funciones de normalización y creación de RGB ---
 static unsigned char* normalize_to_u8(const DataF* data, float min_val, float max_val) {
     unsigned char* buffer = malloc(data->size * sizeof(unsigned char));
     if (!buffer) {
@@ -55,12 +51,12 @@ static unsigned char* normalize_to_u8(const DataF* data, float min_val, float ma
     }
 
     float range = max_val - min_val;
-    if (range < 1e-9) range = 1.0f; // Evitar división por cero.
+    if (range < 1e-9) range = 1.0f;
 
     #pragma omp parallel for
     for (size_t i = 0; i < data->size; i++) {
         float val = data->data_in[i];
-        if (val == NonData) {
+        if (IS_NONDATA(val)) {
             buffer[i] = 0;
         } else {
             float normalized = (val - min_val) / range;
@@ -72,11 +68,6 @@ static unsigned char* normalize_to_u8(const DataF* data, float min_val, float ma
     return buffer;
 }
 
-/**
- * @brief Crea una imagen RGB a partir de tres bandas DataF con escalado personalizado.
- *
- * @return Una nueva estructura ImageData.
- */
 ImageData create_multiband_rgb(const DataF* r_ch, const DataF* g_ch, const DataF* b_ch,
                                float r_min, float r_max, float g_min, float g_max,
                                float b_min, float b_max) {
@@ -105,20 +96,13 @@ ImageData create_multiband_rgb(const DataF* r_ch, const DataF* g_ch, const DataF
 }
 
 ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo, float *dnratio, float max_tmp);
-ChannelSet* channelset_create(const char* channel_names[], int count);
-void channelset_destroy(ChannelSet* set);
 
-// --- Implementación de la función principal del módulo ---
-int find_id_from_name(const char *name, char *id_buffer);
-int find_channel_filenames(const char *dirnm, ChannelSet* channelset, bool is_l2_product);
-
-// --- Implementación de funciones de ayuda para canales ---
+// --- Gestión de ChannelSet ---
 ChannelSet* channelset_create(const char* channel_names[], int count) {
     ChannelSet* set = malloc(sizeof(ChannelSet));
     if (!set) return NULL;
     set->channels = malloc(sizeof(ChannelInfo) * count);
     if (!set->channels) { free(set); return NULL; }
-    // Allocate enough space for the full s..._e... signature
     set->id_signature = malloc(40);
     if (!set->id_signature) { free(set->channels); free(set); return NULL; }
     set->count = count;
@@ -141,28 +125,14 @@ void channelset_destroy(ChannelSet* set) {
     free(set);
 }
 
-/**
- * @brief Extrae una firma de tiempo única de un nombre de archivo GOES.
- *
- * Esta función busca el patrón "_s<timestamp>_e<timestamp>_" que es común
- * en los nombres de archivo GOES L1b y L2. Esta firma se usa para encontrar
- * los archivos de los otros canales correspondientes al mismo instante.
- *
- * @param name El nombre base del archivo de entrada.
- * @param id_buffer El buffer donde se almacenará la firma extraída.
- * @return 0 en éxito, -1 si el patrón no se encuentra.
- */
 int find_id_from_name(const char *name, char *id_buffer) {
     const char* s_pos = strstr(name, "_s");
     if (!s_pos) return -1;
-
     const char* e_pos = strstr(s_pos, "_e");
     if (!e_pos) return -1;
 
-    // La firma de tiempo única y consistente entre canales es la que va desde
-    // el inicio de '_s' hasta justo antes de '_e'.
     size_t length = (size_t)(e_pos - s_pos);
-    strncpy(id_buffer, s_pos + 1, length - 1); // Copia solo el contenido, sin los '_'
+    strncpy(id_buffer, s_pos + 1, length - 1);
     id_buffer[length] = '\0';
     return 0;
 }
@@ -180,14 +150,8 @@ int find_channel_filenames(const char *dirnm, ChannelSet* channelset, bool is_l2
 
     struct dirent *dir;
     while ((dir = readdir(d)) != NULL) {
-        // Condición base: debe coincidir la firma de tiempo y ser un archivo .nc
         if (strstr(dir->d_name, channelset->id_signature) && strstr(dir->d_name, ".nc")) {
-            
-            // Si es un producto L2, debe contener "CMIP" para evitar otros productos L2.
-            // Si no es L2, esta condición se ignora.
-            if (is_l2_product && !strstr(dir->d_name, "CMIP")) {
-                continue;
-            }
+            if (is_l2_product && !strstr(dir->d_name, "CMIP")) continue;
 
             for (int i = 0; i < channelset->count; i++) {
                 if (strstr(dir->d_name, channelset->channels[i].name)) {
@@ -203,6 +167,8 @@ int find_channel_filenames(const char *dirnm, ChannelSet* channelset, bool is_l2
     return 0;
 }
 
+// --- Función Principal del Módulo RGB ---
+
 int run_rgb(ArgParser* parser) {
     LogLevel log_level = ap_found(parser, "verbose") ? LOG_DEBUG : LOG_INFO;
     logger_init(log_level);
@@ -216,15 +182,13 @@ int run_rgb(ArgParser* parser) {
         return -1;
     }
     
-    // --- Opciones de procesamiento ---
+    // --- Opciones ---
     const bool do_reprojection = ap_found(parser, "geographics");
     const float gamma = ap_get_dbl_value(parser, "gamma");
     const char* mode = ap_get_str_value(parser, "mode");
     const bool apply_histogram = ap_found(parser, "histo");
-    const bool use_alpha = ap_found(parser, "alpha");
     const bool force_geotiff = ap_found(parser, "geotiff");
     const bool apply_rayleigh = ap_found(parser, "rayleigh");
-    const int scale = ap_get_int_value(parser, "scale"); // No implementado aún
 
     const char *basenm = basename((char*)input_file);
     char *dirnm_dup = strdup(input_file);
@@ -232,6 +196,7 @@ int run_rgb(ArgParser* parser) {
 
     bool is_l2_product = (strstr(basenm, "CMIP") != NULL);
 
+    // --- Configurar conjunto de canales ---
     ChannelSet* channels = NULL;
     if (strcmp(mode, "composite") == 0 || strcmp(mode, "truecolor") == 0) {
         const char* required[] = {"C01", "C02", "C03", "C13"};
@@ -254,7 +219,7 @@ int run_rgb(ArgParser* parser) {
         return -1;
     }
 
-    if (!channels) { LOG_FATAL("No se pudo crear el conjunto de canales."); free(dirnm_dup); return -1; }
+    if (!channels) { free(dirnm_dup); return -1; }
 
     if (find_id_from_name(basenm, channels->id_signature) != 0) {
         LOG_ERROR("No se pudo extraer el ID del nombre de archivo: %s", basenm);
@@ -267,54 +232,58 @@ int run_rgb(ArgParser* parser) {
     }
     free(dirnm_dup);
 
+    // Mapeo de canales
     ChannelInfo* c_info[17] = {NULL};
     for (int i = 0; i < channels->count; i++) {
         if (channels->channels[i].filename == NULL) {
-            LOG_ERROR("Archivo faltante para el canal %s con ID %s", channels->channels[i].name, channels->id_signature);
+            LOG_ERROR("Archivo faltante para canal %s", channels->channels[i].name);
             channelset_destroy(channels); return -1;
         }
-        int channel_num = atoi(channels->channels[i].name + 1);
-        if (channel_num > 0 && channel_num <= 16) c_info[channel_num] = &channels->channels[i];
+        int cn = atoi(channels->channels[i].name + 1);
+        if (cn > 0 && cn <= 16) c_info[cn] = &channels->channels[i];
     }
 
+    // --- Carga de Datos ---
     DataNC c[17];
     DataF aux, navlo, navla;
     const char* var_name = is_l2_product ? "CMI" : "Rad";
 
-    for (int i = 1; i <= 16; i++) { if (c_info[i]) load_nc_sf(c_info[i]->filename, var_name, &c[i]); }
+    for (int i = 1; i <= 16; i++) { 
+        if (c_info[i]) load_nc_sf(c_info[i]->filename, var_name, &c[i]); 
+    }
 
+    // Identificar canal de referencia
     int ref_ch_idx = 0;
     for (int i = 16; i > 0; i--) { if (c_info[i]) { ref_ch_idx = i; break; } }
-    if (ref_ch_idx == 0) { LOG_ERROR("No se encontró ningún canal de referencia."); channelset_destroy(channels); return -1; }
+    if (ref_ch_idx == 0) { channelset_destroy(channels); return -1; }
 
+    // Downsampling simple
     if (c_info[1]) { aux = downsample_boxfilter(c[1].fdata, 2); dataf_destroy(&c[1].fdata); c[1].fdata = aux; }
     if (c_info[2]) { aux = downsample_boxfilter(c[2].fdata, 4); dataf_destroy(&c[2].fdata); c[2].fdata = aux; }
     if (c_info[3]) { aux = downsample_boxfilter(c[3].fdata, 2); dataf_destroy(&c[3].fdata); c[3].fdata = aux; }
     
+    // Calcular Navegación
     compute_navigation_nc(c_info[ref_ch_idx]->filename, &navla, &navlo);
 
+    // --- Manejo de recorte (CLIP) ---
     unsigned int clip_x = 0, clip_y = 0, clip_w = 0, clip_h = 0;
     bool has_clip = ap_found(parser, "clip") && (ap_count(parser, "clip") == 4);
-    float clip_coords[4] = {0};  // Declarar fuera para usarlo en write_geotiff_rgb
+    float clip_coords[4] = {0};
     if (has_clip) {
         for(int i=0; i<4; i++) clip_coords[i] = atof(ap_get_str_value_at_index(parser, "clip", i));
     }
     
-    // Guardar índices del crop para GeoTIFF geoestacionario (caso sin reproyección)
-    unsigned crop_x_start = 0, crop_y_start = 0;
-    
-    if (has_clip && do_reprojection) {
-        LOG_INFO("Aplicando recorte PRE-reproyección: lon[%.3f, %.3f], lat[%.3f, %.3f]", clip_coords[0], clip_coords[2], clip_coords[3], clip_coords[1]);
+    float final_lon_min = 0, final_lon_max = 0, final_lat_min = 0, final_lat_max = 0;
+    unsigned crop_x_offset = 0, crop_y_offset = 0;
 
+    // --- RECORTE PRE-REPROYECCIÓN (Geostacionario) ---
+    if (has_clip && do_reprojection) {
         int ix, iy, iw, ih, vs;
         vs = reprojection_find_bounding_box(&navla, &navlo, clip_coords[0], clip_coords[1], clip_coords[2], clip_coords[3], &ix, &iy, &iw, &ih);
         
-        if (vs < 4) {
-            LOG_ERROR("Dominio de clip fuera del disco visible (solo %d muestras válidas).", vs);
-        } else {
+        if (vs > 4) {
             clip_x = (unsigned int)ix; clip_y = (unsigned int)iy; clip_w = (unsigned int)iw; clip_h = (unsigned int)ih;
-            crop_x_start = clip_x; crop_y_start = clip_y;  // Guardar para GeoTIFF
-            LOG_INFO("Recortando datos pre-reproyección: start[%u, %u], size[%u, %u]", clip_x, clip_y, clip_w, clip_h);
+            LOG_INFO("Recorte PRE-reproyección: Start(%u, %u) Size(%u, %u)", clip_x, clip_y, clip_w, clip_h);
 
             for (int i = 1; i <= 16; i++) {
                 if (c_info[i]) {
@@ -328,47 +297,100 @@ int run_rgb(ArgParser* parser) {
         }
     }
 
+    // --- REPROYECCIÓN ---
     if (do_reprojection) {
-        LOG_INFO("Iniciando reproyección...");
-        float lon_min, lon_max, lat_min, lat_max;
-        const char* nav_ref = c_info[ref_ch_idx]->filename;
+        LOG_INFO("Iniciando reproyección a coordenadas geográficas...");
         bool first = true;
+        const char* nav_ref = c_info[ref_ch_idx]->filename;
+
         for (int i = 1; i <= 16; i++) {
             if (c_info[i]) {
-                DataF repro = has_clip 
-                    ? reproject_to_geographics_with_nav(&c[i].fdata, &navla, &navlo, c[i].native_resolution_km, first ? &lon_min : NULL, first ? &lon_max : NULL, first ? &lat_min : NULL, first ? &lat_max : NULL)
-                    : reproject_to_geographics(&c[i].fdata, nav_ref, c[i].native_resolution_km, first ? &lon_min : NULL, first ? &lon_max : NULL, first ? &lat_min : NULL, first ? &lat_max : NULL);
-                dataf_destroy(&c[i].fdata); c[i].fdata = repro;
-                first = false;
+                float lmin, lmax, ltmin, ltmax;
+                DataF repro;
+                
+                if (has_clip) {
+                    repro = reproject_to_geographics_with_nav(&c[i].fdata, &navla, &navlo, c[i].native_resolution_km, &lmin, &lmax, &ltmin, &ltmax);
+                } else {
+                    repro = reproject_to_geographics(&c[i].fdata, nav_ref, c[i].native_resolution_km, &lmin, &lmax, &ltmin, &ltmax);
+                }
+                
+                dataf_destroy(&c[i].fdata); 
+                c[i].fdata = repro;
+
+                if (first) {
+                    final_lon_min = lmin; final_lon_max = lmax;
+                    final_lat_min = ltmin; final_lat_max = ltmax;
+                    first = false;
+                }
             }
         }
-
+        
         dataf_destroy(&navla); dataf_destroy(&navlo);
-        size_t final_w = c[ref_ch_idx].fdata.width, final_h = c[ref_ch_idx].fdata.height;
-        
-        create_navigation_from_reprojected_bounds(&navla, &navlo, final_w, final_h, lon_min, lon_max, lat_min, lat_max);
-        
-        if (has_clip) {
-            LOG_INFO("Aplicando recorte POST-reproyección: lon[%.3f, %.3f], lat[%.3f, %.3f]", clip_coords[0], clip_coords[2], clip_coords[3], clip_coords[1]);
+        create_navigation_from_reprojected_bounds(&navla, &navlo, c[ref_ch_idx].fdata.width, c[ref_ch_idx].fdata.height, final_lon_min, final_lon_max, final_lat_min, final_lat_max);
 
-            int ix_s = (int)(((clip_coords[0] - lon_min) / (lon_max-lon_min)) * final_w);
-            int iy_s = (int)(((lat_max - clip_coords[1]) / (lat_max-lat_min)) * final_h);
-            int ix_e = (int)(((clip_coords[2] - lon_min) / (lon_max-lon_min)) * final_w);
-            int iy_e = (int)(((lat_max - clip_coords[3]) / (lat_max-lat_min)) * final_h);
+        // --- RECORTE POST-REPROYECCIÓN ---
+        if (has_clip) {
+            size_t curr_w = c[ref_ch_idx].fdata.width;
+            size_t curr_h = c[ref_ch_idx].fdata.height;
+
+            int ix_s = (int)(((clip_coords[0] - final_lon_min) / (final_lon_max - final_lon_min)) * curr_w);
+            int iy_s = (int)(((final_lat_max - clip_coords[1]) / (final_lat_max - final_lat_min)) * curr_h); // Y invertida
+            int ix_e = (int)(((clip_coords[2] - final_lon_min) / (final_lon_max - final_lon_min)) * curr_w);
+            int iy_e = (int)(((final_lat_max - clip_coords[3]) / (final_lat_max - final_lat_min)) * curr_h);
             
-            ix_s = (ix_s < 0) ? 0 : ix_s; iy_s = (iy_s < 0) ? 0 : iy_s;
-            unsigned int crop_w = (unsigned int)((ix_e > ix_s) ? (ix_e - ix_s) : 0);
-            unsigned int crop_h = (unsigned int)((iy_e > iy_s) ? (iy_e - iy_s) : 0);
+            if (ix_s < 0) ix_s = 0; if (iy_s < 0) iy_s = 0;
+            if (ix_e > (int)curr_w) ix_e = (int)curr_w;
+            if (iy_e > (int)curr_h) iy_e = (int)curr_h;
             
-            for (int i=1; i<=16; i++) if (c_info[i]) {
-                DataF cropped = dataf_crop(&c[i].fdata, ix_s, iy_s, crop_w, crop_h);
-                dataf_destroy(&c[i].fdata); c[i].fdata = cropped;
+            unsigned int crop_w = (unsigned int)abs(ix_e - ix_s);
+            unsigned int crop_h = (unsigned int)abs(iy_e - iy_s);
+            
+            if (crop_w > 0 && crop_h > 0) {
+                LOG_INFO("Recorte POST-reproyección: Offset(%d, %d) Size(%u, %u)", ix_s, iy_s, crop_w, crop_h);
+                
+                float pixel_w = (final_lon_max - final_lon_min) / curr_w;
+                float pixel_h = (final_lat_min - final_lat_max) / curr_h; 
+
+                // Ajustar origen para el writer
+                final_lon_min = final_lon_min + ix_s * pixel_w;
+                final_lat_max = final_lat_max + iy_s * pixel_h; 
+                
+                // Ajustar extremos (para mantener consistencia)
+                final_lon_max = final_lon_min + crop_w * pixel_w;
+                final_lat_min = final_lat_max + crop_h * pixel_h;
+
+                for (int i=1; i<=16; i++) if (c_info[i]) {
+                    DataF cropped = dataf_crop(&c[i].fdata, ix_s, iy_s, crop_w, crop_h);
+                    dataf_destroy(&c[i].fdata); c[i].fdata = cropped;
+                }
+                
+                dataf_destroy(&navla); dataf_destroy(&navlo);
+                create_navigation_from_reprojected_bounds(&navla, &navlo, crop_w, crop_h, final_lon_min, final_lon_max, final_lat_min, final_lat_max);
             }
-            dataf_destroy(&navla); dataf_destroy(&navlo);
-            create_navigation_from_reprojected_bounds(&navla, &navlo, crop_w, crop_h, clip_coords[0], clip_coords[2], clip_coords[3], clip_coords[1]);
+        }
+    } else {
+        // MODO NATIVO (GEOESTACIONARIO)
+        if (has_clip) {
+             int ix, iy, iw, ih;
+             if (reprojection_find_bounding_box(&navla, &navlo, clip_coords[0], clip_coords[1], clip_coords[2], clip_coords[3], &ix, &iy, &iw, &ih) > 4) {
+                 crop_x_offset = (unsigned)ix;
+                 crop_y_offset = (unsigned)iy;
+                 clip_w = (unsigned)iw;
+                 clip_h = (unsigned)ih;
+                 
+                 LOG_INFO("Aplicando recorte Nativo: Start(%u, %u) Size(%u, %u)", ix, iy, iw, ih);
+                 for (int i=1; i<=16; i++) if (c_info[i]) {
+                    DataF cropped = dataf_crop(&c[i].fdata, ix, iy, iw, ih);
+                    dataf_destroy(&c[i].fdata); c[i].fdata = cropped;
+                 }
+                 DataF navla_c = dataf_crop(&navla, ix, iy, iw, ih);
+                 DataF navlo_c = dataf_crop(&navlo, ix, iy, iw, ih);
+                 dataf_destroy(&navla); dataf_destroy(&navlo); navla = navla_c; navlo = navlo_c;
+             }
         }
     }
 
+    // --- Generación del nombre de archivo ---
     char* out_filename_generated = NULL;
     const char* out_filename;
     if (ap_found(parser, "out")) {
@@ -382,7 +404,7 @@ int run_rgb(ArgParser* parser) {
             if (dot) {
                 size_t pre_len = dot - base_fn;
                 size_t total = strlen(base_fn) + 5;
-                out_filename_generated = (char*)malloc(total);
+                out_filename_generated = malloc(total);
                 if (out_filename_generated) {
                     strncpy(out_filename_generated, base_fn, pre_len);
                     out_filename_generated[pre_len] = '\0';
@@ -395,34 +417,35 @@ int run_rgb(ArgParser* parser) {
         out_filename = out_filename_generated;
     }
 
+    // --- Composición de Imágenes ---
     ImageData final_image = {0};
     DataF r_ch = {0}, g_ch = {0}, b_ch = {0};
     
     if (strcmp(mode, "truecolor") == 0) {
-        LOG_INFO("Generando imagen en modo 'truecolor'...");
+        LOG_INFO("Generando 'truecolor'...");
         final_image = apply_rayleigh ? create_truecolor_rgb_rayleigh(c[1].fdata, c[2].fdata, c[3].fdata, c_info[1]->filename, true)
                                      : create_truecolor_rgb(c[1].fdata, c[2].fdata, c[3].fdata);
     } else if (strcmp(mode, "night") == 0) {
-        LOG_INFO("Generando imagen en modo 'night'...");
+        LOG_INFO("Generando 'night'...");
         final_image = create_nocturnal_pseudocolor(c[13]);
     } else if (strcmp(mode, "ash") == 0) {
-        LOG_INFO("Generando imagen en modo 'ash'...");
+        LOG_INFO("Generando 'ash'...");
         r_ch = dataf_op_dataf(&c[15].fdata, &c[13].fdata, OP_SUB);
         g_ch = dataf_op_dataf(&c[14].fdata, &c[11].fdata, OP_SUB);
         final_image = create_multiband_rgb(&r_ch, &g_ch, &c[13].fdata, -6.7f, 2.6f, -6.0f, 6.3f, 243.6f, 302.4f);
     } else if (strcmp(mode, "airmass") == 0) {
-        LOG_INFO("Generando imagen en modo 'airmass'...");
+        LOG_INFO("Generando 'airmass'...");
         r_ch = dataf_op_dataf(&c[8].fdata, &c[10].fdata, OP_SUB);
         g_ch = dataf_op_dataf(&c[12].fdata, &c[13].fdata, OP_SUB);
         b_ch = dataf_op_scalar(&c[8].fdata, 273.15f, OP_SUB, true);
         final_image = create_multiband_rgb(&r_ch, &g_ch, &b_ch, -26.2f, 0.6f, -43.2f, 6.7f, 29.25f, 64.65f);
     } else if (strcmp(mode, "so2") == 0) {
-        LOG_INFO("Generando imagen en modo 'so2'...");
+        LOG_INFO("Generando 'so2'...");
         r_ch = dataf_op_dataf(&c[9].fdata, &c[10].fdata, OP_SUB);
         g_ch = dataf_op_dataf(&c[13].fdata, &c[11].fdata, OP_SUB);
         final_image = create_multiband_rgb(&r_ch, &g_ch, &c[13].fdata, -4.0f, 2.0f, -4.0f, 5.0f, 233.0f, 300.0f);
     } else { // composite
-        LOG_INFO("Generando imagen en modo 'composite'...");
+        LOG_INFO("Generando 'composite'...");
         ImageData diurna = apply_rayleigh ? create_truecolor_rgb_rayleigh(c[1].fdata, c[2].fdata, c[3].fdata, c_info[1]->filename, true)
                                           : create_truecolor_rgb(c[1].fdata, c[2].fdata, c[3].fdata);
         if (apply_histogram) image_apply_histogram(diurna);
@@ -437,33 +460,37 @@ int run_rgb(ArgParser* parser) {
     if (gamma != 1.0) image_apply_gamma(final_image, gamma);
     if (strcmp(mode, "truecolor") != 0 && apply_histogram) image_apply_histogram(final_image);
 
-    if (has_clip && !do_reprojection) {
-        LOG_INFO("Aplicando recorte POST-procesamiento: lon[%.3f, %.3f], lat[%.3f, %.3f]", clip_coords[0], clip_coords[2], clip_coords[3], clip_coords[1]);
-        int ix, iy, iw, ih, vs;
-        vs = reprojection_find_bounding_box(&navla, &navlo, clip_coords[0], clip_coords[1], clip_coords[2], clip_coords[3], &ix, &iy, &iw, &ih);
-        if (vs < 4) {
-            LOG_WARN("Dominio de clip fuera del disco. Ignorando recorte.");
-        } else {
-            ImageData cropped = image_crop(&final_image, ix, iy, iw, ih);
-            if (cropped.data) { image_destroy(&final_image); final_image = cropped; }
-        }
-    }
-
+    // --- ESCRITURA FINAL ---
     bool is_geotiff = force_geotiff || (out_filename && (strstr(out_filename, ".tif") || strstr(out_filename, ".tiff")));
+    
     if (is_geotiff) {
-        const char* nc_ref = c_info[ref_ch_idx] ? c_info[ref_ch_idx]->filename : NULL;
-        if (nc_ref) {
-            write_geotiff_rgb(out_filename, &final_image, &navla, &navlo, nc_ref, do_reprojection, crop_x_start, crop_y_start, 0, 0);
+        DataNC meta_out = {0};
+        
+        if (do_reprojection) {
+            // Construir metadatos LAT/LON manualmente
+            meta_out.proj_code = PROJ_LATLON;
+            
+            size_t w = final_image.width;
+            size_t h = final_image.height;
+            
+            meta_out.geotransform[0] = final_lon_min;
+            meta_out.geotransform[1] = (final_lon_max - final_lon_min) / (double)w;
+            meta_out.geotransform[2] = 0.0;
+            meta_out.geotransform[3] = final_lat_max;
+            meta_out.geotransform[4] = 0.0;
+            meta_out.geotransform[5] = (final_lat_min - final_lat_max) / (double)h;
+            
+            write_geotiff_rgb(out_filename, &final_image, &meta_out, 0, 0);
+
         } else {
-            LOG_ERROR("No se puede escribir GeoTIFF: falta archivo NetCDF de referencia.");
+            // MODO NATIVO
+            meta_out = c[ref_ch_idx]; 
+            write_geotiff_rgb(out_filename, &final_image, &meta_out, crop_x_offset, crop_y_offset);
         }
     } else {
         write_image_png(out_filename, &final_image);
     }
     LOG_INFO("Imagen guardada en: %s", out_filename);
-    
-    if (scale != 1) LOG_WARN("La opción --scale aún no está implementada para el comando rgb.");
-    if (use_alpha) LOG_WARN("La opción --alpha aún no está implementada para el comando rgb.");
 
     dataf_destroy(&r_ch); dataf_destroy(&g_ch); dataf_destroy(&b_ch);
     if (out_filename_generated) free(out_filename_generated);

@@ -108,6 +108,8 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     char *varname = "Rad"; // Default
     if (strinstr(fnc01, "CMIP")) varname = "CMI"; else if (strinstr(fnc01, "LST")) varname = "LST";
     else if (strinstr(fnc01, "ACTP")) varname = "Phase"; else if (strinstr(fnc01, "CTP")) varname = "PRES";
+    
+    // NOTA: load_nc_sf debe llenar los metadatos de DataNC (geotransform, proj_code)
     if (load_nc_sf(fnc01, varname, &c01) != 0) {
         LOG_ERROR("No se pudo cargar el archivo NetCDF: %s", fnc01);
         if (out_filename_generated) free(out_filename_generated);
@@ -129,7 +131,6 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
             LOG_WARN("No se pudo cargar la navegación del archivo NetCDF.");
             if (is_geotiff) {
                 LOG_ERROR("La navegación es requerida para GeoTIFF. Abortando.");
-                // Cleanup and exit
                 if (out_filename_generated) free(out_filename_generated);
                 free_cpt_data(cptdata);
                 datanc_destroy(&c01);
@@ -146,6 +147,10 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     
     // --- Procesamiento de imagen ---
     ImageData imout = {0};
+    
+    // Variables para metadatos de salida
+    float final_lon_min = 0, final_lon_max = 0, final_lat_min = 0, final_lat_max = 0;
+
     if (c01.is_float) {
         if (do_reprojection && has_clip && nav_loaded) {
             LOG_INFO("Aplicando recorte PRE-reproyección: lon[%.3f, %.3f], lat[%.3f, %.3f]",
@@ -163,10 +168,9 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         
         if (do_reprojection) {
             LOG_INFO("Iniciando reproyección...");
-            float lon_min, lon_max, lat_min, lat_max;
             DataF reprojected_data = (has_clip && nav_loaded)
-                ? reproject_to_geographics_with_nav(&c01.fdata, &navla, &navlo, c01.native_resolution_km, &lon_min, &lon_max, &lat_min, &lat_max)
-                : reproject_to_geographics(&c01.fdata, fnc01, c01.native_resolution_km, &lon_min, &lon_max, &lat_min, &lat_max);
+                ? reproject_to_geographics_with_nav(&c01.fdata, &navla, &navlo, c01.native_resolution_km, &final_lon_min, &final_lon_max, &final_lat_min, &final_lat_max)
+                : reproject_to_geographics(&c01.fdata, fnc01, c01.native_resolution_km, &final_lon_min, &final_lon_max, &final_lat_min, &final_lat_max);
 
             if (reprojected_data.data_in) {
                 dataf_destroy(&c01.fdata);
@@ -177,23 +181,19 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
                 
                 // Si hay clip, recortar la imagen reproyectada a los límites exactos del clip
                 if (has_clip) {
-                    // Los límites actuales (lon_min, lon_max, etc.) son del bounding box
-                    // Queremos recortar a los límites exactos del clip
                     float clip_lon_min = clip_coords[0];
                     float clip_lon_max = clip_coords[2];
                     float clip_lat_min = clip_coords[3];
                     float clip_lat_max = clip_coords[1];
                     
-                    // Calcular qué porción de la imagen corresponde al clip
-                    float lon_range = lon_max - lon_min;
-                    float lat_range = lat_max - lat_min;
+                    float lon_range = final_lon_max - final_lon_min;
+                    float lat_range = final_lat_max - final_lat_min;
                     
-                    int x_start = (int)((clip_lon_min - lon_min) / lon_range * c01.fdata.width);
-                    int y_start = (int)((lat_max - clip_lat_max) / lat_range * c01.fdata.height);
-                    int x_end = (int)((clip_lon_max - lon_min) / lon_range * c01.fdata.width);
-                    int y_end = (int)((lat_max - clip_lat_min) / lat_range * c01.fdata.height);
+                    int x_start = (int)((clip_lon_min - final_lon_min) / lon_range * c01.fdata.width);
+                    int y_start = (int)((final_lat_max - clip_lat_max) / lat_range * c01.fdata.height);
+                    int x_end = (int)((clip_lon_max - final_lon_min) / lon_range * c01.fdata.width);
+                    int y_end = (int)((final_lat_max - clip_lat_min) / lat_range * c01.fdata.height);
                     
-                    // Asegurar que están dentro de los límites
                     if (x_start < 0) x_start = 0;
                     if (y_start < 0) y_start = 0;
                     if (x_end > (int)c01.fdata.width) x_end = c01.fdata.width;
@@ -209,16 +209,20 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
                         dataf_destroy(&c01.fdata);
                         c01.fdata = cropped;
                         
-                        // Actualizar límites a los del clip exacto
-                        lon_min = clip_lon_min;
-                        lon_max = clip_lon_max;
-                        lat_min = clip_lat_min;
-                        lat_max = clip_lat_max;
+                        // Actualizar límites geográficos para el GeoTIFF
+                        float pixel_w = lon_range / reprojected_data.width;
+                        float pixel_h = lat_range / reprojected_data.height;
+                        
+                        final_lon_min = final_lon_min + x_start * pixel_w;
+                        final_lat_max = final_lat_max - y_start * pixel_h; // Latitud baja al aumentar Y
+                        // Ajustar max/min restantes
+                        final_lon_max = final_lon_min + crop_w * pixel_w;
+                        final_lat_min = final_lat_max - crop_h * pixel_h;
                     }
                 }
                 
-                create_navigation_from_reprojected_bounds(&navla, &navlo, c01.fdata.width, c01.fdata.height, lon_min, lon_max, lat_min, lat_max);
-                nav_loaded = true; // Navigation is now the new grid
+                create_navigation_from_reprojected_bounds(&navla, &navlo, c01.fdata.width, c01.fdata.height, final_lon_min, final_lon_max, final_lat_min, final_lat_max);
+                nav_loaded = true;
             }
         }
 
@@ -229,6 +233,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         }
         imout = create_single_gray(c01.fdata, invert_values, use_alpha, cptdata);
     } else {
+        // Datos BYTE
         if (do_reprojection || scale != 1) LOG_WARN("Reproyección/escalado no implementado para datos byte. Opciones ignoradas.");
         imout = create_single_grayb(c01.bdata, invert_values, use_alpha, cptdata);
     }
@@ -238,86 +243,59 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
 
     // Guardar índices del crop para GeoTIFF geoestacionario
     unsigned crop_x_start = 0, crop_y_start = 0;
-    int offset_x_pixels = 0, offset_y_pixels = 0;
     
-    if (has_clip && nav_loaded) {
+    // Si no estamos reproyectando y hay recorte, aplicamos recorte a la imagen final
+    if (has_clip && nav_loaded && !do_reprojection) {
         int ix, iy, iw, ih;
-        if (do_reprojection) {
-            float lon_range = navlo.fmax - navlo.fmin, lat_range = navla.fmax - navla.fmin;
-            ix = (int)(((clip_coords[0] - navlo.fmin) / lon_range) * imout.width);
-            iy = (int)(((navla.fmax - clip_coords[1]) / lat_range) * imout.height);
-            int ix_end = (int)(((clip_coords[2] - navlo.fmin) / lon_range) * imout.width);
-            int iy_end = (int)(((navla.fmax - clip_coords[3]) / lat_range) * imout.height);
-            ix = (ix < 0) ? 0 : ix; iy = (iy < 0) ? 0 : iy;
-            iw = ((ix_end > ix) ? (ix_end - ix) : 0); ih = ((iy_end > iy) ? (iy_end - iy) : 0);
-        } else {
-            // Para caso geoestacionario: usar bounding box porque la navegación puede tener píxeles inválidos
-            reprojection_find_bounding_box(&navla, &navlo, clip_coords[0], clip_coords[1], clip_coords[2], clip_coords[3], &ix, &iy, &iw, &ih);
-        }
+        reprojection_find_bounding_box(&navla, &navlo, clip_coords[0], clip_coords[1], clip_coords[2], clip_coords[3], &ix, &iy, &iw, &ih);
         
-        LOG_INFO("Crop%s: start[%d,%d], size[%d,%d]", 
-                 do_reprojection ? " fino (reproyectado)" : " (geoestacionario bbox)", ix, iy, iw, ih);
+        LOG_INFO("Crop geoestacionario: start[%d,%d], size[%d,%d]", ix, iy, iw, ih);
         
         crop_x_start = (unsigned)ix;
         crop_y_start = (unsigned)iy;
         ImageData cropped = image_crop(&imout, ix, iy, iw, ih);
         if (cropped.data) { image_destroy(&imout); imout = cropped; }
         
-        // Recortar también la navegación para que coincida con la imagen recortada
         DataF navla_cropped = dataf_crop(&navla, ix, iy, iw, ih);
         DataF navlo_cropped = dataf_crop(&navlo, ix, iy, iw, ih);
-        
-        LOG_INFO("Navegación recortada: lat[%.3f, %.3f], lon[%.3f, %.3f]",
-                 navla_cropped.fmin, navla_cropped.fmax, navlo_cropped.fmin, navlo_cropped.fmax);
-        LOG_INFO("Centro navegación: lat=%.3f, lon=%.3f",
-                 (navla_cropped.fmin + navla_cropped.fmax) / 2.0,
-                 (navlo_cropped.fmin + navlo_cropped.fmax) / 2.0);
-        
-        // Para caso geoestacionario: ajustar crop_x_start/crop_y_start para que correspondan
-        // al centro real del clip, no al centro del bounding box
-        if (!do_reprojection && has_clip) {
-            // Calcular el centro del clip deseado
-            float clip_lat_center = (clip_coords[1] + clip_coords[3]) / 2.0f;  // (lat_max + lat_min) / 2
-            float clip_lon_center = (clip_coords[0] + clip_coords[2]) / 2.0f;  // (lon_min + lon_max) / 2
-            
-            // Calcular el centro del bounding box actual (en coordenadas de navegación)
-            float nav_lat_center = (navla_cropped.fmin + navla_cropped.fmax) / 2.0f;
-            float nav_lon_center = (navlo_cropped.fmin + navlo_cropped.fmax) / 2.0f;
-            
-            // Calcular el offset en píxeles desde el centro del bbox hasta el centro del clip
-            float lat_range_bbox = navla_cropped.fmax - navla_cropped.fmin;
-            float lon_range_bbox = navlo_cropped.fmax - navlo_cropped.fmin;
-            
-            // Offset en fracción de la imagen
-            float lat_offset_frac = (nav_lat_center - clip_lat_center) / lat_range_bbox;
-            float lon_offset_frac = (clip_lon_center - nav_lon_center) / lon_range_bbox;
-            
-            // Convertir a píxeles
-            offset_x_pixels = (int)(lon_offset_frac * iw);
-            offset_y_pixels = (int)(lat_offset_frac * ih);
-            
-            LOG_INFO("Ajuste centro bbox→clip: offset_píxeles[%d,%d], offset_grados[%.3f°lon, %.3f°lat]",
-                     offset_x_pixels, offset_y_pixels, clip_lon_center - nav_lon_center, clip_lat_center - nav_lat_center);
-            
-            // NO ajustamos crop_x_start/crop_y_start aquí
-            // Los índices del bbox se usarán para leer coordenadas x[],y[] del NetCDF
-            // El offset se guardará en el contexto y se aplicará al GeoTransform
-            LOG_INFO("Bbox original para leer coordenadas: crop[%u,%u]", crop_x_start, crop_y_start);
-            LOG_INFO("El offset [%d,%d] píxeles se aplicará al GeoTransform", offset_x_pixels, offset_y_pixels);
-        }
-        
-        dataf_destroy(&navla);
-        dataf_destroy(&navlo);
-        navla = navla_cropped;
-        navlo = navlo_cropped;
+        dataf_destroy(&navla); dataf_destroy(&navlo);
+        navla = navla_cropped; navlo = navlo_cropped;
     }
     
     // --- Escritura de archivo ---
     if (is_geotiff) {
-        if (is_pseudocolor && color_array) {
-            write_geotiff_indexed(outfn, &imout, color_array, &navla, &navlo, fnc01, do_reprojection, crop_x_start, crop_y_start, offset_x_pixels, offset_y_pixels);
+        DataNC meta_out = {0};
+        
+        if (do_reprojection) {
+            // MODO: Geográficas (Lat/Lon)
+            meta_out.proj_code = PROJ_LATLON;
+            
+            // Construir GeoTransform [TL_X, W_Px, 0, TL_Y, 0, H_Px]
+            meta_out.geotransform[0] = final_lon_min;
+            meta_out.geotransform[1] = (final_lon_max - final_lon_min) / (double)imout.width;
+            meta_out.geotransform[2] = 0.0;
+            meta_out.geotransform[3] = final_lat_max;
+            meta_out.geotransform[4] = 0.0;
+            // Altura de pixel suele ser negativa (Norte -> Sur)
+            meta_out.geotransform[5] = (final_lat_min - final_lat_max) / (double)imout.height; 
+
+            // Pasamos offset 0,0 porque la imagen y el geotransform ya están alineados
+            if (is_pseudocolor && color_array) {
+                write_geotiff_indexed(outfn, &imout, color_array, &meta_out, 0, 0);
+            } else {
+                write_geotiff_gray(outfn, &imout, &meta_out, 0, 0);
+            }
         } else {
-            write_geotiff_gray(outfn, &imout, &navla, &navlo, fnc01, do_reprojection, crop_x_start, crop_y_start, offset_x_pixels, offset_y_pixels);
+            // MODO: Nativo (Geoestacionario)
+            // Copiamos la info del NetCDF original
+            meta_out = c01; 
+            
+            // Pasamos el offset del recorte para que GDAL ajuste el origen
+            if (is_pseudocolor && color_array) {
+                write_geotiff_indexed(outfn, &imout, color_array, &meta_out, crop_x_start, crop_y_start);
+            } else {
+                write_geotiff_gray(outfn, &imout, &meta_out, crop_x_start, crop_y_start);
+            }
         }
     } else {
         if (is_pseudocolor && color_array) {

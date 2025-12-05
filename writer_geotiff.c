@@ -1,207 +1,202 @@
-#define _GNU_SOURCE
 /*
- * GeoTIFF writer module
- * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
+ * GeoTIFF writer module implementation
+ * Copyright (c) 2025 Alejandro Aguilar Sierra (asierra@unam.mx)
  * Laboratorio Nacional de Observación de la Tierra, UNAM
  */
 #include "writer_geotiff.h"
-#include "projection_utils.h"
 #include "logger.h"
 #include <gdal.h>
-#include <cpl_conv.h>
+#include <cpl_string.h>
+#include <ogr_srs_api.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h> // Necesario para sprintf
 
-// Helper function to set up georeferencing and create the dataset
-static GDALDatasetH create_georeferenced_dataset(const char* filename, int width, int height, int bands,
-                                                 GDALDataType eDataType, const DataF* navla, const DataF* navlo,
-                                                 const char* nc_reference_file, bool is_geographic,
-                                                 unsigned crop_x_start, unsigned crop_y_start,
-                                                 int offset_x_pixels, int offset_y_pixels) {
-    char* wkt = NULL;
-    double geotransform[6];
+// --- Funciones Auxiliares Privadas ---
 
-    if (is_geographic) {
-        wkt = strdup("EPSG:4326");
-        compute_geotransform_geographic(navla, navlo, geotransform);
-    } else {
-        wkt = build_geostationary_wkt_from_nc(nc_reference_file);
+/**
+ * Genera el string WKT usando PROJ.4 para máxima compatibilidad.
+ * Reemplaza a OSRSetGeostationary para evitar errores de compilación.
+ */
+static char* get_projection_wkt(const DataNC* meta) {
+    OGRSpatialReferenceH hSRS = OSRNewSpatialReference(NULL);
+    char *wkt = NULL;
+
+    if (meta->proj_code == PROJ_GEOS && meta->proj_info.valid) {
+        // Construimos la cadena PROJ.4 manualmente.
+        // +sweep=x es CRUCIAL para GOES-R.
+        char proj4[512];
+        snprintf(proj4, sizeof(proj4), 
+                 "+proj=geos +sweep=x +lon_0=%.6f +h=%.3f +x_0=0 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+                 meta->proj_info.lon_origin,
+                 meta->proj_info.sat_height);
         
-        // Para geoestacionario: si tenemos navegación, calcular desde las coordenadas reales
-        // En lugar de usar índices del NetCDF que pueden no corresponder al crop fino
-        if (navla && navlo && navla->width == (size_t)width && navla->height == (size_t)height) {
-            // Calcular GeoTransform desde las coordenadas lat/lon de la navegación
-            // usando la relación entre lat/lon y las coordenadas geoestacionarias
-            LOG_INFO("Calculando GeoTransform desde navegación: lat[%.3f,%.3f], lon[%.3f,%.3f]",
-                     navla->fmin, navla->fmax, navlo->fmin, navlo->fmax);
-            
-            // Para geoestacionario necesitamos transformar lat/lon a x/y en metros
-            // Usaremos el mismo pixel size que GDAL calcula
-            double lat_center = (navla->fmin + navla->fmax) / 2.0;
-            double lon_center = (navlo->fmin + navlo->fmax) / 2.0;
-            
-            LOG_INFO("Centro navegación: lat=%.3f, lon=%.3f", lat_center, lon_center);
-            
-            // Por ahora, usar el método con índices como fallback
-            // TODO: implementar transformación lat/lon -> geos correctamente
-            if (compute_geotransform_geostationary(nc_reference_file, width, height, crop_x_start, crop_y_start,
-                                                   offset_x_pixels, offset_y_pixels, geotransform) != 0) {
-                free(wkt);
-                return NULL;
-            }
-        } else {
-            if (compute_geotransform_geostationary(nc_reference_file, width, height, crop_x_start, crop_y_start,
-                                                   offset_x_pixels, offset_y_pixels, geotransform) != 0) {
-                free(wkt);
-                return NULL;
-            }
+        if (OSRImportFromProj4(hSRS, proj4) != OGRERR_NONE) {
+            LOG_ERROR("Error importando proyección PROJ.4: %s", proj4);
         }
-    }
 
-    if (!wkt) {
-        LOG_ERROR("Error al generar WKT de proyección");
+    } else if (meta->proj_code == PROJ_LATLON) {
+        // EPSG:4326 (Latitud/Longitud WGS84)
+        OSRImportFromEPSG(hSRS, 4326);
+    } else {
+        OSRDestroySpatialReference(hSRS);
         return NULL;
     }
 
+    OSRExportToWkt(hSRS, &wkt);
+    OSRDestroySpatialReference(hSRS);
+    return wkt;
+}
+
+/**
+ * Crea el Dataset de GDAL, configura el GeoTransform y la proyección.
+ * * NOTA IMPORTANTE: Si la proyección es GEOS, convierte el GeoTransform
+ * de Radianes a Metros multiplicando por la altura del satélite.
+ */
+static GDALDatasetH create_geotiff_dataset(const char* filename, 
+                                           int width, 
+                                           int height, 
+                                           int bands, 
+                                           GDALDataType type, 
+                                           const DataNC* meta,
+                                           int offset_x, 
+                                           int offset_y) {
+    
     GDALAllRegister();
     GDALDriverH driver = GDALGetDriverByName("GTiff");
     if (!driver) {
-        LOG_ERROR("No se encontró el driver GTiff. Asegúrese que GDAL está bien instalado.");
-        free(wkt);
-        return NULL;
-    }
-    
-    GDALDatasetH dataset = GDALCreate(driver, filename, width, height, bands, eDataType, NULL);
-    if (!dataset) {
-        LOG_ERROR("Error al crear dataset GeoTIFF: %s", filename);
-        free(wkt);
+        LOG_ERROR("Driver GTiff no disponible en GDAL.");
         return NULL;
     }
 
-    GDALSetProjection(dataset, wkt);
-    GDALSetGeoTransform(dataset, geotransform);
+    // Opciones: Compresión LZW y predictor para reducir tamaño
+    char **papszOptions = NULL;
+    papszOptions = CSLSetNameValue(papszOptions, "COMPRESS", "LZW");
+    papszOptions = CSLSetNameValue(papszOptions, "PREDICTOR", "2"); 
 
-    free(wkt);
-    return dataset;
+    GDALDatasetH ds = GDALCreate(driver, filename, width, height, bands, type, papszOptions);
+    CSLDestroy(papszOptions);
+
+    if (!ds) {
+        LOG_ERROR("No se pudo crear el archivo GeoTIFF: %s", filename);
+        return NULL;
+    }
+
+    if (meta) {
+        // 1. Establecer Proyección (WKT)
+        char* wkt = get_projection_wkt(meta);
+        if (wkt) {
+            GDALSetProjection(ds, wkt);
+            CPLFree(wkt);
+        }
+
+        // 2. Configurar GeoTransform
+        double gt[6];
+        memcpy(gt, meta->geotransform, sizeof(double) * 6);
+
+        // --- CONVERSIÓN DE UNIDADES (RAD -> METROS) ---
+        // El archivo NetCDF tiene coordenadas en Radianes.
+        // La proyección PROJ.4 (+proj=geos) espera Metros.
+        if (meta->proj_code == PROJ_GEOS && meta->proj_info.valid) {
+            double h = meta->proj_info.sat_height;
+            // Escalamos todos los componentes del geotransform
+            gt[0] *= h; // Origen X
+            gt[1] *= h; // Pixel Width
+            gt[2] *= h; // Rotación X
+            gt[3] *= h; // Origen Y
+            gt[4] *= h; // Rotación Y
+            gt[5] *= h; // Pixel Height
+            
+            // LOG_DEBUG("GeoTransform escalado a metros (Factor: %.1f)", h);
+        }
+
+        // --- AJUSTE DE RECORTE (CROP) ---
+        // Aplicamos el desplazamiento del crop (offset en píxeles)
+        // gt[1] y gt[5] ahora tienen el tamaño correcto (metros o grados)
+        gt[0] = gt[0] + (offset_x * gt[1]);
+        gt[3] = gt[3] + (offset_y * gt[5]);
+
+        GDALSetGeoTransform(ds, gt);
+    }
+
+    return ds;
 }
 
-int write_geotiff_rgb(const char* filename, const ImageData* img, const DataF* navla,
-                     const DataF* navlo, const char* nc_reference_file, bool is_geographic,
-                     unsigned crop_x_start, unsigned crop_y_start,
-                     int offset_x_pixels, int offset_y_pixels) {
-    if (!filename || !img || !img->data || img->bpp != 3) {
-        LOG_ERROR("Parámetros inválidos para write_geotiff_rgb");
+// --- Implementación de Funciones Públicas ---
+
+int write_geotiff_rgb(const char* filename, const ImageData* img, const DataNC* meta,
+                      int offset_x, int offset_y) {
+    if (!img || img->bpp != 3) {
+        LOG_ERROR("Imagen inválida para write_geotiff_rgb (se requiere bpp=3)");
         return -1;
     }
 
-    GDALDatasetH dataset = create_georeferenced_dataset(filename, img->width, img->height, 3, GDT_Byte,
-                                                        navla, navlo, nc_reference_file, is_geographic,
-                                                        crop_x_start, crop_y_start,
-                                                        offset_x_pixels, offset_y_pixels);
-    if (!dataset) return -1;
+    GDALDatasetH ds = create_geotiff_dataset(filename, img->width, img->height, 3, GDT_Byte, meta, offset_x, offset_y);
+    if (!ds) return -1;
 
-    size_t channel_size = img->width * img->height;
-    unsigned char* channel_data = malloc(channel_size);
-    if (!channel_data) {
-        LOG_ERROR("Error de memoria para buffer de canal RGB");
-        GDALClose(dataset);
-        return -1;
-    }
-
-    CPLErr io_err = CE_None;
-    for (int band = 1; band <= 3; band++) {
-        GDALRasterBandH band_h = GDALGetRasterBand(dataset, band);
-        for (size_t i = 0; i < channel_size; i++) {
-            channel_data[i] = img->data[i * 3 + (band - 1)];
-        }
-        io_err = GDALRasterIO(band_h, GF_Write, 0, 0, img->width, img->height,
-                              channel_data, img->width, img->height, GDT_Byte, 0, 0);
-        if (io_err != CE_None) {
-            LOG_ERROR("Error al escribir la banda %d del GeoTIFF.", band);
-            break;
-        }
-    }
-
-    free(channel_data);
-    GDALClose(dataset);
-
-    if (io_err == CE_None) {
-        LOG_INFO("GeoTIFF RGB guardado: %s (%ux%u, proyección: %s)", filename, img->width, img->height,
-                 is_geographic ? "geográfica" : "geoestacionaria");
-    }
-
-    return (io_err == CE_None) ? 0 : -1;
-}
-
-int write_geotiff_gray(const char* filename, const ImageData* img, const DataF* navla,
-                      const DataF* navlo, const char* nc_reference_file, bool is_geographic,
-                      unsigned crop_x_start, unsigned crop_y_start,
-                      int offset_x_pixels, int offset_y_pixels) {
-    if (!filename || !img || !img->data || img->bpp != 1) {
-        LOG_ERROR("Parámetros inválidos para write_geotiff_gray");
-        return -1;
-    }
-
-    GDALDatasetH dataset = create_georeferenced_dataset(filename, img->width, img->height, 1, GDT_Byte,
-                                                        navla, navlo, nc_reference_file, is_geographic,
-                                                        crop_x_start, crop_y_start,
-                                                        offset_x_pixels, offset_y_pixels);
-    if (!dataset) return -1;
-
-    GDALRasterBandH band_h = GDALGetRasterBand(dataset, 1);
-    CPLErr io_err = GDALRasterIO(band_h, GF_Write, 0, 0, img->width, img->height,
-                                 img->data, img->width, img->height, GDT_Byte, 0, 0);
-
-    GDALClose(dataset);
-
-    if (io_err == CE_None) {
-        LOG_INFO("GeoTIFF en escala de grises guardado: %s (%ux%u, proyección: %s)", filename, img->width, img->height,
-                 is_geographic ? "geográfica" : "geoestacionaria");
-    } else {
-        LOG_ERROR("Error al escribir datos del GeoTIFF.");
+    // Escribir canales RGB
+    CPLErr err = CE_None;
+    for (int i = 0; i < 3; i++) {
+        GDALRasterBandH band = GDALGetRasterBand(ds, i + 1);
+        err = GDALRasterIO(band, GF_Write, 0, 0, img->width, img->height, 
+                           (void*)(img->data + i), 
+                           img->width, img->height, GDT_Byte, 
+                           3, 3 * img->width); // Interleaved reading
+        if (err != CE_None) break;
     }
     
-    return (io_err == CE_None) ? 0 : -1;
+    GDALClose(ds);
+    return (err == CE_None) ? 0 : -1;
+}
+
+int write_geotiff_gray(const char* filename, const ImageData* img, const DataNC* meta,
+                       int offset_x, int offset_y) {
+    if (!img || img->bpp != 1) {
+        LOG_ERROR("Imagen inválida para write_geotiff_gray (se requiere bpp=1)");
+        return -1;
+    }
+
+    GDALDatasetH ds = create_geotiff_dataset(filename, img->width, img->height, 1, GDT_Byte, meta, offset_x, offset_y);
+    if (!ds) return -1;
+
+    GDALRasterBandH band = GDALGetRasterBand(ds, 1);
+    CPLErr err = GDALRasterIO(band, GF_Write, 0, 0, img->width, img->height, 
+                              (void*)img->data, 
+                              img->width, img->height, GDT_Byte, 
+                              0, 0);
+
+    GDALClose(ds);
+    return (err == CE_None) ? 0 : -1;
 }
 
 int write_geotiff_indexed(const char* filename, const ImageData* img, const ColorArray* palette,
-                          const DataF* navla, const DataF* navlo, const char* nc_reference_file,
-                          bool is_geographic, unsigned crop_x_start, unsigned crop_y_start,
-                          int offset_x_pixels, int offset_y_pixels) {
-    if (!filename || !img || !img->data || img->bpp != 1 || !palette) {
-        LOG_ERROR("Parámetros inválidos para write_geotiff_indexed");
+                          const DataNC* meta, int offset_x, int offset_y) {
+    if (!img || img->bpp != 1) {
+        LOG_ERROR("Imagen inválida para write_geotiff_indexed (se requiere bpp=1)");
         return -1;
     }
 
-    GDALDatasetH dataset = create_georeferenced_dataset(filename, img->width, img->height, 1, GDT_Byte,
-                                                        navla, navlo, nc_reference_file, is_geographic,
-                                                        crop_x_start, crop_y_start,
-                                                        offset_x_pixels, offset_y_pixels);
-    if (!dataset) return -1;
+    GDALDatasetH ds = create_geotiff_dataset(filename, img->width, img->height, 1, GDT_Byte, meta, offset_x, offset_y);
+    if (!ds) return -1;
 
-    GDALRasterBandH band_h = GDALGetRasterBand(dataset, 1);
+    GDALRasterBandH band = GDALGetRasterBand(ds, 1);
 
-    GDALColorTableH color_table = GDALCreateColorTable(GPI_RGB);
-    for (unsigned i = 0; i < palette->length; i++) {
-        GDALColorEntry entry = {palette->colors[i].r, palette->colors[i].g, palette->colors[i].b, 255};
-        GDALSetColorEntry(color_table, i, &entry);
-    }
-    GDALSetRasterColorTable(band_h, color_table);
-    GDALDestroyColorTable(color_table);
-
-    GDALSetRasterColorInterpretation(band_h, GCI_PaletteIndex);
-
-    CPLErr io_err = GDALRasterIO(band_h, GF_Write, 0, 0, img->width, img->height,
-                                 img->data, img->width, img->height, GDT_Byte, 0, 0);
-
-    GDALClose(dataset);
-
-    if (io_err == CE_None) {
-        LOG_INFO("GeoTIFF indexado guardado: %s (%ux%u, proyección: %s)", filename, img->width, img->height,
-                 is_geographic ? "geográfica" : "geoestacionaria");
-    } else {
-        LOG_ERROR("Error al escribir datos del GeoTIFF indexado.");
+    if (palette) {
+        GDALColorTableH ct = GDALCreateColorTable(GPI_RGB);
+        for (unsigned i = 0; i < palette->length; i++) {
+            GDALColorEntry e = {palette->colors[i].r, palette->colors[i].g, palette->colors[i].b, 255};
+            GDALSetColorEntry(ct, i, &e);
+        }
+        GDALSetRasterColorTable(band, ct);
+        GDALDestroyColorTable(ct);
+        GDALSetRasterColorInterpretation(band, GCI_PaletteIndex);
     }
 
-    return (io_err == CE_None) ? 0 : -1;
+    CPLErr err = GDALRasterIO(band, GF_Write, 0, 0, img->width, img->height, 
+                              (void*)img->data, 
+                              img->width, img->height, GDT_Byte, 
+                              0, 0);
+
+    GDALClose(ds);
+    return (err == CE_None) ? 0 : -1;
 }

@@ -158,6 +158,81 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
     datanc->band_id = 0;
   }
 
+  // =========================================================================
+  // LECTURA DE METADATOS DE PROYECCIÓN Y GEOTRANSFORM (Para GeoTIFF)
+  // =========================================================================
+  datanc->proj_code = PROJ_UNKNOWN;
+  datanc->proj_info.valid = false;
+  int proj_varid;
+  
+  // 1. Leer parámetros de la proyección (Elipsoide y Altura) [cite: 19, 20]
+  if (nc_inq_varid(ncid, "goes_imager_projection", &proj_varid) == NC_NOERR) {
+	  datanc->proj_code = PROJ_GEOS;
+      nc_get_att_double(ncid, proj_varid, "perspective_point_height", &datanc->proj_info.sat_height);
+      nc_get_att_double(ncid, proj_varid, "semi_major_axis", &datanc->proj_info.semi_major);
+      nc_get_att_double(ncid, proj_varid, "semi_minor_axis", &datanc->proj_info.semi_minor);
+      nc_get_att_double(ncid, proj_varid, "longitude_of_projection_origin", &datanc->proj_info.lon_origin);
+      nc_get_att_double(ncid, proj_varid, "inverse_flattening", &datanc->proj_info.inv_flat);
+      datanc->proj_info.valid = true;
+  }
+
+  // 2. Calcular GeoTransform (Bounding Box y Resolución)
+  // Necesitamos leer el primer valor de 'x' y 'y' y sus factores de escala
+  int x_varid_coord, y_varid_coord;
+  if (datanc->proj_info.valid && 
+      nc_inq_varid(ncid, "x", &x_varid_coord) == NC_NOERR && 
+      nc_inq_varid(ncid, "y", &y_varid_coord) == NC_NOERR) {
+
+      // Leer scale_factor y add_offset de las coordenadas [cite: 3, 4]
+      float x_scale, x_offset, y_scale, y_offset;
+      nc_get_att_float(ncid, x_varid_coord, "scale_factor", &x_scale);
+      nc_get_att_float(ncid, x_varid_coord, "add_offset", &x_offset);
+      nc_get_att_float(ncid, y_varid_coord, "scale_factor", &y_scale);
+      nc_get_att_float(ncid, y_varid_coord, "add_offset", &y_offset);
+
+      // Leer el valor crudo del primer píxel (índice 0) de X e Y
+      // NetCDF GOES almacena las coordenadas en variables 1D 'x' y 'y'
+      short x0_raw, y0_raw;
+      size_t index[] = {0};
+      nc_get_var1_short(ncid, x_varid_coord, index, &x0_raw);
+      nc_get_var1_short(ncid, y_varid_coord, index, &y0_raw);
+
+      // Convertir a radianes (unidades de proyección)
+      double x0_rad = x0_raw * x_scale + x_offset;
+      double y0_rad = y0_raw * y_scale + y_offset;
+
+      // --- Construcción del GeoTransform ---
+      // GDAL requiere la esquina SUPERIOR IZQUIERDA del píxel, no el centro.
+      // Por eso restamos (o sumamos) medio píxel.
+      
+      // GT[0]: Top Left X
+      datanc->geotransform[0] = x0_rad - (x_scale / 2.0); 
+      
+      // GT[1]: Ancho de píxel (siempre positivo en proyección fija)
+      datanc->geotransform[1] = x_scale;
+      
+      // GT[2]: Rotación X (0)
+      datanc->geotransform[2] = 0.0;
+      
+      // GT[3]: Top Left Y
+      // Nota: En GOES 'y_scale' suele ser negativo (-2.8e-05)[cite: 2].
+      // Si y0_rad es el centro del primer píxel (Norte), la esquina está "arriba" 
+      // (hacia valores más positivos si es radianes N>S, pero cuidado con el signo).
+      // Matemáticamente: Centro + (Tamaño / 2) * (-SignoEscala) ... simplificado:
+      datanc->geotransform[3] = y0_rad - (y_scale / 2.0);
+      
+      // GT[4]: Rotación Y (0)
+      datanc->geotransform[4] = 0.0;
+      
+      // GT[5]: Alto de píxel (debe ser negativo para imágenes N->S standard)
+      datanc->geotransform[5] = y_scale; 
+
+      LOG_INFO("GeoTransform calculado: Origin (%.6f, %.6f) Res (%.6f, %.6f)", 
+               datanc->geotransform[0], datanc->geotransform[3],
+               datanc->geotransform[1], datanc->geotransform[5]);
+  }
+  // =========================================================================
+  
   if ((retval = nc_close(ncid)))
     ERR(retval);
 

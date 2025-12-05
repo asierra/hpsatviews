@@ -39,6 +39,12 @@ typedef struct {
   int8_t min, max;
 } DataB;
 
+typedef enum {
+  PROJ_GEOS = 0,   // GOES-R ABI Fixed Grid
+  PROJ_LATLON = 1, // Equirectangular / Plate Carrée (EPSG:4326)
+  PROJ_UNKNOWN = 255
+} ProjectionCode;
+  
 // Data structure to store metadata read from a NetCDF file
 typedef struct {
   DataF fdata; // Used if the data is float
@@ -47,8 +53,21 @@ typedef struct {
   int year, mon, day, hour, min, sec;
   unsigned char band_id;
   float native_resolution_km; // Resolución nativa del sensor en km (0 si desconocida)
+  
+  // [TopLeftX, PixelW, RotX, TopLeftY, RotY, PixelH]
+  double geotransform[6]; 
+  ProjectionCode proj_code;
+  
+  // Parámetros para construir el WKT (Well Known Text) 
+  struct {
+      double sat_height; // perspective_point_height
+      double semi_major; // semi_major_axis
+      double semi_minor; // semi_minor_axis
+      double lon_origin; // longitude_of_projection_origin
+      double inv_flat;   // inverse_flattening (opcional, calculable con a/b)
+      bool valid;        // Flag para saber si se leyeron correctamente
+  } proj_info;
 } DataNC;
-
 
 //inline float dataf_value(DataF data, unsigned i, unsigned j) {
  // unsigned ii = j * data.width + i;
