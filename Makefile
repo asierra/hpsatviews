@@ -1,6 +1,6 @@
 CC=gcc
-CFLAGS=-g -I. -Wall -std=c11 -fopenmp
-LDFLAGS=-lm -lnetcdf -lpng -fopenmp
+CFLAGS=-g -I. -Wall -std=c11 -fopenmp $(shell gdal-config --cflags)
+LDFLAGS=-lm -lnetcdf -lpng -fopenmp $(shell gdal-config --libs)
 
 # Nombre del ejecutable final
 TARGET = hpsatviews
@@ -8,7 +8,8 @@ TARGET = hpsatviews
 # Archivos de cabecera. La regla de compilación depende de ellos.
 DEPS = args.h datanc.h image.h logger.h processing.h reader_cpt.h \
        reader_nc.h reprojection.h rayleigh.h rgb.h writer_png.h \
-       filename_utils.h rayleigh_lut_embedded.h
+       filename_utils.h rayleigh_lut_embedded.h projection_utils.h \
+       writer_geotiff.h
 
 # Archivos objeto a compilar.
 # Se incluyen los nuevos módulos y se eliminan los 'main' antiguos.
@@ -28,6 +29,8 @@ OBJS = main.o \
        reader_nc.o \
        singlegray.o \
        truecolor_rgb.o \
+       projection_utils.o \
+       writer_geotiff.o \
        writer_png.o \
        filename_utils.o
 

@@ -888,3 +888,268 @@ gdalinfo --formats | grep GTiff
 ### Color Table no se muestra
 - Verificar: `gdalinfo -hist salida.tif | grep "Color Table"`
 - Asegurarse que `GDALSetRasterColorTable()` se llame ANTES de `GDALClose()`
+
+---
+
+## 🚨 PROBLEMA CRÍTICO IDENTIFICADO: Georeferenciación Geoestacionaria con Clip
+
+### Contexto del Problema (Diciembre 2025)
+
+Al implementar GeoTIFF para el caso geoestacionario **sin reproyección** con `--clip`, se identificó un **desplazamiento de ~6° en longitud y ~4° en latitud** entre las coordenadas esperadas y las generadas.
+
+#### Síntomas Observados
+
+**Comando de prueba:**
+```bash
+./hpsatviews singlegray --clip -107.23 22.72 -93.84 14.94 -o test.tif \
+  /data/output/abi/l2/fd/CG_ABI-L2-CMIPF-M6C01_G19_s20253101600214_e20253101609522_c20253101620053.nc
+```
+
+**Resultados:**
+- **Centro esperado del clip**: lon=-100.535°, lat=18.83° (calculado como promedio de las 4 esquinas)
+- **Centro obtenido en GeoTIFF**: lon=-105.83°W (105.83°), lat=22.42°N
+- **Desplazamiento**: ~5.3° oeste, ~3.6° norte (~380 píxeles oeste, ~300 píxeles norte a 1km/px)
+
+**Comparación con GDAL (referencia correcta):**
+```bash
+# GDAL clip correcto
+gdal_translate -projwin -107.23 22.72 -93.84 14.94 input.nc output_gdal.tif
+# Centro GDAL: lon=-100.33°W, lat=18.77°N  ✓ CORRECTO
+```
+
+**Verificación visual:**
+- PNG generado con `coastline_overlay.py` → **coincide con GDAL** ✓
+- GeoTIFF generado → **desplazado ~20% hacia NW** ✗
+
+#### Causa Raíz Identificada
+
+**Problema 1: `reprojection_find_bounding_box()` devuelve índices incorrectos**
+
+Análisis de coordenadas transformadas:
+```bash
+# Transformar 4 esquinas del clip solicitado a coordenadas geoestacionarias
+echo "-107.23 22.72" | gdaltransform -s_srs EPSG:4326 \
+  -t_srs "+proj=geos +lon_0=-75 +h=35786024 +ellps=GRS80 +units=m +sweep=x"
+# Resultado: (-3007471, 2352649) m → en radianes: (-0.07132, 0.05582)
+# → Índices NetCDF esperados: x≈2737, y≈7416 (calculado con scale/offset)
+
+# Pero el bbox devuelto por reprojection_find_bounding_box():
+# crop[2258, 3038] size[1317, 808]
+# → DIFERENCIA: Δx≈479 píxeles, Δy≈4378 píxeles (!!!)
+```
+
+**Cálculo manual de índices esperados:**
+```c
+// Para convertir lat/lon → índices NetCDF:
+// 1. lat/lon → geostationary (x,y) en metros (usando gdaltransform)
+// 2. metros → radianes: rad = meters / r_eq donde r_eq = semi_major + perspective_height
+// 3. radianes → índice raw: raw = (rad - add_offset) / scale_factor
+// 4. raw es el índice del arreglo x[] o y[]
+
+// Valores NetCDF GOES:
+// x: scale_factor=2.8e-05, add_offset=-0.151858
+// y: scale_factor=-2.8e-05, add_offset=0.151858
+// r_eq = 6378137 + 35786024 = 42164161 m
+
+// Esquinas del clip:
+// NW (-107.23, 22.72) → geos(-3007471, 2352649)m → rad(-0.07132, 0.05582) → idx(2879, 7416)
+// SE (-93.84, 14.94)  → geos(-1956726, 1608120)m → rad(-0.04641, 0.03815) → idx(3856, 6762)
+// → Bbox esperado: crop_x[2879, 3856], crop_y[6762, 7416]
+// → Tamaño: width≈977, height≈654
+
+// Bbox ACTUAL devuelto: crop[2258, 3038] size[1317, 808]
+// → COMPLETAMENTE EQUIVOCADO: 3700 píxeles de diferencia en Y
+```
+
+**Problema 2: Navegación (navla, navlo) vs Coordenadas NetCDF (x[], y[])**
+
+El bbox se busca usando la navegación lat/lon calculada en `compute_navigation_nc()` (reader_nc.c), pero:
+
+```c
+// En reader_nc.c línea 374-376 (ANTES de corrección):
+for (int j = 0; j < navla->height; j++) {
+  float y = j * y_sf + y_ao;  // ← Asume y[j] = j (INCORRECTO en concepto, pero...)
+  for (int i = 0; i < navla->width; i++) {
+    float x = i * x_sf + x_ao;  // ← Asume x[i] = i
+```
+
+**Investigación con ncdump:**
+```bash
+ncdump -v x input.nc | grep "x =" -A 5
+# x = 0, 1, 2, 3, 4, 5, ...
+# → Los valores de x[] en el NetCDF SON realmente índices secuenciales 0,1,2,...
+# → Por tanto x[i] = i, y el código original ERA CORRECTO para GOES
+```
+
+**Conclusión:** La navegación se calcula correctamente. El problema NO está en `compute_navigation_nc()`.
+
+**Problema 3: `reprojection_find_bounding_box()` usa navegación mal**
+
+El algoritmo en `reprojection_find_bounding_box()` (reprojection.c:305) itera sobre `navla`, `navlo` para encontrar píxeles dentro del clip solicitado. Pero algo en esa lógica devuelve índices que están **3700 píxeles desplazados en Y**.
+
+Posibles causas:
+- Confusión entre grid-cell-center vs grid-cell-corner
+- Orden de iteración Y (norte→sur vs sur→norte)
+- Cálculo incorrecto de índices al recortar navla/navlo
+
+#### Estado Actual de la Implementación
+
+**Archivos Modificados:**
+
+1. **`projection_utils.c`**: Añadido sistema de offset
+   - `compute_geotransform_geostationary()` acepta `offset_x_pixels`, `offset_y_pixels`
+   - Aplica offset al `origin` del GeoTransform: `origin_x += offset_x * pixel_size_x`
+   - **Estado**: Funciona correctamente PERO el offset calculado es demasiado pequeño (48, 10 píxeles)
+
+2. **`processing.c`**: Calcula offset bbox→clip
+   ```c
+   // Líneas 280-300: Calcula diferencia entre centro del bbox y centro del clip
+   float clip_lon_center = (clip_coords[0] + clip_coords[2]) / 2.0f;
+   float clip_lat_center = (clip_coords[1] + clip_coords[3]) / 2.0f;
+   float nav_lon_center = (navla_cropped.fmin + navla_cropped.fmax) / 2.0f;
+   float nav_lat_center = (navlo_cropped.fmin + navlo_cropped.fmax) / 2.0f;
+   
+   // Offset en píxeles
+   offset_x_pixels = (int)((clip_lon_center - nav_lon_center) / lon_range_bbox * iw);
+   offset_y_pixels = (int)((nav_lat_center - clip_lat_center) / lat_range_bbox * ih);
+   ```
+   - **Problema**: Solo corrige ~0.6° de diferencia, pero el error real es ~6°
+
+3. **`writer_geotiff.c`**: Propagación de offset
+   - Funciones `write_geotiff_gray()`, `write_geotiff_rgb()`, `write_geotiff_indexed()` aceptan offset
+   - **Estado**: Implementado correctamente
+
+4. **`reader_nc.c`**: Intento de corrección (REVERTIR)
+   - Líneas 367-390: Se intentó leer x[], y[] del NetCDF en lugar de calcular `x = i * scale_factor`
+   - **Resultado**: No cambió nada porque `x[i] = i` en archivos GOES
+   - **Acción requerida**: REVERTIR este cambio, el código original era correcto
+
+#### Solución Propuesta: Bypass de reprojection_find_bounding_box()
+
+Para el caso **geoestacionario sin reproyección con clip**, implementar conversión directa:
+
+```c
+// En processing.c, reemplazar uso de reprojection_find_bounding_box() con:
+
+// 1. Usar GDAL para transformar lat/lon → geostationary (x,y)
+OGRCoordinateTransformationH transform = OCTNewCoordinateTransformation(
+    OSRNewSpatialReference("EPSG:4326"),
+    OSRNewSpatialReference("+proj=geos +lon_0=-75 +h=35786024 ...")
+);
+
+double x_min, y_max, x_max, y_min;
+OCTTransform(transform, 1, &clip_coords[0], &clip_coords[1], NULL); // NW
+// ... repetir para 4 esquinas
+
+// 2. Convertir metros → radianes → índices
+double r_eq = semi_major + perspective_height;  // Leer desde NetCDF
+double x_rad_min = x_min / r_eq;
+double y_rad_max = y_max / r_eq;
+
+// 3. Aplicar scale_factor y add_offset inversos
+int crop_x_start = (int)((x_rad_min - x_add_offset) / x_scale_factor);
+int crop_y_start = (int)((y_rad_max - y_add_offset) / y_scale_factor);
+
+// 4. Usar estos índices directamente, sin reprojection_find_bounding_box()
+```
+
+**Ventajas:**
+- Elimina dependencia de la navegación lat/lon para casos geoestacionarios
+- Conversión matemática directa, sin iteraciones
+- Más eficiente y precisa
+
+**Desventajas:**
+- Requiere inicializar GDAL/PROJ para transformaciones
+- Más código específico para geoestacionario
+
+#### Archivos a Modificar para Solución
+
+1. **`processing.c`** (líneas 240-260):
+   - Añadir función `clip_geostationary_direct()` que use GDAL transform
+   - Llamar en lugar de `reprojection_find_bounding_box()` cuando:
+     - `has_clip && !do_reprojection && is_geostationary`
+
+2. **`projection_utils.c`** o nuevo `geostationary_utils.c`:
+   - Función `latlon_to_netcdf_indices()`:
+     ```c
+     int latlon_to_netcdf_indices(const char* nc_file, 
+                                   float lon, float lat,
+                                   int* out_x_idx, int* out_y_idx);
+     ```
+
+3. **`reader_nc.c`** (REVERTIR):
+   - Eliminar lectura de `nc_get_var_short()` para x[], y[]
+   - Restaurar código original: `x = i * x_sf + x_ao`
+
+#### Comandos de Verificación
+
+```bash
+# Test case actual (FALLA):
+./hpsatviews singlegray --clip -107.23 22.72 -93.84 14.94 -o test.tif input.nc
+gdalinfo test.tif | grep Center
+# Resultado actual: Center (105d49'45.60"W, 22d24'53.34"N)
+# Esperado:        Center (100d20'W, 18d46'N) ← como GDAL
+
+# Referencia correcta con GDAL:
+gdal_translate -projwin -107.23 22.72 -93.84 14.94 input.nc ref.tif
+gdalinfo ref.tif | grep Center
+# → Center (100d20'4.18"W, 18d46'1.35"N) ✓
+
+# Convertir esquinas manualmente:
+echo "-107.23 22.72" | gdaltransform -s_srs EPSG:4326 \
+  -t_srs "+proj=geos +lon_0=-75 +h=35786024 +ellps=GRS80 +units=m +sweep=x"
+# → Verificar que los índices calculados coincidan
+
+# Verificar navegación:
+./hpsatviews singlegray --clip -107.23 22.72 -93.84 14.94 -o test.png input.nc
+python coastline_overlay.py test.png
+# → PNG debe coincidir visualmente con GDAL (actualmente SÍ coincide)
+```
+
+#### Próximos Pasos para Continuar
+
+1. **REVERTIR** cambios en `reader_nc.c` (lectura de x[], y[])
+2. **INVESTIGAR** `reprojection_find_bounding_box()` para entender por qué devuelve índices Y incorrectos
+3. **IMPLEMENTAR** conversión directa lat/lon → índices NetCDF usando GDAL
+4. **AÑADIR** logging detallado en `reprojection_find_bounding_box()` para debug
+5. **VALIDAR** con múltiples clips en diferentes regiones
+
+#### Referencias y Logs Importantes
+
+**Log de navegación recortada:**
+```
+[INFO] Navegación recortada: lat[14.670, 23.202], lon[-109.534, -92.762]
+[INFO] Centro navegación: lat=18.936, lon=-101.148
+```
+- El rango lat/lon del bbox SÍ cubre aproximadamente el clip solicitado
+- Pero el centro está ~0.6° desplazado (pequeño, NO explica los 6° totales)
+
+**Log de coordenadas NetCDF leídas:**
+```
+[INFO] Coordenadas NetCDF crop[2258,3038] size[1317,808]: x_raw[2258→3574], y_raw[3038→3845]
+[INFO] Coordenadas en radianes: x[-0.088634→-0.051786], y[0.044198→0.066794]
+```
+
+**Conversión manual del centro de coordenadas NetCDF:**
+```bash
+# Centro en metros: x=(-3735844 + -2183666)/2=-2959755, y=(2816566+1863372)/2=2339969
+echo "-2959755 2339969" | gdaltransform \
+  -s_srs "+proj=geos +lon_0=-75 +h=35786024 +ellps=GRS80 +units=m +sweep=x" \
+  -t_srs EPSG:4326
+# → -106.57637831908 22.5641697474452
+# ← Muy cercano al centro reportado por gdalinfo (105.83°W, 22.42°N)
+# → CONFIRMA que las coordenadas x[], y[] del NetCDF SON CORRECTAS
+# → El problema es que esos índices [2258, 3038] NO corresponden al clip solicitado
+```
+
+**Diferencia entre bbox actual y bbox esperado:**
+```
+Actual:   crop_x[2258, 3574] (width=1317), crop_y[3038, 3845] (height=808)
+Esperado: crop_x[2879, 3856] (width=977),  crop_y[6762, 7416] (height=654)
+
+Δcrop_x_start: +621 píxeles
+Δcrop_y_start: -3724 píxeles (!!!)  ← ERROR MAYOR AQUÍ
+```
+
+---
+

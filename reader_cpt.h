@@ -1,3 +1,6 @@
+#ifndef READER_CPT_H_
+#define READER_CPT_H_
+
 #include "image.h"
 
 #define MAX_LINE_LENGTH 256
@@ -32,3 +35,5 @@ ColorArray* cpt_to_color_array(CPTData* cpt);
 void free_cpt_data(CPTData* cpt);
 
 Color get_color_for_value(const CPTData* cpt, double value);
+
+#endif /* READER_CPT_H_ */

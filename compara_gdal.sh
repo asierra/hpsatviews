@@ -3,19 +3,20 @@
 # Comparar resultados de hpsatviews y gdal
 
 # Dataset
-DATASET="/data/input/abi/l1b/fd/OR_ABI-L1b-RadF-M6C01_G19_s20253361800210_e20253361809518_c20253361809549.nc"
+#DATASET="/data/input/abi/l1b/fd/OR_ABI-L1b-RadF-M6C01_G19_s20253361800210_e20253361809518_c20253361809549.nc"
 #DATASET="/data/ceniza/2019/spring/OR_ABI-L2-CMIPC-M3C01_G16_s20190871342161_e20190871344534_c20190871345000.nc"
+DATASET="/data/output/abi/l2/fd/CG_ABI-L2-CMIPF-M6C01_G19_s20253101600214_e20253101609522_c20253101620053.nc"
 
 # Variable del NetCDF a usar (depende del tipo de producto)
-NCVAR="Rad"    # Para productos L1b (Radiance)
-#NCVAR="CMI"   # Para productos L2 (Cloud and Moisture Imagery)
+#NCVAR="Rad"    # Para productos L1b (Radiance)
+NCVAR="CMI"   # Para productos L2 (Cloud and Moisture Imagery)
 
 # Coordenadas de recorte: lon_min lat_max lon_max lat_min
-CLIP_COORDS="-126.7976178202817 38.2939198810346 -78.4256323272443 9.6021231973635"
+#CLIP_COORDS="-126.7976178202817 38.2939198810346 -78.4256323272443 9.6021231973635"
 # Ejemplos de otras regiones:
 # México centro: "-107.23 22.72 -93.84 14.94"
 # Golfo de México: "-98.0 30.0 -80.0 18.0"
-#CLIP_COORDS="-107.23 22.72 -93.84 14.94"
+CLIP_COORDS="-107.23 22.72 -93.84 14.94"
 
 # Comprueba que existe DATASET
 if [ ! -f "$DATASET" ]; then
@@ -40,6 +41,11 @@ GDAL_TE="$LON_MIN $LAT_MIN $LON_MAX $LAT_MAX"
     
 mapdrawer --bounds $CLIP_COORDS \
     --layer COASTLINE:cyan:0.5  --crs goes16 a2_sp_hpsv.png
+
+./hpsatviews singlegray \
+    --clip $CLIP_COORDS \
+    -o a2_sp_hpsv.tif \
+    "$DATASET" -v
 
 # 1. Crear GeoTIFF recortado (Proyección nativa GOES preservada)
 gdalwarp \
@@ -76,6 +82,12 @@ gdal_translate \
     
 mapdrawer --bounds $CLIP_COORDS \
     --layer COASTLINE:cyan:0.5  a2_rp_hpsv.png
+
+./hpsatviews singlegray \
+    --geographics \
+    --clip $CLIP_COORDS \
+    -o a2_rp_hpsv.tif \
+    "$DATASET"
     
 # 1. Crear GeoTIFF reproyectado a EPSG:4326
 gdalwarp \
@@ -98,3 +110,8 @@ gdal_translate \
     -scale 0 5 0 255 \
     a2_rp_gdal.tif \
     a2_rp_gdal.png
+
+gdalinfo a2_sp_gdal.tif > gdlinfo.a2_sp_gdal.tif.out
+gdalinfo a2_sp_hpsv.tif > gdlinfo.a2_sp_hpsv.tif.out
+gdalinfo a2_rp_hpsv.tif > gdlinfo.a2_rp_hpsv.tif.out
+gdalinfo a2_rp_gdal.tif > gdlinfo.a2_rp_gdal.tif.out

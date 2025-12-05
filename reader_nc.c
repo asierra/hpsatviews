@@ -364,6 +364,31 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
   if ((retval = nc_get_att_float(ncid, y_varid, "add_offset", &y_ao)))
     WRN(retval);
 
+  // Leer los arreglos x[] e y[] del NetCDF
+  short* x_vals_raw = malloc(width * sizeof(short));
+  short* y_vals_raw = malloc(height * sizeof(short));
+  
+  if (!x_vals_raw || !y_vals_raw) {
+    free(x_vals_raw);
+    free(y_vals_raw);
+    nc_close(ncid);
+    LOG_ERROR("Error de memoria al leer x[], y[]");
+    return -1;
+  }
+  
+  if ((retval = nc_get_var_short(ncid, x_varid, x_vals_raw))) {
+    free(x_vals_raw);
+    free(y_vals_raw);
+    nc_close(ncid);
+    ERR(retval);
+  }
+  if ((retval = nc_get_var_short(ncid, y_varid, y_vals_raw))) {
+    free(x_vals_raw);
+    free(y_vals_raw);
+    nc_close(ncid);
+    ERR(retval);
+  }
+
   // Apartamos memoria para los datos
   *navlo = dataf_create(width, height);
 
@@ -372,10 +397,10 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
   int valid_count = 0;
   
   for (int j = 0; j < navla->height; j++) {
-    float y = j * y_sf + y_ao;
+    float y = (float)y_vals_raw[j] * y_sf + y_ao;
     for (int i = 0; i < navla->width; i++) {
       float la, lo;
-      float x = i * x_sf + x_ao;
+      float x = (float)x_vals_raw[i] * x_sf + x_ao;
       compute_lalo(x, y, &la, &lo);
       if (isnan(la) || isnan(lo)) {
         // printf("Is nan %g\n", la);
@@ -412,6 +437,9 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
     navlo->fmax = 180.0f;
     LOG_WARN("No se encontraron coordenadas válidas en compute_navigation_nc. Usando límites por defecto.");
   }
+  
+  free(x_vals_raw);
+  free(y_vals_raw);
   
   printf("corners %g %g  %g %g (valid: %d/%lu)\n", lomin, lamin, lomax, lamax, valid_count, navla->size);
   if ((retval = nc_close(ncid)))

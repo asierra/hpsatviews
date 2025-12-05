@@ -60,6 +60,7 @@ HPSATVIEWS es una aplicación de alto rendimiento controlada por línea de coman
 - **Compilador C11** (GCC recomendado)
 - **libnetcdf-dev** - Lectura de archivos NetCDF GOES L1b
 - **libpng-dev** - Generación de imágenes PNG
+- **libgdal-dev** - Generación de imágenes GeoTIFF
 - **libm** - Funciones matemáticas
 - **OpenMP** (opcional) - Paralelización
 
@@ -76,7 +77,7 @@ HPSATVIEWS es una aplicación de alto rendimiento controlada por línea de coman
 ```bash
 # Instalar dependencias
 sudo apt update
-sudo apt install build-essential libnetcdf-dev libpng-dev
+sudo apt install build-essential libnetcdf-dev libpng-dev libgdal-dev
 
 # Clonar repositorio
 git clone https://github.com/asierra/hpsatviews.git
@@ -89,7 +90,7 @@ make
 ### CentOS/RHEL
 ```bash
 # Instalar dependencias
-sudo yum install gcc netcdf-devel libpng-devel
+sudo yum install gcc netcdf-devel libpng-devel gdal-devel
 
 # Compilar
 make
@@ -98,11 +99,76 @@ make
 ### macOS
 ```bash
 # Instalar dependencias
-brew install netcdf libpng
+brew install netcdf libpng gdal
 
 # Compilar
 make
 ```
+
+---
+
+## 🖼️ Formatos de Salida Soportados
+
+HPSatViews soporta dos formatos de salida principales para máxima flexibilidad.
+
+### PNG (por defecto)
+
+Formato de imagen estándar, ideal para visualización rápida y uso en web. No contiene georreferenciación.
+
+```bash
+# Genera una imagen PNG con nombre autogenerado
+./hpsatviews rgb -m ash archivo.nc
+```
+
+### GeoTIFF (georreferenciado)
+
+Formato estándar para datos geoespaciales. Las imágenes GeoTIFF generadas por HPSatViews son 100% compatibles con software GIS como QGIS, ArcGIS, y librerías como GDAL y Rasterio.
+
+La salida GeoTIFF se puede activar de dos maneras:
+
+**Opción 1: Extensión explícita**
+
+Si el nombre de archivo proporcionado con `-o` termina en `.tif` o `.tiff`, el formato GeoTIFF se usará automáticamente.
+
+```bash
+# Nombre con extensión .tif o .tiff
+./hpsatviews rgb -m ash -o salida.tif archivo.nc
+./hpsatviews singlegray -o recorte.tiff archivo.nc --clip -107 22 -93 14
+```
+
+**Opción 2: Flag --geotiff (o -t)**
+
+Usar el flag `--geotiff` o su alias `-t` forzará la salida en formato GeoTIFF, usando un nombre de archivo autogenerado con la extensión `.tif`.
+
+```bash
+# Genera out<timestamp>-ash.tif en vez de .png
+./hpsatviews rgb -m ash --geotiff archivo.nc
+
+# Usando el alias -t
+./hpsatviews singlegray -t archivo.nc
+```
+
+**Combinaciones válidas**:
+
+El formato GeoTIFF es compatible con todas las demás opciones de procesamiento.
+
+```bash
+# Con recorte geográfico
+./hpsatviews rgb -m ash --clip -107 22 -93 14 -t archivo.nc
+
+# Con reproyección geográfica
+./hpsatviews rgb -m truecolor -r --geotiff archivo.nc
+
+# Pseudocolor con paleta CPT
+./hpsatviews pseudocolor -p paleta.cpt --geotiff archivo.nc
+```
+
+**Proyecciones Soportadas en GeoTIFF**:
+
+- **Geográfica** (EPSG:4326): Cuando se usa el flag `-r` o `--geographics`.
+- **Geoestacionaria** (GOES native): Proyección nativa del satélite si no se aplica reproyección.
+
+Ambas proyecciones incluyen metadatos completos de georreferenciación.
 
 ---
 

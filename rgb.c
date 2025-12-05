@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 /*
  * RGB and day/night composite generation module.
  *
@@ -7,6 +8,7 @@
 #include "rgb.h"
 #include "reader_nc.h"
 #include "writer_png.h"
+#include "writer_geotiff.h"
 #include "image.h"
 #include "logger.h"
 #include "datanc.h"
@@ -201,50 +203,35 @@ int find_channel_filenames(const char *dirnm, ChannelSet* channelset, bool is_l2
     return 0;
 }
 
-/*
- * NOTA: Las funciones infer_missing_corners() y calculate_bounding_box() fueron 
- * reemplazadas por una estrategia mejorada de MUESTREO DENSO DE BORDES.
- * 
- * La estrategia anterior solo evaluaba las 4 esquinas del dominio geográfico,
- * lo cual generaba un bounding box rectangular que no capturaba correctamente
- * la deformación del rectángulo geográfico al mapear al espacio geoestacionario.
- * 
- * La nueva estrategia muestrea múltiples puntos (20 por defecto) a lo largo de
- * cada uno de los 4 bordes del dominio geográfico, encontrando así el verdadero
- * bounding box que contiene TODOS los píxeles del dominio, no solo sus esquinas.
- * 
- * Ver las implementaciones en las secciones de clipping PRE y POST reproyección.
- */
-
-int run_rgb(ArgParser* parser) { // This is the correct, single definition
-    // Inicializar el logger aquí para que los mensajes DEBUG se muestren
+int run_rgb(ArgParser* parser) {
     LogLevel log_level = ap_found(parser, "verbose") ? LOG_DEBUG : LOG_INFO;
     logger_init(log_level);
     LOG_DEBUG("Modo verboso activado para el comando 'rgb'.");
 
     const char* input_file;
-    bool do_reprojection = ap_found(parser, "geographics");
-    float gamma = ap_get_dbl_value(parser, "gamma");
-    const char* mode = ap_get_str_value(parser, "mode");
-    bool apply_histogram = ap_found(parser, "histo");
-    int scale = ap_get_int_value(parser, "scale");
-    bool use_alpha = ap_found(parser, "alpha");
-
-
     if (ap_has_args(parser)) {
         input_file = ap_get_arg_at_index(parser, 0);
     } else {
         LOG_ERROR("El comando 'rgb' requiere un archivo NetCDF de entrada como referencia.");
         return -1;
     }
+    
+    // --- Opciones de procesamiento ---
+    const bool do_reprojection = ap_found(parser, "geographics");
+    const float gamma = ap_get_dbl_value(parser, "gamma");
+    const char* mode = ap_get_str_value(parser, "mode");
+    const bool apply_histogram = ap_found(parser, "histo");
+    const bool use_alpha = ap_found(parser, "alpha");
+    const bool force_geotiff = ap_found(parser, "geotiff");
+    const bool apply_rayleigh = ap_found(parser, "rayleigh");
+    const int scale = ap_get_int_value(parser, "scale"); // No implementado aún
 
     const char *basenm = basename((char*)input_file);
-    const char *dirnm = dirname((char*)input_file);
+    char *dirnm_dup = strdup(input_file);
+    const char *dirnm = dirname(dirnm_dup);
 
-    // Determinar si el archivo de referencia es un producto L2 (CMIP)
     bool is_l2_product = (strstr(basenm, "CMIP") != NULL);
 
-    // Determinar los canales requeridos según el modo
     ChannelSet* channels = NULL;
     if (strcmp(mode, "composite") == 0 || strcmp(mode, "truecolor") == 0) {
         const char* required[] = {"C01", "C02", "C03", "C13"};
@@ -262,58 +249,43 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
         const char* required[] = {"C09", "C10", "C11", "C13"};
         channels = channelset_create(required, 4);
     } else {
-        LOG_ERROR("Modo '%s' no reconocido. Modos válidos: composite, truecolor, night, ash, airmass, so2.", mode);
+        LOG_ERROR("Modo '%s' no reconocido.", mode);
+        free(dirnm_dup);
         return -1;
     }
 
-    if (!channels) {
-        LOG_FATAL("Error: No se pudo crear el conjunto de canales.");
-        return -1;
-    }
+    if (!channels) { LOG_FATAL("No se pudo crear el conjunto de canales."); free(dirnm_dup); return -1; }
 
     if (find_id_from_name(basenm, channels->id_signature) != 0) {
         LOG_ERROR("No se pudo extraer el ID del nombre de archivo: %s", basenm);
-        channelset_destroy(channels);
-        return -1;
+        channelset_destroy(channels); free(dirnm_dup); return -1;
     }
 
     if (find_channel_filenames(dirnm, channels, is_l2_product) != 0) {
         LOG_ERROR("No se pudo acceder al directorio %s", dirnm);
-        channelset_destroy(channels);
-        return -1;
+        channelset_destroy(channels); free(dirnm_dup); return -1;
     }
+    free(dirnm_dup);
 
-    // Punteros para todos los canales posibles
-    ChannelInfo* c_info[17] = {NULL}; // Índices 1-16
+    ChannelInfo* c_info[17] = {NULL};
     for (int i = 0; i < channels->count; i++) {
         if (channels->channels[i].filename == NULL) {
-            LOG_ERROR("Archivo faltante para el canal %s con ID %s en el directorio %s", channels->channels[i].name, channels->id_signature, dirnm);
-            channelset_destroy(channels);
-            return -1;
+            LOG_ERROR("Archivo faltante para el canal %s con ID %s", channels->channels[i].name, channels->id_signature);
+            channelset_destroy(channels); return -1;
         }
-        // Extraer el número de canal para un acceso genérico
         int channel_num = atoi(channels->channels[i].name + 1);
-        if (channel_num > 0 && channel_num <= 16) {
-            c_info[channel_num] = &channels->channels[i];
-        }
+        if (channel_num > 0 && channel_num <= 16) c_info[channel_num] = &channels->channels[i];
     }
 
-    DataNC c[17]; // Array para almacenar los datos de los canales
+    DataNC c[17];
     DataF aux, navlo, navla;
     const char* var_name = is_l2_product ? "CMI" : "Rad";
 
-    // Cargar solo los canales necesarios
-    for (int i = 1; i <= 16; i++) {
-        if (c_info[i]) {
-            load_nc_sf(c_info[i]->filename, var_name, &c[i]);
-        }
-    }
+    for (int i = 1; i <= 16; i++) { if (c_info[i]) load_nc_sf(c_info[i]->filename, var_name, &c[i]); }
 
-    // Iguala los tamaños a la resolución mínima (la de C13)
-    // El canal de referencia para la navegación y resolución es el de mayor número presente
     int ref_ch_idx = 0;
     for (int i = 16; i > 0; i--) { if (c_info[i]) { ref_ch_idx = i; break; } }
-    if (ref_ch_idx == 0) { LOG_ERROR("No se encontró ningún canal de referencia."); return -1; }
+    if (ref_ch_idx == 0) { LOG_ERROR("No se encontró ningún canal de referencia."); channelset_destroy(channels); return -1; }
 
     if (c_info[1]) { aux = downsample_boxfilter(c[1].fdata, 2); dataf_destroy(&c[1].fdata); c[1].fdata = aux; }
     if (c_info[2]) { aux = downsample_boxfilter(c[2].fdata, 4); dataf_destroy(&c[2].fdata); c[2].fdata = aux; }
@@ -321,358 +293,182 @@ int run_rgb(ArgParser* parser) { // This is the correct, single definition
     
     compute_navigation_nc(c_info[ref_ch_idx]->filename, &navla, &navlo);
 
-    // --- NUEVO: Si hay --clip y -r, primero recortamos en espacio geoestacionario ---
-    unsigned int clip_x_start = 0, clip_y_start = 0;
-    unsigned int clip_width = 0, clip_height = 0;
+    unsigned int clip_x = 0, clip_y = 0, clip_w = 0, clip_h = 0;
     bool has_clip = ap_found(parser, "clip") && (ap_count(parser, "clip") == 4);
+    float clip_coords[4] = {0};  // Declarar fuera para usarlo en write_geotiff_rgb
+    if (has_clip) {
+        for(int i=0; i<4; i++) clip_coords[i] = atof(ap_get_str_value_at_index(parser, "clip", i));
+    }
+    
+    // Guardar índices del crop para GeoTIFF geoestacionario (caso sin reproyección)
+    unsigned crop_x_start = 0, crop_y_start = 0;
     
     if (has_clip && do_reprojection) {
-        float clip_lon_min = atof(ap_get_str_value_at_index(parser, "clip", 0));
-        float clip_lat_max = atof(ap_get_str_value_at_index(parser, "clip", 1));
-        float clip_lon_max = atof(ap_get_str_value_at_index(parser, "clip", 2));
-        float clip_lat_min = atof(ap_get_str_value_at_index(parser, "clip", 3));
+        LOG_INFO("Aplicando recorte PRE-reproyección: lon[%.3f, %.3f], lat[%.3f, %.3f]", clip_coords[0], clip_coords[2], clip_coords[3], clip_coords[1]);
 
-        LOG_INFO("Aplicando recorte PRE-reproyección: lon[%.3f, %.3f], lat[%.3f, %.3f]", 
-                 clip_lon_min, clip_lon_max, clip_lat_min, clip_lat_max);
-
-        // ESTRATEGIA MEJORADA: Muestrear densamente los bordes del dominio geográfico
-        // En lugar de solo 4 esquinas, evaluamos múltiples puntos a lo largo de cada borde.
-        // Esto asegura que capturamos toda la deformación del rectángulo geográfico
-        // cuando se mapea al espacio geoestacionario.
+        int ix, iy, iw, ih, vs;
+        vs = reprojection_find_bounding_box(&navla, &navlo, clip_coords[0], clip_coords[1], clip_coords[2], clip_coords[3], &ix, &iy, &iw, &ih);
         
-        int clip_x_start_int, clip_y_start_int, clip_w, clip_h;
-        int valid_samples = reprojection_find_bounding_box(&navla, &navlo,
-                                                             clip_lon_min, clip_lat_max,
-                                                             clip_lon_max, clip_lat_min,
-                                                             &clip_x_start_int, &clip_y_start_int,
-                                                             &clip_w, &clip_h);
-        
-        if (valid_samples < 4) {
-            LOG_ERROR("Dominio de clip fuera del disco visible (solo %d muestras válidas).", 
-                     valid_samples);
-            clip_width = 0;
-            clip_height = 0;
+        if (vs < 4) {
+            LOG_ERROR("Dominio de clip fuera del disco visible (solo %d muestras válidas).", vs);
         } else {
-            clip_x_start = (unsigned int)clip_x_start_int;
-            clip_y_start = (unsigned int)clip_y_start_int;
-            clip_width = (unsigned int)clip_w;
-            clip_height = (unsigned int)clip_h;
-            
-            LOG_INFO("Bounding box calculado desde %d muestras válidas: start[%u, %u], size[%u, %u]",
-                     valid_samples, clip_x_start, clip_y_start, clip_width, clip_height);
-        }
+            clip_x = (unsigned int)ix; clip_y = (unsigned int)iy; clip_w = (unsigned int)iw; clip_h = (unsigned int)ih;
+            crop_x_start = clip_x; crop_y_start = clip_y;  // Guardar para GeoTIFF
+            LOG_INFO("Recortando datos pre-reproyección: start[%u, %u], size[%u, %u]", clip_x, clip_y, clip_w, clip_h);
 
-        LOG_INFO("Recortando datos pre-reproyección: start[%u, %u], size[%u, %u]", 
-                 clip_x_start, clip_y_start, clip_width, clip_height);
-
-        // Recortar todos los canales y la navegación
-        for (int i = 1; i <= 16; i++) {
-            if (c_info[i]) {
-                DataF cropped = dataf_crop(&c[i].fdata, clip_x_start, clip_y_start, clip_width, clip_height);
-                dataf_destroy(&c[i].fdata);
-                c[i].fdata = cropped;
+            for (int i = 1; i <= 16; i++) {
+                if (c_info[i]) {
+                    DataF cropped = dataf_crop(&c[i].fdata, clip_x, clip_y, clip_w, clip_h);
+                    dataf_destroy(&c[i].fdata); c[i].fdata = cropped;
+                }
             }
+            DataF navla_c = dataf_crop(&navla, clip_x, clip_y, clip_w, clip_h);
+            DataF navlo_c = dataf_crop(&navlo, clip_x, clip_y, clip_w, clip_h);
+            dataf_destroy(&navla); dataf_destroy(&navlo); navla = navla_c; navlo = navlo_c;
         }
-        
-        DataF navla_cropped = dataf_crop(&navla, clip_x_start, clip_y_start, clip_width, clip_height);
-        DataF navlo_cropped = dataf_crop(&navlo, clip_x_start, clip_y_start, clip_width, clip_height);
-        dataf_destroy(&navla);
-        dataf_destroy(&navlo);
-        navla = navla_cropped;
-        navlo = navlo_cropped;
     }
 
     if (do_reprojection) {
-        LOG_INFO("Iniciando reproyección para todos los canales...");
+        LOG_INFO("Iniciando reproyección...");
         float lon_min, lon_max, lat_min, lat_max;
-
-        // Decidir si usar navegación pre-calculada (caso con clip) o calcular desde archivo
-        if (has_clip) {
-            // Caso con recorte pre-reproyección: usar navegación ya recortada
-            bool first_repro = true;
-            for (int i = 1; i <= 16; i++) {
-                if (c_info[i]) {
-                    DataF repro;
-                    if (first_repro) {
-                        repro = reproject_to_geographics_with_nav(&c[i].fdata, &navla, &navlo, 
-                                                                   c[i].native_resolution_km,
-                                                                   &lon_min, &lon_max, &lat_min, &lat_max);
-                        first_repro = false;
-                    } else {
-                        repro = reproject_to_geographics_with_nav(&c[i].fdata, &navla, &navlo, 
-                                                                   c[i].native_resolution_km,
-                                                                   NULL, NULL, NULL, NULL);
-                    }
-                    dataf_destroy(&c[i].fdata);
-                    c[i].fdata = repro;
-                }
-            }
-        } else {
-            // Caso sin recorte: calcular navegación desde archivo NetCDF
-            const char* nav_ref = c_info[ref_ch_idx]->filename;
-            bool first_repro = true;
-            for (int i = 1; i <= 16; i++) {
-                if (c_info[i]) {
-                    DataF repro;
-                    if (first_repro) {
-                        repro = reproject_to_geographics(&c[i].fdata, nav_ref, 
-                                                          c[i].native_resolution_km,
-                                                          &lon_min, &lon_max, &lat_min, &lat_max);
-                        first_repro = false;
-                    } else {
-                        repro = reproject_to_geographics(&c[i].fdata, nav_ref, 
-                                                          c[i].native_resolution_km,
-                                                          NULL, NULL, NULL, NULL);
-                    }
-                    dataf_destroy(&c[i].fdata);
-                    c[i].fdata = repro;
-                }
+        const char* nav_ref = c_info[ref_ch_idx]->filename;
+        bool first = true;
+        for (int i = 1; i <= 16; i++) {
+            if (c_info[i]) {
+                DataF repro = has_clip 
+                    ? reproject_to_geographics_with_nav(&c[i].fdata, &navla, &navlo, c[i].native_resolution_km, first ? &lon_min : NULL, first ? &lon_max : NULL, first ? &lat_min : NULL, first ? &lat_max : NULL)
+                    : reproject_to_geographics(&c[i].fdata, nav_ref, c[i].native_resolution_km, first ? &lon_min : NULL, first ? &lon_max : NULL, first ? &lat_min : NULL, first ? &lat_max : NULL);
+                dataf_destroy(&c[i].fdata); c[i].fdata = repro;
+                first = false;
             }
         }
 
-        // Liberar la navegación original (geostacionaria)
-        dataf_destroy(&navla);
-        dataf_destroy(&navlo);
-
-        // Crear la nueva navegación directamente sobre la malla geográfica, sin reproyectar.
-        size_t final_width = c[ref_ch_idx].fdata.width;
-        size_t final_height = c[ref_ch_idx].fdata.height;
-        LOG_INFO("Creando navegación para la malla geográfica final...");
-        create_navigation_from_reprojected_bounds(&navla, &navlo, final_width, final_height, lon_min, lon_max, lat_min, lat_max);
-
-        LOG_INFO("Reproyección completada.");
+        dataf_destroy(&navla); dataf_destroy(&navlo);
+        size_t final_w = c[ref_ch_idx].fdata.width, final_h = c[ref_ch_idx].fdata.height;
         
-        // RECORTE POST-REPROYECCIÓN: Eliminar píxeles fuera del dominio solicitado
+        create_navigation_from_reprojected_bounds(&navla, &navlo, final_w, final_h, lon_min, lon_max, lat_min, lat_max);
+        
         if (has_clip) {
-            float clip_lon_min = atof(ap_get_str_value_at_index(parser, "clip", 0));
-            float clip_lat_max = atof(ap_get_str_value_at_index(parser, "clip", 1));
-            float clip_lon_max = atof(ap_get_str_value_at_index(parser, "clip", 2));
-            float clip_lat_min = atof(ap_get_str_value_at_index(parser, "clip", 3));
+            LOG_INFO("Aplicando recorte POST-reproyección: lon[%.3f, %.3f], lat[%.3f, %.3f]", clip_coords[0], clip_coords[2], clip_coords[3], clip_coords[1]);
+
+            int ix_s = (int)(((clip_coords[0] - lon_min) / (lon_max-lon_min)) * final_w);
+            int iy_s = (int)(((lat_max - clip_coords[1]) / (lat_max-lat_min)) * final_h);
+            int ix_e = (int)(((clip_coords[2] - lon_min) / (lon_max-lon_min)) * final_w);
+            int iy_e = (int)(((lat_max - clip_coords[3]) / (lat_max-lat_min)) * final_h);
             
-            LOG_INFO("Aplicando recorte POST-reproyección al dominio solicitado: lon[%.3f, %.3f], lat[%.3f, %.3f]",
-                     clip_lon_min, clip_lon_max, clip_lat_min, clip_lat_max);
+            ix_s = (ix_s < 0) ? 0 : ix_s; iy_s = (iy_s < 0) ? 0 : iy_s;
+            unsigned int crop_w = (unsigned int)((ix_e > ix_s) ? (ix_e - ix_s) : 0);
+            unsigned int crop_h = (unsigned int)((iy_e > iy_s) ? (iy_e - iy_s) : 0);
             
-            // Los datos están en una malla geográfica regular, podemos usar interpolación lineal
-            float lon_range = lon_max - lon_min;
-            float lat_range = lat_max - lat_min;
-            
-            // Calcular índices usando la extensión de la reproyección
-            int ix_start = (int)(((clip_lon_min - lon_min) / lon_range) * final_width);
-            int iy_start = (int)(((lat_max - clip_lat_max) / lat_range) * final_height);
-            int ix_end = (int)(((clip_lon_max - lon_min) / lon_range) * final_width);
-            int iy_end = (int)(((lat_max - clip_lat_min) / lat_range) * final_height);
-            
-            // Asegurar que estén dentro de los límites
-            if (ix_start < 0) ix_start = 0;
-            if (iy_start < 0) iy_start = 0;
-            if (ix_end > (int)final_width) ix_end = final_width;
-            if (iy_end > (int)final_height) iy_end = final_height;
-            
-            unsigned int crop_x = (unsigned int)ix_start;
-            unsigned int crop_y = (unsigned int)iy_start;
-            unsigned int crop_w = (unsigned int)(ix_end - ix_start);
-            unsigned int crop_h = (unsigned int)(iy_end - iy_start);
-            
-            LOG_INFO("Recorte POST-reproj: start[%u, %u], size[%u, %u]", crop_x, crop_y, crop_w, crop_h);
-            
-            // Recortar todos los canales reproyectados
-            for (int i = 1; i <= 16; i++) {
-                if (c_info[i]) {
-                    DataF cropped = dataf_crop(&c[i].fdata, crop_x, crop_y, crop_w, crop_h);
-                    dataf_destroy(&c[i].fdata);
-                    c[i].fdata = cropped;
-                }
+            for (int i=1; i<=16; i++) if (c_info[i]) {
+                DataF cropped = dataf_crop(&c[i].fdata, ix_s, iy_s, crop_w, crop_h);
+                dataf_destroy(&c[i].fdata); c[i].fdata = cropped;
             }
-            
-            // Actualizar navegación para reflejar el nuevo dominio
-            dataf_destroy(&navla);
-            dataf_destroy(&navlo);
-            create_navigation_from_reprojected_bounds(&navla, &navlo, crop_w, crop_h, 
-                                                     clip_lon_min, clip_lon_max, clip_lat_min, clip_lat_max);
+            dataf_destroy(&navla); dataf_destroy(&navlo);
+            create_navigation_from_reprojected_bounds(&navla, &navlo, crop_w, crop_h, clip_coords[0], clip_coords[2], clip_coords[3], clip_coords[1]);
         }
     }
 
     char* out_filename_generated = NULL;
     const char* out_filename;
-
     if (ap_found(parser, "out")) {
         out_filename = ap_get_str_value(parser, "out");
     } else {
-        // Generar nombre de archivo por defecto usando el canal de referencia,
-        // que garantiza que el archivo existe y está siendo usado en este modo.
-        // Usar 'input_file' podría ser incorrecto si el modo no usa ese canal.
-        const char* filename_for_timestamp = c_info[ref_ch_idx] ? c_info[ref_ch_idx]->filename : input_file;
-        char* base_filename = generate_default_output_filename(filename_for_timestamp, mode, ".png");
-        
-        // Si hay reproyección, agregar sufijo _geo antes de la extensión
-        if (do_reprojection && base_filename) {
-            // Buscar la posición del último punto (extensión)
-            char* dot = strrchr(base_filename, '.');
+        const char* ts_ref = c_info[ref_ch_idx] ? c_info[ref_ch_idx]->filename : input_file;
+        const char* ext = force_geotiff ? ".tif" : ".png";
+        char* base_fn = generate_default_output_filename(ts_ref, mode, ext);
+        if (do_reprojection && base_fn) {
+            char* dot = strrchr(base_fn, '.');
             if (dot) {
-                size_t prefix_len = dot - base_filename;
-                size_t total_len = strlen(base_filename) + 5; // +4 para "_geo" +1 para '\0'
-                out_filename_generated = (char*)malloc(total_len);
+                size_t pre_len = dot - base_fn;
+                size_t total = strlen(base_fn) + 5;
+                out_filename_generated = (char*)malloc(total);
                 if (out_filename_generated) {
-                    // Copiar la parte antes de la extensión
-                    strncpy(out_filename_generated, base_filename, prefix_len);
-                    out_filename_generated[prefix_len] = '\0';
-                    // Agregar sufijo y extensión
+                    strncpy(out_filename_generated, base_fn, pre_len);
+                    out_filename_generated[pre_len] = '\0';
                     strcat(out_filename_generated, "_geo");
                     strcat(out_filename_generated, dot);
-                    free(base_filename);
-                } else {
-                    out_filename_generated = base_filename;
-                }
-            } else {
-                out_filename_generated = base_filename;
-            }
-        } else {
-            out_filename_generated = base_filename;
-        }
-        
+                    free(base_fn);
+                } else out_filename_generated = base_fn;
+            } else out_filename_generated = base_fn;
+        } else out_filename_generated = base_fn;
         out_filename = out_filename_generated;
     }
 
-    ImageData final_image;
-    // Variables para las bandas intermedias que necesitan ser liberadas
+    ImageData final_image = {0};
     DataF r_ch = {0}, g_ch = {0}, b_ch = {0};
     
-    // Determinar si se debe aplicar corrección de Rayleigh
-    bool apply_rayleigh = ap_found(parser, "rayleigh");
-
     if (strcmp(mode, "truecolor") == 0) {
         LOG_INFO("Generando imagen en modo 'truecolor'...");
-        ImageData diurna;
-        if (apply_rayleigh) {
-            LOG_INFO("Aplicando corrección atmosférica de Rayleigh...");
-            diurna = create_truecolor_rgb_rayleigh(c[1].fdata, c[2].fdata, c[3].fdata, c_info[1]->filename, true);
-        } else {
-            diurna = create_truecolor_rgb(c[1].fdata, c[2].fdata, c[3].fdata);
-        }
-        if (apply_histogram) image_apply_histogram(diurna);
-        if (gamma != 1.0) image_apply_gamma(diurna, gamma);
-        write_image_png(out_filename, &diurna);
-        final_image = diurna;
-
+        final_image = apply_rayleigh ? create_truecolor_rgb_rayleigh(c[1].fdata, c[2].fdata, c[3].fdata, c_info[1]->filename, true)
+                                     : create_truecolor_rgb(c[1].fdata, c[2].fdata, c[3].fdata);
     } else if (strcmp(mode, "night") == 0) {
         LOG_INFO("Generando imagen en modo 'night'...");
-        ImageData nocturna = create_nocturnal_pseudocolor(c[13]);
-        if (gamma != 1.0) image_apply_gamma(nocturna, gamma);
-        final_image = nocturna;
-
+        final_image = create_nocturnal_pseudocolor(c[13]);
     } else if (strcmp(mode, "ash") == 0) {
         LOG_INFO("Generando imagen en modo 'ash'...");
         r_ch = dataf_op_dataf(&c[15].fdata, &c[13].fdata, OP_SUB);
         g_ch = dataf_op_dataf(&c[14].fdata, &c[11].fdata, OP_SUB);
         final_image = create_multiband_rgb(&r_ch, &g_ch, &c[13].fdata, -6.7f, 2.6f, -6.0f, 6.3f, 243.6f, 302.4f);
-
     } else if (strcmp(mode, "airmass") == 0) {
         LOG_INFO("Generando imagen en modo 'airmass'...");
         r_ch = dataf_op_dataf(&c[8].fdata, &c[10].fdata, OP_SUB);
         g_ch = dataf_op_dataf(&c[12].fdata, &c[13].fdata, OP_SUB);
-        b_ch = dataf_op_scalar(&c[8].fdata, 273.15f, OP_SUB, true); // scalar_first = true -> 273.15 - C8
-        final_image = create_multiband_rgb(&r_ch, &g_ch, &b_ch, -26.2f, 0.6f, -43.2f, 6.7f, 
-            29.25f, 64.65f);
-
+        b_ch = dataf_op_scalar(&c[8].fdata, 273.15f, OP_SUB, true);
+        final_image = create_multiband_rgb(&r_ch, &g_ch, &b_ch, -26.2f, 0.6f, -43.2f, 6.7f, 29.25f, 64.65f);
     } else if (strcmp(mode, "so2") == 0) {
         LOG_INFO("Generando imagen en modo 'so2'...");
         r_ch = dataf_op_dataf(&c[9].fdata, &c[10].fdata, OP_SUB);
         g_ch = dataf_op_dataf(&c[13].fdata, &c[11].fdata, OP_SUB);
         final_image = create_multiband_rgb(&r_ch, &g_ch, &c[13].fdata, -4.0f, 2.0f, -4.0f, 5.0f, 233.0f, 300.0f);
-
-    } else { // Modo "composite" (default)
+    } else { // composite
         LOG_INFO("Generando imagen en modo 'composite'...");
-        ImageData diurna;
-        if (apply_rayleigh) {
-            LOG_INFO("Aplicando corrección atmosférica de Rayleigh...");
-            diurna = create_truecolor_rgb_rayleigh(c[1].fdata, c[2].fdata, c[3].fdata, c_info[1]->filename, true);
-        } else {
-            diurna = create_truecolor_rgb(c[1].fdata, c[2].fdata, c[3].fdata);
-        }
+        ImageData diurna = apply_rayleigh ? create_truecolor_rgb_rayleigh(c[1].fdata, c[2].fdata, c[3].fdata, c_info[1]->filename, true)
+                                          : create_truecolor_rgb(c[1].fdata, c[2].fdata, c[3].fdata);
         if (apply_histogram) image_apply_histogram(diurna);
         ImageData nocturna = create_nocturnal_pseudocolor(c[13]);
-
         float dnratio;
         ImageData mask = create_daynight_mask(c[13], navla, navlo, &dnratio, 263.15);
         LOG_INFO("Ratio día/noche: %.2f%%", dnratio);
-
-        ImageData blend = blend_images(nocturna, diurna, mask);
-        if (gamma != 1.0) image_apply_gamma(blend, gamma);
-        final_image = blend;
-        image_destroy(&diurna);
-        image_destroy(&nocturna);
-        image_destroy(&mask);
+        final_image = blend_images(nocturna, diurna, mask);
+        image_destroy(&diurna); image_destroy(&nocturna); image_destroy(&mask);
     }
 
-    // --- LÓGICA DE RECORTE FINAL ---
-    // Solo aplicar si hay --clip pero NO se hizo recorte pre-reproyección
-    // (es decir, solo para el caso sin -r)
+    if (gamma != 1.0) image_apply_gamma(final_image, gamma);
+    if (strcmp(mode, "truecolor") != 0 && apply_histogram) image_apply_histogram(final_image);
+
     if (has_clip && !do_reprojection) {
-        if (navla.data_in) {
-            float clip_lon_min = atof(ap_get_str_value_at_index(parser, "clip", 0));
-            float clip_lat_max = atof(ap_get_str_value_at_index(parser, "clip", 1));
-            float clip_lon_max = atof(ap_get_str_value_at_index(parser, "clip", 2));
-            float clip_lat_min = atof(ap_get_str_value_at_index(parser, "clip", 3));
-
-            LOG_INFO("Aplicando recorte POST-procesamiento (sin reproyección): lon[%.3f, %.3f], lat[%.3f, %.3f]", 
-                     clip_lon_min, clip_lon_max, clip_lat_min, clip_lat_max);
-
-            // Usar función compartida de muestreo denso
-            int x_start_int, y_start_int, crop_w, crop_h;
-            int valid_samples = reprojection_find_bounding_box(&navla, &navlo,
-                                                                 clip_lon_min, clip_lat_max,
-                                                                 clip_lon_max, clip_lat_min,
-                                                                 &x_start_int, &y_start_int,
-                                                                 &crop_w, &crop_h);
-            
-            unsigned int x_start = 0, y_start = 0, crop_width = 0, crop_height = 0;
-            
-            if (valid_samples < 4) {
-                LOG_WARN("Dominio de clip fuera del disco (solo %d muestras válidas). Ignorando recorte POST-procesamiento.",
-                         valid_samples);
-            } else {
-                x_start = (unsigned int)x_start_int;
-                y_start = (unsigned int)y_start_int;
-                crop_width = (unsigned int)crop_w;
-                crop_height = (unsigned int)crop_h;
-                
-                LOG_INFO("Bounding box desde %d muestras válidas: start[%u, %u], size[%u, %u]",
-                         valid_samples, x_start, y_start, crop_width, crop_height);
-            }
-
-            ImageData cropped_image = image_crop(&final_image, x_start, y_start, crop_width, crop_height);
-            if (cropped_image.data) {
-                image_destroy(&final_image);
-                final_image = cropped_image;
-            }
+        LOG_INFO("Aplicando recorte POST-procesamiento: lon[%.3f, %.3f], lat[%.3f, %.3f]", clip_coords[0], clip_coords[2], clip_coords[3], clip_coords[1]);
+        int ix, iy, iw, ih, vs;
+        vs = reprojection_find_bounding_box(&navla, &navlo, clip_coords[0], clip_coords[1], clip_coords[2], clip_coords[3], &ix, &iy, &iw, &ih);
+        if (vs < 4) {
+            LOG_WARN("Dominio de clip fuera del disco. Ignorando recorte.");
         } else {
-            LOG_WARN("Formato de coordenadas de recorte inválido. Se esperaba \"lon_min lat_max lon_max lat_min\".");
+            ImageData cropped = image_crop(&final_image, ix, iy, iw, ih);
+            if (cropped.data) { image_destroy(&final_image); final_image = cropped; }
         }
     }
 
-    write_image_png(out_filename, &final_image);
+    bool is_geotiff = force_geotiff || (out_filename && (strstr(out_filename, ".tif") || strstr(out_filename, ".tiff")));
+    if (is_geotiff) {
+        const char* nc_ref = c_info[ref_ch_idx] ? c_info[ref_ch_idx]->filename : NULL;
+        if (nc_ref) {
+            write_geotiff_rgb(out_filename, &final_image, &navla, &navlo, nc_ref, do_reprojection, crop_x_start, crop_y_start, 0, 0);
+        } else {
+            LOG_ERROR("No se puede escribir GeoTIFF: falta archivo NetCDF de referencia.");
+        }
+    } else {
+        write_image_png(out_filename, &final_image);
+    }
     LOG_INFO("Imagen guardada en: %s", out_filename);
     
-    // TODO: Implementar soporte para --scale y --alpha en modo RGB
-    // El escalado requiere funciones de interpolación para ImageData
-    // El canal alfa requiere cambiar bpp de 3 a 4 y gestionar transparencia
-    if (scale != 1) {
-        LOG_WARN("La opción --scale aún no está implementada para el comando rgb.");
-    }
-    if (use_alpha) {
-        LOG_WARN("La opción --alpha aún no está implementada para el comando rgb.");
-    }
+    if (scale != 1) LOG_WARN("La opción --scale aún no está implementada para el comando rgb.");
+    if (use_alpha) LOG_WARN("La opción --alpha aún no está implementada para el comando rgb.");
 
-    // Liberar las bandas intermedias creadas para los modos especiales
-    dataf_destroy(&r_ch);
-    dataf_destroy(&g_ch);
-    dataf_destroy(&b_ch);
-    
+    dataf_destroy(&r_ch); dataf_destroy(&g_ch); dataf_destroy(&b_ch);
     if (out_filename_generated) free(out_filename_generated);
     image_destroy(&final_image);
-    for (int i = 1; i <= 16; i++) {
-        if (c_info[i]) datanc_destroy(&c[i]);
-    }
+    for (int i = 1; i <= 16; i++) { if (c_info[i]) datanc_destroy(&c[i]); }
     dataf_destroy(&navla); dataf_destroy(&navlo);
     channelset_destroy(channels);
     return 0;
