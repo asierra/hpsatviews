@@ -17,7 +17,8 @@ DataF reproject_to_geographics(const DataF* source_data, const char* nav_referen
 DataF reproject_to_geographics_with_nav(const DataF* source_data, const DataF* navla, const DataF* navlo,
                                         float native_resolution_km,
                                         float* out_lon_min, float* out_lon_max,
-                                        float* out_lat_min, float* out_lat_max);
+                                        float* out_lat_min, float* out_lat_max,
+                                        const float* clip_coords);
 
 /**
  * @brief Encuentra el píxel más cercano a una coordenada geográfica dada en una malla no reproyectada.

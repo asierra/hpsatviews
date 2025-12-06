@@ -429,7 +429,7 @@ int run_rgb(ArgParser *parser) {
         if (has_clip) {
           repro = reproject_to_geographics_with_nav(
               &c[i].fdata, &navla, &navlo, c[i].native_resolution_km, &lmin,
-              &lmax, &ltmin, &ltmax);
+              &lmax, &ltmin, &ltmax, clip_coords);
         } else {
           repro = reproject_to_geographics(&c[i].fdata, nav_ref,
                                            c[i].native_resolution_km, &lmin,

@@ -42,7 +42,8 @@ DataF reproject_to_geographics(const DataF* source_data, const char* nav_referen
     DataF result = reproject_to_geographics_with_nav(source_data, &navla, &navlo, 
                                                       native_resolution_km,
                                                       out_lon_min, out_lon_max, 
-                                                      out_lat_min, out_lat_max);
+                                                      out_lat_min, out_lat_max,
+                                                      NULL);
     
     dataf_destroy(&navla);
     dataf_destroy(&navlo);
@@ -57,12 +58,15 @@ DataF reproject_to_geographics(const DataF* source_data, const char* nav_referen
  * @param navla Puntero a la malla de latitudes pre-calculada.
  * @param navlo Puntero a la malla de longitudes pre-calculada.
  * @param native_resolution_km Resolución nativa del sensor en km (0 para usar default de 1 km).
+ * @param clip_coords Si no es NULL, array de 4 floats [lon_min, lat_max, lon_max, lat_min] que define
+ *                    el dominio geográfico de salida. Si es NULL, usa los límites de navegación.
  * @return Una nueva estructura DataF con los datos reproyectados y con huecos rellenados.
  */
 DataF reproject_to_geographics_with_nav(const DataF* source_data, const DataF* navla, const DataF* navlo,
                                         float native_resolution_km,
                                         float* out_lon_min, float* out_lon_max,
-                                        float* out_lat_min, float* out_lat_max) {
+                                        float* out_lat_min, float* out_lat_max,
+                                        const float* clip_coords) {
     if (!source_data || !navla || !navlo || !navla->data_in || !navlo->data_in) {
         LOG_ERROR("Parámetros inválidos para reproyección.");
         return dataf_create(0, 0);
@@ -70,15 +74,40 @@ DataF reproject_to_geographics_with_nav(const DataF* source_data, const DataF* n
     
     LOG_INFO("Datos de navegación pre-calculada. Extensión: lat[%.3f, %.3f], lon[%.3f, %.3f]", 
              navla->fmin, navla->fmax, navlo->fmin, navlo->fmax);
-    // Devolver los límites geográficos calculados
-    if (out_lon_min) *out_lon_min = navlo->fmin;
-    if (out_lon_max) *out_lon_max = navlo->fmax;
-    if (out_lat_min) *out_lat_min = navla->fmin;
-    if (out_lat_max) *out_lat_max = navla->fmax;
+    
+    // Determinar límites geográficos de salida: intersectar clip con navegación disponible
+    float target_lon_min, target_lon_max, target_lat_min, target_lat_max;
+    if (clip_coords) {
+        // Clip solicitado
+        float clip_lon_min = clip_coords[0];
+        float clip_lat_max = clip_coords[1];
+        float clip_lon_max = clip_coords[2];
+        float clip_lat_min = clip_coords[3];
+        
+        // Intersectar con navegación disponible para evitar zonas sin datos
+        target_lon_min = (clip_lon_min > navlo->fmin) ? clip_lon_min : navlo->fmin;
+        target_lon_max = (clip_lon_max < navlo->fmax) ? clip_lon_max : navlo->fmax;
+        target_lat_min = (clip_lat_min > navla->fmin) ? clip_lat_min : navla->fmin;
+        target_lat_max = (clip_lat_max < navla->fmax) ? clip_lat_max : navla->fmax;
+        
+        LOG_INFO("Dominio de salida (clip ∩ navegación): lon[%.3f, %.3f], lat[%.3f, %.3f]",
+                 target_lon_min, target_lon_max, target_lat_min, target_lat_max);
+    } else {
+        target_lon_min = navlo->fmin;
+        target_lon_max = navlo->fmax;
+        target_lat_min = navla->fmin;
+        target_lat_max = navla->fmax;
+    }
+    
+    // Devolver los límites geográficos de salida
+    if (out_lon_min) *out_lon_min = target_lon_min;
+    if (out_lon_max) *out_lon_max = target_lon_max;
+    if (out_lat_min) *out_lat_min = target_lat_min;
+    if (out_lat_max) *out_lat_max = target_lat_max;
 
     // Calcular tamaño de salida basado en resolución geográfica deseada
-    float lon_range = navlo->fmax - navlo->fmin;
-    float lat_range = navla->fmax - navla->fmin;
+    float lon_range = target_lon_max - target_lon_min;
+    float lat_range = target_lat_max - target_lat_min;
     
     // Calcular la latitud central para corrección geográfica precisa
     float lat_center = (navla->fmin + navla->fmax) / 2.0f;
@@ -130,8 +159,8 @@ DataF reproject_to_geographics_with_nav(const DataF* source_data, const DataF* n
     dataf_fill(&datagg, NAN);
 
     // Pre-calcular factores de escala para evitar divisiones repetidas
-    float lon_scale = (width - 1) / (navlo->fmax - navlo->fmin);
-    float lat_scale = (height - 1) / (navla->fmax - navla->fmin);
+    float lon_scale = (width - 1) / lon_range;
+    float lat_scale = (height - 1) / lat_range;
 
     #pragma omp parallel for collapse(2)
     for (unsigned y = 0; y < source_data->height; y++) {
@@ -141,8 +170,8 @@ DataF reproject_to_geographics_with_nav(const DataF* source_data, const DataF* n
             float la = navla->data_in[i];
             float f = source_data->data_in[i];
             if (lo != NonData && la != NonData && f != NonData) {
-                int ix = (int)((lo - navlo->fmin) * lon_scale);
-                int iy = (int)((navla->fmax - la) * lat_scale);
+                int ix = (int)((lo - target_lon_min) * lon_scale);
+                int iy = (int)((target_lat_max - la) * lat_scale);
 
                 if (ix >= 0 && ix < (int)width && iy >= 0 && iy < (int)height) {
                     size_t j = (size_t)iy * width + (size_t)ix;
@@ -158,49 +187,86 @@ DataF reproject_to_geographics_with_nav(const DataF* source_data, const DataF* n
     datagg.fmax = source_data->fmax;
 
     LOG_INFO("Iniciando relleno de huecos (interpolación de vecinos)...");
-    DataF datagg_filled = dataf_copy(&datagg);
-    if (datagg_filled.data_in == NULL) {
-        LOG_FATAL("Falla de memoria al copiar la malla para el relleno de huecos.");
-        dataf_destroy(&datagg);
-        return dataf_create(0, 0);
+    
+    // Usar 8 vecinos para mejor cobertura y múltiples iteraciones
+    const int dx[] = {-1, 0, 1, -1, 1, -1, 0, 1};
+    const int dy[] = {-1, -1, -1, 0, 0, 1, 1, 1};
+    const int num_neighbors = 8;
+    const int max_iterations = 5; // Iteraciones para cerrar huecos más grandes
+    
+    DataF current = datagg; // Toma posesión de datagg
+    DataF next = dataf_create(width, height);
+    
+    if (next.data_in == NULL) {
+        LOG_FATAL("Falla de memoria al crear buffer de relleno.");
+        return current;
     }
+    
+    // Copiar metadatos
+    next.fmin = current.fmin;
+    next.fmax = current.fmax;
 
-    const int dx[] = {0, 0, -1, 1};
-    const int dy[] = {-1, 1, 0, 0};
-    const int num_neighbors = 4;
-
-    #pragma omp parallel for collapse(2)
-    for (size_t y = 0; y < height; y++) {
-        for (size_t x = 0; x < width; x++) {
-            size_t idx = y * width + x;
-            if (isnan(datagg.data_in[idx])) {
-                float sum = 0.0f;
-                int count = 0;
-                for (int k = 0; k < num_neighbors; k++) {
-                    int nx = (int)x + dx[k];
-                    int ny = (int)y + dy[k];
-                    if (nx >= 0 && nx < (int)width && ny >= 0 && ny < (int)height) {
-                        size_t n_idx = (size_t)ny * width + (size_t)nx;
-                        float n_val = datagg.data_in[n_idx];
-                        if (!isnan(n_val)) {
-                            sum += n_val;
-                            count++;
+    for (int iter = 0; iter < max_iterations; iter++) {
+        int filled_count = 0;
+        
+        #pragma omp parallel for collapse(2) reduction(+:filled_count)
+        for (size_t y = 0; y < height; y++) {
+            for (size_t x = 0; x < width; x++) {
+                size_t idx = y * width + x;
+                float val = current.data_in[idx];
+                
+                if (!isnan(val)) {
+                    // Si ya tiene valor, lo conservamos
+                    next.data_in[idx] = val;
+                } else {
+                    // Si es NaN, intentamos rellenar con vecinos
+                    float sum = 0.0f;
+                    int count = 0;
+                    
+                    for (int k = 0; k < num_neighbors; k++) {
+                        int nx = (int)x + dx[k];
+                        int ny = (int)y + dy[k];
+                        
+                        if (nx >= 0 && nx < (int)width && ny >= 0 && ny < (int)height) {
+                            size_t n_idx = (size_t)ny * width + (size_t)nx;
+                            float n_val = current.data_in[n_idx];
+                            
+                            if (!isnan(n_val)) {
+                                sum += n_val;
+                                count++;
+                            }
                         }
                     }
-                }
-                if (count > 0) {
-                    datagg_filled.data_in[idx] = sum / (float)count;
+                    
+                    if (count > 0) {
+                        next.data_in[idx] = sum / (float)count;
+                        filled_count++;
+                    } else {
+                        next.data_in[idx] = NAN; // Sigue siendo NaN
+                    }
                 }
             }
         }
+        
+        LOG_DEBUG("Iteración %d: %d píxeles rellenados.", iter + 1, filled_count);
+        
+        if (filled_count == 0) {
+            break;
+        }
+        
+        // Swap de punteros para la siguiente iteración
+        float* temp_ptr = current.data_in;
+        current.data_in = next.data_in;
+        next.data_in = temp_ptr;
     }
+    
     LOG_INFO("Relleno de huecos terminado.");
 
-    // Liberar memoria intermedia
-    dataf_destroy(&datagg);
+    // Liberar memoria auxiliar (next tiene el buffer viejo tras el último swap o el inicial)
+    dataf_destroy(&next);
 
-    // Devolvemos la malla rellena. El que llama es responsable de liberarla.
-    return datagg_filled;
+    // Devolvemos la malla rellena (current tiene el resultado final)
+    return current;
 }
 
 /**

@@ -210,9 +210,21 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         
         if (do_reprojection) {
             LOG_INFO("Iniciando reproyección...");
-            DataF reprojected_data = (has_clip && nav_loaded)
-                ? reproject_to_geographics_with_nav(&c01.fdata, &navla, &navlo, c01.native_resolution_km, &final_lon_min, &final_lon_max, &final_lat_min, &final_lat_max)
-                : reproject_to_geographics(&c01.fdata, fnc01, c01.native_resolution_km, &final_lon_min, &final_lon_max, &final_lat_min, &final_lat_max);
+            DataF reprojected_data;
+            if (has_clip && nav_loaded) {
+                // Reproyectar directamente al dominio del clip (no necesita recorte post-reproyección)
+                reprojected_data = reproject_to_geographics_with_nav(&c01.fdata, &navla, &navlo, 
+                                                                     c01.native_resolution_km, 
+                                                                     &final_lon_min, &final_lon_max, 
+                                                                     &final_lat_min, &final_lat_max,
+                                                                     clip_coords);
+            } else {
+                // Sin clip, usar límites de navegación
+                reprojected_data = reproject_to_geographics(&c01.fdata, fnc01, 
+                                                            c01.native_resolution_km, 
+                                                            &final_lon_min, &final_lon_max, 
+                                                            &final_lat_min, &final_lat_max);
+            }
 
             if (reprojected_data.data_in) {
                 dataf_destroy(&c01.fdata);
@@ -220,48 +232,6 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
                 
                 dataf_destroy(&navla);
                 dataf_destroy(&navlo);
-                
-                // Si hay clip, recortar la imagen reproyectada a los límites exactos del clip
-                if (has_clip) {
-                    float clip_lon_min = clip_coords[0];
-                    float clip_lon_max = clip_coords[2];
-                    float clip_lat_min = clip_coords[3];
-                    float clip_lat_max = clip_coords[1];
-                    
-                    float lon_range = final_lon_max - final_lon_min;
-                    float lat_range = final_lat_max - final_lat_min;
-                    
-                    int x_start = (int)((clip_lon_min - final_lon_min) / lon_range * c01.fdata.width);
-                    int y_start = (int)((final_lat_max - clip_lat_max) / lat_range * c01.fdata.height);
-                    int x_end = (int)((clip_lon_max - final_lon_min) / lon_range * c01.fdata.width);
-                    int y_end = (int)((final_lat_max - clip_lat_min) / lat_range * c01.fdata.height);
-                    
-                    if (x_start < 0) x_start = 0;
-                    if (y_start < 0) y_start = 0;
-                    if (x_end > (int)c01.fdata.width) x_end = c01.fdata.width;
-                    if (y_end > (int)c01.fdata.height) y_end = c01.fdata.height;
-                    
-                    int crop_w = x_end - x_start;
-                    int crop_h = y_end - y_start;
-                    
-                    if (crop_w > 0 && crop_h > 0) {
-                        LOG_INFO("Recortando imagen reproyectada a límites exactos del clip: [%d,%d] %dx%d", 
-                                 x_start, y_start, crop_w, crop_h);
-                        DataF cropped = dataf_crop(&c01.fdata, x_start, y_start, crop_w, crop_h);
-                        dataf_destroy(&c01.fdata);
-                        c01.fdata = cropped;
-                        
-                        // Actualizar límites geográficos para el GeoTIFF
-                        float pixel_w = lon_range / reprojected_data.width;
-                        float pixel_h = lat_range / reprojected_data.height;
-                        
-                        final_lon_min = final_lon_min + x_start * pixel_w;
-                        final_lat_max = final_lat_max - y_start * pixel_h; // Latitud baja al aumentar Y
-                        // Ajustar max/min restantes
-                        final_lon_max = final_lon_min + crop_w * pixel_w;
-                        final_lat_min = final_lat_max - crop_h * pixel_h;
-                    }
-                }
                 
                 create_navigation_from_reprojected_bounds(&navla, &navlo, c01.fdata.width, c01.fdata.height, final_lon_min, final_lon_max, final_lat_min, final_lat_max);
                 nav_loaded = true;
