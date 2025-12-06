@@ -21,5 +21,18 @@
  */
 char* generate_default_output_filename(const char* input_file_path, const char* processing_mode, const char* output_extension);
 
+/**
+ * @brief Expande un patrón de nombre de archivo reemplazando marcadores de tiempo.
+ *        Marcadores soportados: {YYYY}, {YY}, {MM}, {DD}, {hh}, {mm}, {ss}, {JJJ}.
+ *        La información de tiempo se extrae del nombre de archivo de entrada (formato GOES).
+ * 
+ * @param pattern El patrón de nombre de archivo (ej. "img_{YYYY}{MM}{DD}_{hh}{mm}.tif").
+ * @param input_filename El nombre del archivo de entrada del cual extraer la fecha/hora.
+ * @return Una nueva cadena con los marcadores reemplazados, o una copia del patrón si no se encuentra fecha.
+ *         El llamador debe liberar la memoria.
+ */
+char* expand_filename_pattern(const char* pattern, const char* input_filename);
+
+
 
 #endif /* HPSATVIEWS_FILENAME_UTILS_H_ */

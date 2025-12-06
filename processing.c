@@ -104,7 +104,14 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     char* out_filename_generated = NULL;
     const char* outfn;
     if (ap_found(parser, "out")) {
-        outfn = ap_get_str_value(parser, "out");
+        const char* user_out = ap_get_str_value(parser, "out");
+        // Detectar si hay patrón (contiene llaves)
+        if (strchr(user_out, '{') && strchr(user_out, '}')) {
+            out_filename_generated = expand_filename_pattern(user_out, fnc01);
+            outfn = out_filename_generated;
+        } else {
+            outfn = user_out;
+        }
     } else {
         const char* mode_name = is_pseudocolor ? "pseudocolor" : "singlegray";
         const char* extension = force_geotiff ? ".tif" : ".png";

@@ -548,7 +548,15 @@ int run_rgb(ArgParser *parser) {
   char *out_filename_generated = NULL;
   const char *out_filename;
   if (ap_found(parser, "out")) {
-    out_filename = ap_get_str_value(parser, "out");
+    const char* user_out = ap_get_str_value(parser, "out");
+    // Detectar si hay patrón (contiene llaves)
+    if (strchr(user_out, '{') && strchr(user_out, '}')) {
+      const char *ts_ref = c_info[ref_ch_idx] ? c_info[ref_ch_idx]->filename : input_file;
+      out_filename_generated = expand_filename_pattern(user_out, ts_ref);
+      out_filename = out_filename_generated;
+    } else {
+      out_filename = user_out;
+    }
   } else {
     const char *ts_ref =
         c_info[ref_ch_idx] ? c_info[ref_ch_idx]->filename : input_file;
