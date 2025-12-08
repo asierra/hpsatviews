@@ -80,3 +80,7 @@ en el código en archivo .h.
 Solo falta corregir lo del brillo, alpha y escala para todos los
 comandos.
 
+Opción de umbral para transparencia.
+Exportar máscara con base en umbrales y criterios.
+Editar readme.
+
