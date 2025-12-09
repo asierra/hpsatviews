@@ -203,3 +203,113 @@ void image_apply_gamma(ImageData im, float gamma) {
       }
   }
 }
+
+ImageData image_upsample_bilinear(const ImageData* src, int factor) {
+    if (src == NULL || src->data == NULL || factor < 1) {
+        return image_create(0, 0, 0);
+    }
+    
+    unsigned int new_width = src->width * factor;
+    unsigned int new_height = src->height * factor;
+    ImageData result = image_create(new_width, new_height, src->bpp);
+    
+    if (result.data == NULL) {
+        LOG_ERROR("No se pudo asignar memoria para el upsampling.");
+        return result;
+    }
+    
+    float xrat = (float)(src->width - 1) / (new_width - 1);
+    float yrat = (float)(src->height - 1) / (new_height - 1);
+    
+    double start = omp_get_wtime();
+    
+    #pragma omp parallel for
+    for (int j = 0; j < new_height; j++) {
+        for (int i = 0; i < new_width; i++) {
+            float x = xrat * i;
+            float y = yrat * j;
+            int xl = (int)floor(x);
+            int yl = (int)floor(y);
+            int xh = (int)ceil(x);
+            int yh = (int)ceil(y);
+            float xw = x - xl;
+            float yw = y - yl;
+            
+            int dst_idx = (j * new_width + i) * src->bpp;
+            
+            for (int ch = 0; ch < src->bpp; ch++) {
+                int idx_ll = (yl * src->width + xl) * src->bpp + ch;
+                int idx_lh = (yl * src->width + xh) * src->bpp + ch;
+                int idx_hl = (yh * src->width + xl) * src->bpp + ch;
+                int idx_hh = (yh * src->width + xh) * src->bpp + ch;
+                
+                double val = src->data[idx_ll] * (1 - xw) * (1 - yw) +
+                           src->data[idx_lh] * xw * (1 - yw) +
+                           src->data[idx_hl] * (1 - xw) * yw +
+                           src->data[idx_hh] * xw * yw;
+                           
+                result.data[dst_idx + ch] = (unsigned char)(val + 0.5);
+            }
+        }
+    }
+    
+    double end = omp_get_wtime();
+    LOG_INFO("Upsampling bilinear (factor=%d): %.3f segundos", factor, end - start);
+    
+    return result;
+}
+
+ImageData image_downsample_boxfilter(const ImageData* src, int factor) {
+    if (src == NULL || src->data == NULL || factor < 1) {
+        return image_create(0, 0, 0);
+    }
+    
+    unsigned int new_width = src->width / factor;
+    unsigned int new_height = src->height / factor;
+    
+    if (new_width == 0 || new_height == 0) {
+        LOG_ERROR("El factor de downsampling es demasiado grande para esta imagen.");
+        return image_create(0, 0, 0);
+    }
+    
+    ImageData result = image_create(new_width, new_height, src->bpp);
+    
+    if (result.data == NULL) {
+        LOG_ERROR("No se pudo asignar memoria para el downsampling.");
+        return result;
+    }
+    
+    double start = omp_get_wtime();
+    
+    #pragma omp parallel for
+    for (int j = 0; j < new_height; j++) {
+        for (int i = 0; i < new_width; i++) {
+            int dst_idx = (j * new_width + i) * src->bpp;
+            
+            for (int ch = 0; ch < src->bpp; ch++) {
+                double sum = 0.0;
+                int count = 0;
+                
+                for (int dy = 0; dy < factor; dy++) {
+                    for (int dx = 0; dx < factor; dx++) {
+                        int src_x = i * factor + dx;
+                        int src_y = j * factor + dy;
+                        
+                        if (src_x < src->width && src_y < src->height) {
+                            int src_idx = (src_y * src->width + src_x) * src->bpp + ch;
+                            sum += src->data[src_idx];
+                            count++;
+                        }
+                    }
+                }
+                
+                result.data[dst_idx + ch] = (unsigned char)((sum / count) + 0.5);
+            }
+        }
+    }
+    
+    double end = omp_get_wtime();
+    LOG_INFO("Downsampling box filter (factor=%d): %.3f segundos", factor, end - start);
+    
+    return result;
+}

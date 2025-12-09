@@ -245,11 +245,6 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
             }
         }
 
-        if (scale < 0) {
-            DataF aux = downsample_boxfilter(c01.fdata, -scale); dataf_destroy(&c01.fdata); c01.fdata = aux;
-        } else if (scale > 1) {
-            DataF aux = upsample_bilinear(c01.fdata, scale); dataf_destroy(&c01.fdata); c01.fdata = aux;
-        }
         imout = create_single_gray(c01.fdata, invert_values, use_alpha, cptdata);
     } else {
         // Datos BYTE
@@ -259,6 +254,17 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
 
     if (gamma != 1.0) image_apply_gamma(imout, gamma);
     if (apply_histogram) image_apply_histogram(imout);
+    
+    // --- REMUESTREO (si se solicitó) ---
+    if (scale < 0) {
+        ImageData scaled = image_downsample_boxfilter(&imout, -scale);
+        image_destroy(&imout);
+        imout = scaled;
+    } else if (scale > 1) {
+        ImageData scaled = image_upsample_bilinear(&imout, scale);
+        image_destroy(&imout);
+        imout = scaled;
+    }
 
     // Guardar índices del crop para GeoTIFF geoestacionario
     unsigned crop_x_start = 0, crop_y_start = 0;

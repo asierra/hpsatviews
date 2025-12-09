@@ -641,6 +641,18 @@ int run_rgb(ArgParser *parser) {
   if (strcmp(mode, "truecolor") != 0 && apply_histogram)
     image_apply_histogram(final_image);
 
+  // --- REMUESTREO (si se solicitó) ---
+  const int scale = ap_get_int_value(parser, "scale");
+  if (scale < 0) {
+    ImageData scaled = image_downsample_boxfilter(&final_image, -scale);
+    image_destroy(&final_image);
+    final_image = scaled;
+  } else if (scale > 1) {
+    ImageData scaled = image_upsample_bilinear(&final_image, scale);
+    image_destroy(&final_image);
+    final_image = scaled;
+  }
+
   // --- ESCRITURA FINAL ---
   bool is_geotiff =
       force_geotiff || (out_filename && (strstr(out_filename, ".tif") ||

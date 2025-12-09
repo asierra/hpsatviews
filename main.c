@@ -73,6 +73,7 @@ int main(int argc, char *argv[]) {
                             "                          coordenadas entre comillas: \"lon_min lat_max lon_max lat_min\".\n"
                             "  -g, --gamma <valor>     Corrección gamma (defecto: 1.0).\n"
                             "  -h, --histo             Aplica ecualización de histograma.\n"
+                            "  -s, --scale <factor>    Factor de escala. >1 para ampliar, <0 para reducir (defecto: 1).\n"
                             "  -r, --geographics       Reproyecta la salida a coordenadas geográficas.\n"
                             "  -v, --verbose           Modo verboso (muestra información detallada).\n\n"
                             "Use 'hpsatviews help <comando>' para más información sobre un comando específico.");
@@ -93,9 +94,11 @@ int main(int argc, char *argv[]) {
                                  "                          entre comillas: \"lon_min lat_max lon_max lat_min\".\n"
                                  "  -g, --gamma <valor>     Corrección gamma a aplicar (defecto: 1.0, sin corrección).\n"
                                  "  -h, --histo             Aplica ecualización de histograma.\n"
-                                 "  -s, --scale <factor>    Factor de escala. >1 para ampliar, <0 para reducir (defecto: 1, sin implementar).\n"
-                                 "  -a, --alpha             Añade un canal alfa (sin implementar).\n"
+                                 "  -s, --scale <factor>    Factor de escala (ver opciones comunes).\n"
                                  "  -r, --geographics       Reproyecta la salida a coordenadas geográficas.\n"
+                                 "  -v, --verbose           Modo verboso.\n\n"
+                                 "Opciones específicas del comando rgb:\n"
+                                 "  -a, --alpha             Añade un canal alfa (sin implementar).\n"
                                  "      --rayleigh          Aplica corrección atmosférica de Rayleigh (solo modos truecolor/composite).");
         ap_add_str_opt(rgb_cmd, "mode m", "composite");
         ap_add_str_opt(rgb_cmd, "out o", NULL);
@@ -115,18 +118,11 @@ int main(int argc, char *argv[]) {
     ArgParser *pc_cmd = ap_new_cmd(parser, "pseudocolor");
     if (pc_cmd) {
         ap_set_helptext(pc_cmd, "Usanza: hpsatviews pseudocolor -p <paleta.cpt> [opciones] <Archivo NetCDF>\n\n"
-                                "Genera una imagen con paleta de colores (requiere -p/--cpt).\n\n"
-                                "Opciones:\n"
+                                "Genera una imagen con paleta de colores a partir de un canal NetCDF.\n\n"
+                                "Opciones específicas del comando pseudocolor:\n"
                                 "  -p, --cpt <archivo>     Aplica una paleta de colores (archivo .cpt). Requerido.\n"
-                                "  -o, --out <archivo>     Archivo de salida (defecto: autogenerado con extensión .png o .tif).\n"
-                                "  -t, --geotiff           Generar salida en formato GeoTIFF (en vez de PNG).\n"
-                                "  -c, --clip <coords>     Recorta la imagen a una ventana geográfica.\n"
-                                "                          Puede ser una clave (ej. 'CDMX') o 4 coordenadas: lon_min lat_max lon_max lat_min.\n"
-                                "  -g, --gamma <valor>     Corrección gamma a aplicar (defecto: 1.0).\n"
-                                "  -a, --alpha             Añade un canal alfa (funcionalidad futura).\n"
-                                "  -h, --histo             Aplica ecualización de histograma.\n"
-                                "  -s, --scale <factor>    Factor de escala. >1 para ampliar, <0 para reducir (defecto: 1).\n"
-                                "  -r, --geographics       Reproyecta la salida a coordenadas geográficas.");
+                                "  -a, --alpha             Añade un canal alfa (funcionalidad futura).\n\n"
+                                "Para opciones comunes (out, clip, gamma, histo, scale, etc.), use 'hpsatviews --help'.");
         add_common_opts(pc_cmd);
         ap_add_str_opt(pc_cmd, "cpt p", NULL);
         ap_add_flag(pc_cmd, "alpha a");
@@ -138,17 +134,10 @@ int main(int argc, char *argv[]) {
     if (sg_cmd) {
         ap_set_helptext(sg_cmd, "Usanza: hpsatviews singlegray [opciones] <Archivo NetCDF>\n\n"
                                 "Genera una imagen en escala de grises a partir de una variable NetCDF.\n\n"
-                                "Opciones:\n"
-                                "  -o, --out <archivo>     Archivo de salida (defecto: autogenerado con extensión .png o .tif).\n"
-                                "  -t, --geotiff           Generar salida en formato GeoTIFF (en vez de PNG).\n"
-                                "  -c, --clip <coords>     Recorta la imagen a una ventana geográfica.\n"
-                                "                          Puede ser una clave (ej. 'CDMX') o 4 coordenadas: lon_min lat_max lon_max lat_min.\n"
-                                "  -g, --gamma <valor>     Corrección gamma a aplicar (defecto: 1.0).\n"
-                                "  -h, --histo             Aplica ecualización de histograma.\n"
+                                "Opciones específicas del comando singlegray:\n"
                                 "  -i, --invert            Invierte los valores (blanco y negro).\n"
-                                "  -a, --alpha             Añade un canal alfa.\n"
-                                "  -s, --scale <factor>    Factor de escala. >1 para ampliar, <0 para reducir (defecto: 1).\n"
-                                "  -r, --geographics       Reproyecta la salida a coordenadas geográficas.");
+                                "  -a, --alpha             Añade un canal alfa.\n\n"
+                                "Para opciones comunes (out, clip, gamma, histo, scale, etc.), use 'hpsatviews --help'.");
         add_common_opts(sg_cmd);
         ap_add_flag(sg_cmd, "invert i");
         ap_add_flag(sg_cmd, "alpha a");

@@ -64,4 +64,10 @@ void image_apply_histogram(ImageData im);
 // Apply gamma correction to image
 void image_apply_gamma(ImageData im, float gamma);
 
+// Resample image using bilinear interpolation for upsampling (factor > 1)
+ImageData image_upsample_bilinear(const ImageData* src, int factor);
+
+// Resample image using box filter for downsampling (factor > 1, reduces size by 1/factor)
+ImageData image_downsample_boxfilter(const ImageData* src, int factor);
+
 #endif /* HPSATVIEWS_IMAGE_H_ */
