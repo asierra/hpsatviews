@@ -9,6 +9,7 @@
 #include <string.h>
 #include "image.h"
 #include "logger.h"
+#include "datanc.h"
 
 
 // Constructor for ImageData structure
@@ -311,5 +312,75 @@ ImageData image_downsample_boxfilter(const ImageData* src, int factor) {
     double end = omp_get_wtime();
     LOG_INFO("Downsampling box filter (factor=%d): %.3f segundos", factor, end - start);
     
+    return result;
+}
+
+ImageData image_create_alpha_mask_from_dataf(const void* data_ptr) {
+    const DataF* data = (const DataF*)data_ptr;
+    if (data == NULL || data->data_in == NULL) {
+        return image_create(0, 0, 0);
+    }
+    
+    // Crear una imagen de 1 canal (grayscale) para la máscara
+    ImageData mask = image_create(data->width, data->height, 1);
+    if (mask.data == NULL) {
+        LOG_ERROR("No se pudo crear máscara alpha.");
+        return mask;
+    }
+    
+    #pragma omp parallel for
+    for (size_t i = 0; i < data->size; i++) {
+        // 255 = opaco (dato válido), 0 = transparente (NonData)
+        mask.data[i] = IS_NONDATA(data->data_in[i]) ? 0 : 255;
+    }
+    
+    LOG_INFO("Máscara alpha creada: %ux%u", mask.width, mask.height);
+    return mask;
+}
+
+ImageData image_add_alpha_channel(const ImageData* src, const ImageData* alpha_mask) {
+    if (src == NULL || src->data == NULL || alpha_mask == NULL || alpha_mask->data == NULL) {
+        return image_create(0, 0, 0);
+    }
+    
+    if (src->width != alpha_mask->width || src->height != alpha_mask->height) {
+        LOG_ERROR("Las dimensiones de la imagen y la máscara alpha no coinciden.");
+        return image_create(0, 0, 0);
+    }
+    
+    // Determinar nuevo bpp: 1->2 (gray+alpha), 3->4 (rgb+alpha)
+    unsigned int new_bpp;
+    if (src->bpp == 1) {
+        new_bpp = 2;
+    } else if (src->bpp == 3) {
+        new_bpp = 4;
+    } else {
+        LOG_ERROR("Solo se puede agregar alpha a imágenes de 1 o 3 canales (bpp=%u).", src->bpp);
+        return image_create(0, 0, 0);
+    }
+    
+    ImageData result = image_create(src->width, src->height, new_bpp);
+    if (result.data == NULL) {
+        LOG_ERROR("No se pudo crear imagen con canal alpha.");
+        return result;
+    }
+    
+    size_t num_pixels = src->width * src->height;
+    
+    #pragma omp parallel for
+    for (size_t i = 0; i < num_pixels; i++) {
+        size_t src_idx = i * src->bpp;
+        size_t dst_idx = i * new_bpp;
+        
+        // Copiar canales originales
+        for (unsigned int ch = 0; ch < src->bpp; ch++) {
+            result.data[dst_idx + ch] = src->data[src_idx + ch];
+        }
+        
+        // Agregar canal alpha de la máscara
+        result.data[dst_idx + src->bpp] = alpha_mask->data[i];
+    }
+    
+    LOG_INFO("Canal alpha agregado: %ux%u, bpp %u->%u", result.width, result.height, src->bpp, new_bpp);
     return result;
 }

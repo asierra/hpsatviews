@@ -112,6 +112,21 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         } else {
             outfn = user_out;
         }
+        
+        // Si se fuerza GeoTIFF pero el nombre tiene extensión .png, cambiarla a .tif
+        if (force_geotiff && outfn) {
+            const char *ext = strrchr(outfn, '.');
+            if (ext && (strcmp(ext, ".png") == 0 || strcmp(ext, ".PNG") == 0)) {
+                size_t base_len = ext - outfn;
+                out_filename_generated = malloc(base_len + 5); // espacio para ".tif\0"
+                if (out_filename_generated) {
+                    strncpy(out_filename_generated, outfn, base_len);
+                    strcpy(out_filename_generated + base_len, ".tif");
+                    LOG_INFO("Extensión cambiada de .png a .tif por usar --geotiff: %s", out_filename_generated);
+                    outfn = out_filename_generated;
+                }
+            }
+        }
     } else {
         const char* mode_name = is_pseudocolor ? "pseudocolor" : "singlegray";
         const char* extension = force_geotiff ? ".tif" : ".png";
@@ -313,7 +328,23 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         } else {
             // MODO: Nativo (Geoestacionario)
             // Copiamos la info del NetCDF original
-            meta_out = c01; 
+            meta_out = c01;
+            
+            // Ajustar geotransform si se aplicó scale
+            if (scale != 1) {
+                double scale_factor = (scale < 0) ? -scale : scale;
+                if (scale > 1) {
+                    // Upsampling: los píxeles son más pequeños
+                    meta_out.geotransform[1] /= scale_factor;  // pixel width
+                    meta_out.geotransform[5] /= scale_factor;  // pixel height (negativo)
+                } else if (scale < 0) {
+                    // Downsampling: los píxeles son más grandes
+                    meta_out.geotransform[1] *= scale_factor;  // pixel width
+                    meta_out.geotransform[5] *= scale_factor;  // pixel height (negativo)
+                }
+                LOG_DEBUG("Geotransform ajustado por scale=%d: PixelW=%.6f PixelH=%.6f", 
+                          scale, meta_out.geotransform[1], meta_out.geotransform[5]);
+            }
             
             // Pasamos el offset del recorte para que GDAL ajuste el origen
             if (is_pseudocolor && color_array) {

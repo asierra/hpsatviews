@@ -266,6 +266,7 @@ int run_rgb(ArgParser *parser) {
   const bool apply_histogram = ap_found(parser, "histo");
   const bool force_geotiff = ap_found(parser, "geotiff");
   const bool apply_rayleigh = ap_found(parser, "rayleigh");
+  const bool use_alpha = ap_found(parser, "alpha");
 
   const char *basenm = basename((char *)input_file);
   char *dirnm_dup = strdup(input_file);
@@ -557,6 +558,21 @@ int run_rgb(ArgParser *parser) {
     } else {
       out_filename = user_out;
     }
+    
+    // Si se fuerza GeoTIFF pero el nombre tiene extensión .png, cambiarla a .tif
+    if (force_geotiff && out_filename) {
+      const char *ext = strrchr(out_filename, '.');
+      if (ext && (strcmp(ext, ".png") == 0 || strcmp(ext, ".PNG") == 0)) {
+        size_t base_len = ext - out_filename;
+        out_filename_generated = malloc(base_len + 5); // espacio para ".tif\0"
+        if (out_filename_generated) {
+          strncpy(out_filename_generated, out_filename, base_len);
+          strcpy(out_filename_generated + base_len, ".tif");
+          LOG_INFO("Extensión cambiada de .png a .tif por usar --geotiff: %s", out_filename_generated);
+          out_filename = out_filename_generated;
+        }
+      }
+    }
   } else {
     const char *ts_ref =
         c_info[ref_ch_idx] ? c_info[ref_ch_idx]->filename : input_file;
@@ -641,16 +657,53 @@ int run_rgb(ArgParser *parser) {
   if (strcmp(mode, "truecolor") != 0 && apply_histogram)
     image_apply_histogram(final_image);
 
+  // --- CREAR MÁSCARA ALPHA (si se solicitó) ---
+  // Se crea aquí al final para tener las dimensiones correctas de la imagen
+  ImageData alpha_mask = {0};
+  if (use_alpha) {
+    LOG_INFO("Creando máscara alpha desde canal de referencia...");
+    alpha_mask = image_create_alpha_mask_from_dataf(&c[ref_ch_idx].fdata);
+    if (alpha_mask.data == NULL) {
+      LOG_WARN("No se pudo crear la máscara alpha, continuando sin canal alpha.");
+    }
+  }
+
   // --- REMUESTREO (si se solicitó) ---
   const int scale = ap_get_int_value(parser, "scale");
   if (scale < 0) {
     ImageData scaled = image_downsample_boxfilter(&final_image, -scale);
     image_destroy(&final_image);
     final_image = scaled;
+    
+    // Remuestrear máscara alpha también
+    if (alpha_mask.data) {
+      ImageData scaled_mask = image_downsample_boxfilter(&alpha_mask, -scale);
+      image_destroy(&alpha_mask);
+      alpha_mask = scaled_mask;
+    }
   } else if (scale > 1) {
     ImageData scaled = image_upsample_bilinear(&final_image, scale);
     image_destroy(&final_image);
     final_image = scaled;
+    
+    // Remuestrear máscara alpha también
+    if (alpha_mask.data) {
+      ImageData scaled_mask = image_upsample_bilinear(&alpha_mask, scale);
+      image_destroy(&alpha_mask);
+      alpha_mask = scaled_mask;
+    }
+  }
+
+  // --- AGREGAR CANAL ALPHA (si se solicitó) ---
+  if (use_alpha && alpha_mask.data) {
+    LOG_INFO("Agregando canal alpha a la imagen final...");
+    ImageData with_alpha = image_add_alpha_channel(&final_image, &alpha_mask);
+    if (with_alpha.data) {
+      image_destroy(&final_image);
+      final_image = with_alpha;
+    } else {
+      LOG_WARN("No se pudo agregar el canal alpha.");
+    }
   }
 
   // --- ESCRITURA FINAL ---
@@ -680,6 +733,24 @@ int run_rgb(ArgParser *parser) {
     } else {
       // MODO NATIVO
       meta_out = c[ref_ch_idx];
+      
+      // Ajustar geotransform si se aplicó scale
+      const int scale = ap_get_int_value(parser, "scale");
+      if (scale != 1) {
+        double scale_factor = (scale < 0) ? -scale : scale;
+        if (scale > 1) {
+          // Upsampling: los píxeles son más pequeños
+          meta_out.geotransform[1] /= scale_factor;  // pixel width
+          meta_out.geotransform[5] /= scale_factor;  // pixel height (negativo)
+        } else if (scale < 0) {
+          // Downsampling: los píxeles son más grandes
+          meta_out.geotransform[1] *= scale_factor;  // pixel width
+          meta_out.geotransform[5] *= scale_factor;  // pixel height (negativo)
+        }
+        LOG_DEBUG("Geotransform ajustado por scale=%d: PixelW=%.6f PixelH=%.6f", 
+                  scale, meta_out.geotransform[1], meta_out.geotransform[5]);
+      }
+      
       write_geotiff_rgb(out_filename, &final_image, &meta_out, crop_x_offset,
                         crop_y_offset);
     }
@@ -694,6 +765,7 @@ int run_rgb(ArgParser *parser) {
   if (out_filename_generated)
     free(out_filename_generated);
   image_destroy(&final_image);
+  image_destroy(&alpha_mask);
   for (int i = 1; i <= 16; i++) {
     if (c_info[i])
       datanc_destroy(&c[i]);

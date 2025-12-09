@@ -40,6 +40,7 @@ static void add_common_opts(ArgParser* cmd_parser) {
     ap_add_dbl_opt(cmd_parser, "gamma g", 1.0);
     ap_add_flag(cmd_parser, "histo h");
     ap_add_int_opt(cmd_parser, "scale s", 1);
+    ap_add_flag(cmd_parser, "alpha a");
     ap_add_flag(cmd_parser, "geographics r");
     ap_add_flag(cmd_parser, "verbose v");
 }
@@ -74,6 +75,7 @@ int main(int argc, char *argv[]) {
                             "  -g, --gamma <valor>     Corrección gamma (defecto: 1.0).\n"
                             "  -h, --histo             Aplica ecualización de histograma.\n"
                             "  -s, --scale <factor>    Factor de escala. >1 para ampliar, <0 para reducir (defecto: 1).\n"
+                            "  -a, --alpha             Añade canal alfa (transparencia en zonas NonData).\n"
                             "  -r, --geographics       Reproyecta la salida a coordenadas geográficas.\n"
                             "  -v, --verbose           Modo verboso (muestra información detallada).\n\n"
                             "Use 'hpsatviews help <comando>' para más información sobre un comando específico.");
@@ -95,22 +97,14 @@ int main(int argc, char *argv[]) {
                                  "  -g, --gamma <valor>     Corrección gamma a aplicar (defecto: 1.0, sin corrección).\n"
                                  "  -h, --histo             Aplica ecualización de histograma.\n"
                                  "  -s, --scale <factor>    Factor de escala (ver opciones comunes).\n"
+                                 "  -a, --alpha             Añade canal alfa (ver opciones comunes).\n"
                                  "  -r, --geographics       Reproyecta la salida a coordenadas geográficas.\n"
                                  "  -v, --verbose           Modo verboso.\n\n"
                                  "Opciones específicas del comando rgb:\n"
-                                 "  -a, --alpha             Añade un canal alfa (sin implementar).\n"
                                  "      --rayleigh          Aplica corrección atmosférica de Rayleigh (solo modos truecolor/composite).");
         ap_add_str_opt(rgb_cmd, "mode m", "composite");
-        ap_add_str_opt(rgb_cmd, "out o", NULL);
-        ap_add_flag(rgb_cmd, "geotiff t");
-        ap_add_str_opt(rgb_cmd, "clip c", NULL);
-        ap_add_dbl_opt(rgb_cmd, "gamma g", 1.0);
-        ap_add_flag(rgb_cmd, "histo h");
-        ap_add_int_opt(rgb_cmd, "scale s", 1);
-        ap_add_flag(rgb_cmd, "alpha a");
-        ap_add_flag(rgb_cmd, "geographics r");
+        add_common_opts(rgb_cmd);
         ap_add_flag(rgb_cmd, "rayleigh");
-        ap_add_flag(rgb_cmd, "verbose v");
         ap_set_cmd_callback(rgb_cmd, cmd_rgb);
     }
 
@@ -120,12 +114,10 @@ int main(int argc, char *argv[]) {
         ap_set_helptext(pc_cmd, "Usanza: hpsatviews pseudocolor -p <paleta.cpt> [opciones] <Archivo NetCDF>\n\n"
                                 "Genera una imagen con paleta de colores a partir de un canal NetCDF.\n\n"
                                 "Opciones específicas del comando pseudocolor:\n"
-                                "  -p, --cpt <archivo>     Aplica una paleta de colores (archivo .cpt). Requerido.\n"
-                                "  -a, --alpha             Añade un canal alfa (funcionalidad futura).\n\n"
-                                "Para opciones comunes (out, clip, gamma, histo, scale, etc.), use 'hpsatviews --help'.");
+                                "  -p, --cpt <archivo>     Aplica una paleta de colores (archivo .cpt). Requerido.\n\n"
+                                "Para opciones comunes (out, clip, gamma, histo, scale, alpha, etc.), use 'hpsatviews --help'.");
         add_common_opts(pc_cmd);
         ap_add_str_opt(pc_cmd, "cpt p", NULL);
-        ap_add_flag(pc_cmd, "alpha a");
         ap_set_cmd_callback(pc_cmd, cmd_pseudocolor);
     }
 
@@ -135,12 +127,10 @@ int main(int argc, char *argv[]) {
         ap_set_helptext(sg_cmd, "Usanza: hpsatviews singlegray [opciones] <Archivo NetCDF>\n\n"
                                 "Genera una imagen en escala de grises a partir de una variable NetCDF.\n\n"
                                 "Opciones específicas del comando singlegray:\n"
-                                "  -i, --invert            Invierte los valores (blanco y negro).\n"
-                                "  -a, --alpha             Añade un canal alfa.\n\n"
-                                "Para opciones comunes (out, clip, gamma, histo, scale, etc.), use 'hpsatviews --help'.");
+                                "  -i, --invert            Invierte los valores (blanco y negro).\n\n"
+                                "Para opciones comunes (out, clip, gamma, histo, scale, alpha, etc.), use 'hpsatviews --help'.");
         add_common_opts(sg_cmd);
         ap_add_flag(sg_cmd, "invert i");
-        ap_add_flag(sg_cmd, "alpha a");
         ap_set_cmd_callback(sg_cmd, cmd_singlegray);
     }
 

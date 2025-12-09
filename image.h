@@ -70,4 +70,11 @@ ImageData image_upsample_bilinear(const ImageData* src, int factor);
 // Resample image using box filter for downsampling (factor > 1, reduces size by 1/factor)
 ImageData image_downsample_boxfilter(const ImageData* src, int factor);
 
+// Create alpha mask from DataF (1 = valid data, 0 = NonData)
+// Note: Requires datanc.h to be included before calling
+ImageData image_create_alpha_mask_from_dataf(const void* data);
+
+// Add alpha channel to image using a mask (converts bpp 1->2 or 3->4)
+ImageData image_add_alpha_channel(const ImageData* src, const ImageData* alpha_mask);
+
 #endif /* HPSATVIEWS_IMAGE_H_ */
