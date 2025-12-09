@@ -384,3 +384,54 @@ ImageData image_add_alpha_channel(const ImageData* src, const ImageData* alpha_m
     LOG_INFO("Canal alpha agregado: %ux%u, bpp %u->%u", result.width, result.height, src->bpp, new_bpp);
     return result;
 }
+
+ImageData image_expand_palette(const ImageData* src, const ColorArray* palette) {
+    if (!src || !palette) {
+        LOG_ERROR("Parámetros inválidos para image_expand_palette.");
+        return image_create(0, 0, 0);
+    }
+    
+    // Solo soportamos bpp=1 (indexed) o bpp=2 (indexed+alpha)
+    if (src->bpp != 1 && src->bpp != 2) {
+        LOG_ERROR("image_expand_palette solo acepta bpp=1 o bpp=2 (recibido: %u)", src->bpp);
+        return image_create(0, 0, 0);
+    }
+    
+    // Si tiene alpha (bpp=2), salida será RGBA (bpp=4); sino RGB (bpp=3)
+    unsigned int out_bpp = (src->bpp == 2) ? 4 : 3;
+    ImageData result = image_create(src->width, src->height, out_bpp);
+    if (result.data == NULL) {
+        LOG_ERROR("No se pudo crear imagen expandida.");
+        return result;
+    }
+    
+    size_t num_pixels = src->width * src->height;
+    
+    #pragma omp parallel for
+    for (size_t i = 0; i < num_pixels; i++) {
+        size_t src_idx = i * src->bpp;
+        size_t dst_idx = i * out_bpp;
+        
+        uint8_t index = src->data[src_idx];
+        
+        // Expandir índice a RGB usando la paleta
+        if (index < palette->length) {
+            result.data[dst_idx + 0] = palette->colors[index].r;
+            result.data[dst_idx + 1] = palette->colors[index].g;
+            result.data[dst_idx + 2] = palette->colors[index].b;
+        } else {
+            // Índice fuera de rango -> negro
+            result.data[dst_idx + 0] = 0;
+            result.data[dst_idx + 1] = 0;
+            result.data[dst_idx + 2] = 0;
+        }
+        
+        // Si la fuente tiene alpha, copiarlo
+        if (src->bpp == 2) {
+            result.data[dst_idx + 3] = src->data[src_idx + 1];
+        }
+    }
+    
+    LOG_INFO("Imagen expandida de paleta: %ux%u, bpp %u->%u", result.width, result.height, src->bpp, out_bpp);
+    return result;
+}

@@ -77,4 +77,8 @@ ImageData image_create_alpha_mask_from_dataf(const void* data);
 // Add alpha channel to image using a mask (converts bpp 1->2 or 3->4)
 ImageData image_add_alpha_channel(const ImageData* src, const ImageData* alpha_mask);
 
+// Expand indexed image (bpp=1 or bpp=2) to RGB (bpp=3) or RGBA (bpp=4) using palette
+// If src has bpp=2 (indexed+alpha), output will be RGBA; otherwise RGB
+ImageData image_expand_palette(const ImageData* src, const ColorArray* palette);
+
 #endif /* HPSATVIEWS_IMAGE_H_ */

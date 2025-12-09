@@ -126,23 +126,30 @@ static GDALDatasetH create_geotiff_dataset(const char* filename,
 
 int write_geotiff_rgb(const char* filename, const ImageData* img, const DataNC* meta,
                       int offset_x, int offset_y) {
-    if (!img || img->bpp != 3) {
-        LOG_ERROR("Imagen inválida para write_geotiff_rgb (se requiere bpp=3)");
+    if (!img || (img->bpp != 3 && img->bpp != 4)) {
+        LOG_ERROR("Imagen inválida para write_geotiff_rgb (se requiere bpp=3 o bpp=4)");
         return -1;
     }
 
-    GDALDatasetH ds = create_geotiff_dataset(filename, img->width, img->height, 3, GDT_Byte, meta, offset_x, offset_y);
+    // Crear dataset con 3 o 4 bandas según si hay alpha
+    int num_bands = img->bpp;
+    GDALDatasetH ds = create_geotiff_dataset(filename, img->width, img->height, num_bands, GDT_Byte, meta, offset_x, offset_y);
     if (!ds) return -1;
 
-    // Escribir canales RGB
+    // Escribir canales RGB (y alpha si existe)
     CPLErr err = CE_None;
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < num_bands; i++) {
         GDALRasterBandH band = GDALGetRasterBand(ds, i + 1);
         err = GDALRasterIO(band, GF_Write, 0, 0, img->width, img->height, 
                            (void*)(img->data + i), 
                            img->width, img->height, GDT_Byte, 
-                           3, 3 * img->width); // Interleaved reading
+                           num_bands, num_bands * img->width); // Interleaved
         if (err != CE_None) break;
+        
+        // Marcar el canal alpha si es el último y hay 4 bandas
+        if (i == 3 && num_bands == 4) {
+            GDALSetRasterColorInterpretation(band, GCI_AlphaBand);
+        }
     }
     
     GDALClose(ds);
@@ -151,19 +158,47 @@ int write_geotiff_rgb(const char* filename, const ImageData* img, const DataNC* 
 
 int write_geotiff_gray(const char* filename, const ImageData* img, const DataNC* meta,
                        int offset_x, int offset_y) {
-    if (!img || img->bpp != 1) {
-        LOG_ERROR("Imagen inválida para write_geotiff_gray (se requiere bpp=1)");
+    if (!img || (img->bpp != 1 && img->bpp != 2)) {
+        LOG_ERROR("Imagen inválida para write_geotiff_gray (se requiere bpp=1 o bpp=2)");
         return -1;
     }
 
-    GDALDatasetH ds = create_geotiff_dataset(filename, img->width, img->height, 1, GDT_Byte, meta, offset_x, offset_y);
+    // Crear dataset con 1 o 2 bandas según si hay alpha
+    int num_bands = img->bpp;
+    GDALDatasetH ds = create_geotiff_dataset(filename, img->width, img->height, num_bands, GDT_Byte, meta, offset_x, offset_y);
     if (!ds) return -1;
 
-    GDALRasterBandH band = GDALGetRasterBand(ds, 1);
-    CPLErr err = GDALRasterIO(band, GF_Write, 0, 0, img->width, img->height, 
-                              (void*)img->data, 
+    CPLErr err = CE_None;
+    
+    if (img->bpp == 1) {
+        // Caso simple: solo escala de grises
+        GDALRasterBandH band = GDALGetRasterBand(ds, 1);
+        err = GDALRasterIO(band, GF_Write, 0, 0, img->width, img->height, 
+                          (void*)img->data, 
+                          img->width, img->height, GDT_Byte, 
+                          0, 0);
+    } else {
+        // Caso con alpha: escribir banda gray y banda alpha
+        GDALRasterBandH gray_band = GDALGetRasterBand(ds, 1);
+        GDALRasterBandH alpha_band = GDALGetRasterBand(ds, 2);
+        
+        // Escribir gray (pixel stride=2, line stride=2*width)
+        err = GDALRasterIO(gray_band, GF_Write, 0, 0, img->width, img->height, 
+                          (void*)img->data, 
+                          img->width, img->height, GDT_Byte, 
+                          2, 2 * img->width);
+        
+        if (err == CE_None) {
+            // Escribir alpha (pixel stride=2, line stride=2*width, offset=1)
+            err = GDALRasterIO(alpha_band, GF_Write, 0, 0, img->width, img->height, 
+                              (void*)(img->data + 1), 
                               img->width, img->height, GDT_Byte, 
-                              0, 0);
+                              2, 2 * img->width);
+            
+            // Marcar la banda como alpha
+            GDALSetRasterColorInterpretation(alpha_band, GCI_AlphaBand);
+        }
+    }
 
     GDALClose(ds);
     return (err == CE_None) ? 0 : -1;

@@ -321,7 +321,14 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
 
             // Pasamos offset 0,0 porque la imagen y el geotransform ya están alineados
             if (is_pseudocolor && color_array) {
-                write_geotiff_indexed(outfn, &imout, color_array, &meta_out, 0, 0);
+                if (use_alpha) {
+                    // Expandir paleta a RGB/RGBA para soportar alpha
+                    ImageData expanded = image_expand_palette(&imout, color_array);
+                    write_geotiff_rgb(outfn, &expanded, &meta_out, 0, 0);
+                    image_destroy(&expanded);
+                } else {
+                    write_geotiff_indexed(outfn, &imout, color_array, &meta_out, 0, 0);
+                }
             } else {
                 write_geotiff_gray(outfn, &imout, &meta_out, 0, 0);
             }
@@ -348,13 +355,21 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
             
             // Pasamos el offset del recorte para que GDAL ajuste el origen
             if (is_pseudocolor && color_array) {
-                write_geotiff_indexed(outfn, &imout, color_array, &meta_out, crop_x_start, crop_y_start);
+                if (use_alpha) {
+                    // Expandir paleta a RGB/RGBA para soportar alpha
+                    ImageData expanded = image_expand_palette(&imout, color_array);
+                    write_geotiff_rgb(outfn, &expanded, &meta_out, crop_x_start, crop_y_start);
+                    image_destroy(&expanded);
+                } else {
+                    write_geotiff_indexed(outfn, &imout, color_array, &meta_out, crop_x_start, crop_y_start);
+                }
             } else {
                 write_geotiff_gray(outfn, &imout, &meta_out, crop_x_start, crop_y_start);
             }
         }
     } else {
         if (is_pseudocolor && color_array) {
+            LOG_DEBUG("Escribiendo PNG con paleta: %ux%u bpp=%u", imout.width, imout.height, imout.bpp);
             write_image_png_palette(outfn, &imout, color_array);
         } else {
             write_image_png(outfn, &imout);

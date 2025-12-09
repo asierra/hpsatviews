@@ -14,7 +14,7 @@
 
 
 ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha, const CPTData* cpt) {
-  unsigned int bpp = (use_alpha && cpt==NULL) ? 2 : 1;
+  unsigned int bpp = use_alpha ? 2 : 1;
 
   ImageData imout = image_create(c01.width, c01.height, bpp);
   if (imout.data == NULL) {
@@ -43,9 +43,21 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha, const
           normalized_val = (c01.data_in[i] - c01.fmin) / range;
         r = (unsigned char)(last_color * normalized_val);
         a = 255;
-      } else if (cpt && cpt->has_nan_color)  {
-        // The last color in the palette is for NaN values.
-        r = last_color;
+      } else {
+        // NonData pixel
+        if (use_alpha) {
+          // Con -a, NonData es transparente
+          r = 0;
+          a = 0;
+        } else if (cpt && cpt->has_nan_color) {
+          // Sin -a pero con nan_color, mostrar color NaN
+          r = last_color;
+          a = 255;
+        } else {
+          // Sin -a y sin nan_color
+          r = 0;
+          a = 0;
+        }
       }
 
       // This block was unused and caused a warning. It is now removed.
@@ -56,7 +68,6 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha, const
 
       imout.data[po] = r;
       if (imout.bpp == 2) {
-        a = 255;
         imout.data[po + 1] = a;
       }
     }
@@ -67,7 +78,7 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha, const
 }
 
 ImageData create_single_grayb(DataB c01, bool invert_value, bool use_alpha, const CPTData* cpt) {
-  unsigned int bpp = (use_alpha && cpt==NULL) ? 2 : 1;
+  unsigned int bpp = use_alpha ? 2 : 1;
 
   ImageData imout = image_create(c01.width, c01.height, bpp);
   if (imout.data == NULL) {
@@ -95,8 +106,21 @@ ImageData create_single_grayb(DataB c01, bool invert_value, bool use_alpha, cons
             r = val;
         }
         a = 255;
-      } else if (cpt && cpt->has_nan_color)  {
-        r = last_color;
+      } else {
+        // NonData pixel
+        if (use_alpha) {
+          // Con -a, NonData es transparente
+          r = 0;
+          a = 0;
+        } else if (cpt && cpt->has_nan_color) {
+          // Sin -a pero con nan_color, mostrar color NaN
+          r = last_color;
+          a = 255;
+        } else {
+          // Sin -a y sin nan_color
+          r = 0;
+          a = 0;
+        }
       }
 
       imout.data[po] = r;

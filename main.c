@@ -114,10 +114,12 @@ int main(int argc, char *argv[]) {
         ap_set_helptext(pc_cmd, "Usanza: hpsatviews pseudocolor -p <paleta.cpt> [opciones] <Archivo NetCDF>\n\n"
                                 "Genera una imagen con paleta de colores a partir de un canal NetCDF.\n\n"
                                 "Opciones específicas del comando pseudocolor:\n"
-                                "  -p, --cpt <archivo>     Aplica una paleta de colores (archivo .cpt). Requerido.\n\n"
+                                "  -p, --cpt <archivo>     Aplica una paleta de colores (archivo .cpt). Requerido.\n"
+                                "  -i, --invert            Invierte los valores (blanco y negro).\n\n"
                                 "Para opciones comunes (out, clip, gamma, histo, scale, alpha, etc.), use 'hpsatviews --help'.");
         add_common_opts(pc_cmd);
         ap_add_str_opt(pc_cmd, "cpt p", NULL);
+        ap_add_flag(pc_cmd, "invert i");
         ap_set_cmd_callback(pc_cmd, cmd_pseudocolor);
     }
 
