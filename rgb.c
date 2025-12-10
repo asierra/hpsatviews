@@ -264,15 +264,19 @@ int run_rgb(ArgParser *parser) {
   const float gamma = ap_get_dbl_value(parser, "gamma");
   const char *mode = ap_get_str_value(parser, "mode");
   const bool apply_histogram = ap_found(parser, "histo");
-  const char* clahe_params = ap_get_str_value(parser, "clahe");
+  const bool clahe_flag = ap_found(parser, "clahe");
+  const char* clahe_params = ap_get_str_value(parser, "clahe-params");
   const bool force_geotiff = ap_found(parser, "geotiff");
   const bool apply_rayleigh = ap_found(parser, "rayleigh");
   const bool use_alpha = ap_found(parser, "alpha");
   
+  // CLAHE se activa si se da --clahe o --clahe-params
+  const bool apply_clahe = clahe_flag || (clahe_params != NULL);
+  
   // Parsear parámetros de CLAHE
   int clahe_tiles_x = 8, clahe_tiles_y = 8;
   float clahe_clip_limit = 4.0f;
-  if (clahe_params) {
+  if (apply_clahe && clahe_params) {
       int parsed = sscanf(clahe_params, "%d,%d,%f", &clahe_tiles_x, &clahe_tiles_y, &clahe_clip_limit);
       if (parsed < 3) {
           if (parsed < 1) clahe_tiles_x = 8;
@@ -655,7 +659,7 @@ int run_rgb(ArgParser *parser) {
             : create_truecolor_rgb(c[1].fdata, c[2].fdata, c[3].fdata);
     if (apply_histogram)
       image_apply_histogram(diurna);
-    if (clahe_params)
+    if (apply_clahe)
       image_apply_clahe(diurna, clahe_tiles_x, clahe_tiles_y, clahe_clip_limit);
     ImageData nocturna = create_nocturnal_pseudocolor(c[13]);
     float dnratio;
@@ -676,7 +680,7 @@ int run_rgb(ArgParser *parser) {
   if (strcmp(mode, "composite") != 0) {
     if (apply_histogram)
       image_apply_histogram(final_image);
-    if (clahe_params)
+    if (apply_clahe)
       image_apply_clahe(final_image, clahe_tiles_x, clahe_tiles_y, clahe_clip_limit);
   }
 

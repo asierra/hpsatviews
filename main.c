@@ -39,7 +39,8 @@ static void add_common_opts(ArgParser* cmd_parser) {
     ap_add_str_opt(cmd_parser, "clip c", NULL);
     ap_add_dbl_opt(cmd_parser, "gamma g", 1.0);
     ap_add_flag(cmd_parser, "histo h");
-    ap_add_str_opt(cmd_parser, "clahe", NULL);
+    ap_add_flag(cmd_parser, "clahe");
+    ap_add_str_opt(cmd_parser, "clahe-params", "8,8,4.0");
     ap_add_int_opt(cmd_parser, "scale s", 1);
     ap_add_flag(cmd_parser, "alpha a");
     ap_add_flag(cmd_parser, "geographics r");
@@ -75,9 +76,9 @@ int main(int argc, char *argv[]) {
                             "                          coordenadas entre comillas: \"lon_min lat_max lon_max lat_min\".\n"
                             "  -g, --gamma <valor>     Corrección gamma (defecto: 1.0).\n"
                             "  -h, --histo             Aplica ecualización de histograma global.\n"
-                            "  --clahe [params]        Aplica CLAHE (ecualización adaptativa). Parámetros opcionales:\n"
-                            "                          \"tiles_x,tiles_y,clip_limit\" (defecto: \"8,8,4.0\").\n"
-                            "                          Ejemplo: --clahe \"16,16,4.0\" para más detalle.\n"
+                            "  --clahe                 Aplica CLAHE (ecualización adaptativa) con parámetros por defecto.\n"
+                            "  --clahe-params <params> Parámetros CLAHE: \"tiles_x,tiles_y,clip_limit\" (defecto: \"8,8,4.0\").\n"
+                            "                          Ejemplo: --clahe --clahe-params \"16,16,5.0\" para más detalle.\n"
                             "  -s, --scale <factor>    Factor de escala. >1 para ampliar, <0 para reducir (defecto: 1).\n"
                             "  -a, --alpha             Añade canal alfa (transparencia en zonas NonData).\n"
                             "  -r, --geographics       Reproyecta la salida a coordenadas geográficas.\n"

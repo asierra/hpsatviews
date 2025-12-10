@@ -188,11 +188,11 @@ Genera compuestos RGB a partir de múltiples canales. El archivo de entrada pued
 # True color con corrección atmosférica de Rayleigh (recomendado)
 ./hpsatviews rgb -m truecolor --rayleigh -g 2 -o salida.png archivo.nc
 
-# True color con CLAHE para mejorar contraste local
+# True color con CLAHE para mejorar contraste local (usa defaults: 8,8,4.0)
 ./hpsatviews rgb -m truecolor --rayleigh -g 2 --clahe -o salida.png archivo.nc
 
-# True color con CLAHE personalizado (más tiles = más detalle local)
-./hpsatviews rgb -m truecolor --rayleigh -g 2 --clahe "16,16,5.0" -o salida.png archivo.nc
+# True color con CLAHE personalizado (--clahe-params activa CLAHE automáticamente)
+./hpsatviews rgb -m truecolor --rayleigh -g 2 --clahe-params "16,16,5.0" -o salida.png archivo.nc
 
 # Detección de ceniza volcánica
 ./hpsatviews rgb -m ash -o ceniza.png archivo.nc
@@ -333,7 +333,8 @@ Los tres comandos (`rgb`, `pseudocolor`, `singlegray`) comparten ahora un conjun
 - `-c, --clip` - Recorte geográfico (clave predefinida o coordenadas numéricas)
 - `-g, --gamma` - Corrección gamma
 - `-h, --histo` - Ecualización de histograma global
-- `--clahe` - CLAHE (ecualización adaptativa local). Parámetros: "tiles_x,tiles_y,clip_limit" (defecto: "8,8,4.0")
+- `--clahe` - CLAHE (ecualización adaptativa) con parámetros por defecto (8,8,4.0)
+- `--clahe-params <params>` - Parámetros CLAHE personalizados: "tiles_x,tiles_y,clip_limit" (activa --clahe automáticamente)
 - `-s, --scale` - Factor de escalado
 - `-a, --alpha` - Canal alfa
 - `-r, --geographics` - Reproyección geográfica
