@@ -10,6 +10,8 @@
 
 HPSATVIEWS is a high-performance, command-line driven application for processing GOES satellite data (L1b and L2). It provides a suite of tools to generate various imaging products, including true-color RGB composites, standard scientific products (`ash`, `airmass`, `so2`), single-channel grayscale images, and pseudocolor visualizations. Built in modern C11 with OpenMP support, it offers ultra-fast, modular, and scalable processing, making it ideal for operational meteorology and research.
 
+**Supported satellites:** GOES-16, GOES-18, GOES-19 (operational), and GOES-17 (historical data).
+
 ## Resumen
 
 HPSATVIEWS es una aplicación de alto rendimiento controlada por línea de comandos para el procesamiento de datos del satélite GOES (L1b y L2). Proporciona un conjunto de herramientas para generar diversos productos, incluyendo compuestos RGB de color verdadero, productos científicos estándar (`ash`, `airmass`, `so2`), imágenes de un solo canal en escala de grises y visualizaciones en pseudocolor. Desarrollado en C11 moderno con soporte para OpenMP, ofrece un procesamiento ultra-rápido, modular y escalable, ideal para la meteorología operacional y la investigación.
@@ -265,21 +267,11 @@ El recorte geográfico soporta dos formatos:
 ./hpsatviews rgb -m truecolor -o salida.tif archivo.nc  # Detecta automáticamente
 ```
 
-**Opciones del comando rgb:**
-- `-m, --mode <modo>` - Modo de operación (composite, truecolor, night, ash, airmass, so2)
-- `-o, --out <archivo>` - Nombre del archivo de salida (defecto: rgb_composite.png)
-- `-t, --tif` - Generar GeoTIFF georreferenciado (también automático con extensión .tif)
-- `-c, --clip <valor>` - Recortar región geográfica. Puede ser:
-  - Una clave predefinida (ej: `mexico`, `caribe`, `a1`) - usar `--list-clips` para ver disponibles
-  - Coordenadas con comas: `lon_min,lat_max,lon_max,lat_min`
-  - Coordenadas con espacios: `"lon_min lat_max lon_max lat_min"` (con comillas)
-- `-g, --gamma <valor>` - Corrección gamma (defecto: 1.0, recomendado con Rayleigh: 2.0)
-- `-h, --histo` - Aplicar ecualización de histograma (opcional, antes hardcodeado)
-- `-s, --scale <factor>` - Factor de escalado (>1 ampliar, <0 reducir) - **Pendiente implementación**
-- `-a, --alpha` - Añadir canal alfa para transparencia - **Pendiente implementación**
-- `-r, --geographics` - Reproyectar a coordenadas geográficas lat/lon
+**Opciones específicas del comando rgb:**
+- `-m, --mode <modo>` - Modo de operación: `composite` (defecto), `truecolor`, `night`, `ash`, `airmass`, `so2`
 - `--rayleigh` - Aplicar corrección atmosférica de Rayleigh (solo truecolor/composite)
-- `-v, --verbose` - Modo verboso con logging detallado
+
+**Opciones comunes:** Ver sección "Estandarización de Opciones" más abajo.
 
 ### Comando `pseudocolor`
 
@@ -289,17 +281,10 @@ Genera imágenes con paleta de colores a partir de un solo canal.
 ./hpsatviews pseudocolor -p paleta.cpt archivo_GOES.nc -o salida.png
 ```
 
-**Opciones del comando pseudocolor:**
+**Opciones específicas del comando pseudocolor:**
 - `-p, --cpt <archivo>` - Archivo de paleta de colores (.cpt) - **Requerido**
-- `-o, --out <archivo>` - Archivo de salida (defecto: output.png; .tif para GeoTIFF)
-- `-t, --tif` - Generar GeoTIFF georreferenciado (también automático con extensión .tif)
-- `-c, --clip <valor>` - Recortar región geográfica (clave predefinida o coordenadas)
-- `-g, --gamma <valor>` - Corrección gamma (defecto: 1.0)
-- `-h, --histo` - Aplicar ecualización de histograma
-- `-s, --scale <factor>` - Factor de escalado (>1 ampliar, <0 reducir)
-- `-a, --alpha` - Añadir canal alfa (funcionalidad futura)
-- `-r, --geographics` - Reproyectar a coordenadas geográficas
-- `-v, --verbose` - Modo verboso
+
+**Opciones comunes:** Ver sección "Estandarización de Opciones" más abajo.
 
 **Nota:** La opción `--invert` fue eliminada de pseudocolor (no tiene sentido con paletas de colores).
 
@@ -311,17 +296,10 @@ Genera imágenes en escala de grises a partir de un solo canal.
 ./hpsatviews singlegray archivo_GOES_L1b.nc -o salida.png
 ```
 
-**Opciones del comando singlegray:**
-- `-o, --out <archivo>` - Archivo de salida (defecto: output.png; .tif para GeoTIFF)
-- `-t, --tif` - Generar GeoTIFF georreferenciado (también automático con extensión .tif)
-- `-c, --clip <valor>` - Recortar región geográfica (clave predefinida o coordenadas)
-- `-g, --gamma <valor>` - Corrección gamma (defecto: 1.0)
-- `-h, --histo` - Aplicar ecualización de histograma
+**Opciones específicas del comando singlegray:**
 - `-i, --invert` - Invertir valores (blanco ↔ negro)
-- `-s, --scale <factor>` - Factor de escalado (>1 ampliar, <0 reducir)
-- `-a, --alpha` - Añadir canal alfa para transparencia
-- `-r, --geographics` - Reproyectar a coordenadas geográficas
-- `-v, --verbose` - Modo verboso
+
+**Opciones comunes:** Ver sección "Estandarización de Opciones" más abajo.
 
 ### Estandarización de Opciones (Diciembre 2025)
 
@@ -482,7 +460,7 @@ HPSATVIEWS ofrece ventajas significativas para procesamiento operacional y cient
 **Trazabilidad:**
 - Código abierto (GPL v3) con algoritmos documentados
 - Logging estructurado para debugging y validación
-- Sin dependencias opacas (solo librerías estándar: NetCDF, PNG, GDAL)
+- Sin dependencias opacas (solo bibliotecas estándar: NetCDF, PNG, GDAL)
 
 #### 5. **Eficiencia de Recursos**
 
@@ -530,8 +508,9 @@ HPSATVIEWS ofrece ventajas significativas para procesamiento operacional y cient
 ## 🔍 Datos de Entrada
 
 ### Formato Soportado
-- **GOES-16/17/18 Level 1b NetCDF** (Radiance data)
-- **GOES-16/17/18 Level 2 NetCDF** (CMI - Cloud and Moisture Imagery)
+- **GOES-16/18/19 Level 1b NetCDF** (Radiance data) - Operacionales
+- **GOES-17 Level 1b NetCDF** - Datos históricos (satélite retirado)
+- **GOES-16/18/19 Level 2 NetCDF** (CMI - Cloud and Moisture Imagery)
 - Canales principales: C01 (0.47μm), C02 (0.64μm), C03 (0.86μm), C11-C16 (IR)
 - Proyecciones: Geoestacionaria GOES (nativa) y Geográfica lat/lon (reproyectada)
 
@@ -554,7 +533,7 @@ OR_ABI-L2-CMIPF-M6C02_G16_s20243102000217_e20243102009525_c20243102010008.nc
 ```bash
 make                    # Construir todo
 make clean             # Limpiar archivos objeto
-make libhpsatviews.a   # Solo la biblioteca
+make libhpsatviews.a   # Solo la biblioteca estática
 ```
 
 ### Configuración de Logging
@@ -854,9 +833,10 @@ Consulta el archivo [LICENSE](LICENSE) para más detalles.
 
 ## 🙏 Agradecimientos
 
-- NOAA por los datos GOES-16/17
+- NOAA por los datos GOES-16/18/19 y datos históricos de GOES-17
 - Comunidad NetCDF por las bibliotecas de acceso a datos
 - Desarrolladores de libpng por el procesamiento de imágenes
+- Proyecto GDAL por las bibliotecas de georreferenciación
 
 ---
 
