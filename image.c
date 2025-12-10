@@ -149,6 +149,64 @@ ImageData blend_images(ImageData bg, ImageData fg, ImageData mask) {
 }
 
 
+// ============================================================================
+// CLAHE (Contrast Limited Adaptive Histogram Equalization) Implementation
+// ============================================================================
+
+#define CLAHE_NUM_BINS 256
+
+/**
+ * @brief Recorta el histograma y redistribuye el exceso uniformemente.
+ * @param hist Puntero al histograma (array de 256 enteros).
+ * @param limit Límite máximo de píxeles permitidos por bin.
+ */
+static void clip_histogram(unsigned int* hist, unsigned int limit) {
+    unsigned int excess = 0;
+    
+    // Paso 1: Calcular exceso y recortar
+    for (int i = 0; i < CLAHE_NUM_BINS; i++) {
+        if (hist[i] > limit) {
+            excess += (hist[i] - limit);
+            hist[i] = limit;
+        }
+    }
+    
+    // Paso 2: Redistribución uniforme
+    unsigned int avg_inc = excess / CLAHE_NUM_BINS;
+    unsigned int remainder = excess % CLAHE_NUM_BINS;
+
+    if (avg_inc > 0) {
+        for (int i = 0; i < CLAHE_NUM_BINS; i++) {
+            hist[i] += avg_inc;
+        }
+    }
+    
+    // Paso 3: Redistribuir el remanente secuencialmente
+    for (unsigned int i = 0; i < remainder; i++) {
+        hist[i]++; 
+    }
+}
+
+/**
+ * @brief Calcula el mapeo CDF (Cumulative Distribution Function) para un tile.
+ * @param hist Histograma del tile.
+ * @param map_lut Array de salida con el mapeo [0-255] -> [0-255].
+ * @param pixels_per_tile Total de píxeles en el tile.
+ */
+static void calculate_cdf_mapping(unsigned int* hist, unsigned char* map_lut, int pixels_per_tile) {
+    unsigned int sum = 0;
+    float scale = 255.0f / pixels_per_tile;
+    
+    for (int i = 0; i < CLAHE_NUM_BINS; i++) {
+        sum += hist[i];
+        map_lut[i] = (unsigned char)(sum * scale + 0.5f);
+    }
+}
+
+// ============================================================================
+// Histogram Equalization (Global)
+// ============================================================================
+
 void image_apply_histogram(ImageData im) {
   size_t size = im.width * im.height;
   unsigned int histogram[255];
@@ -203,6 +261,125 @@ void image_apply_gamma(ImageData im, float gamma) {
         im.data[p + 2] = nvalues[im.data[p + 2]];
       }
   }
+}
+
+/**
+ * @brief Aplica CLAHE (Contrast Limited Adaptive Histogram Equalization).
+ * @param im Imagen a procesar (modificada in-place).
+ * @param tiles_x Número de tiles horizontales (típicamente 8).
+ * @param tiles_y Número de tiles verticales (típicamente 8).
+ * @param clip_limit Factor de recorte (típicamente 2.0-4.0, mayor = más contraste).
+ */
+void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit) {
+    if (im.data == NULL || tiles_x < 1 || tiles_y < 1) {
+        LOG_ERROR("Parámetros inválidos para CLAHE");
+        return;
+    }
+    
+    // Determinar cuántos canales procesar (ignorar alpha)
+    int num_channels = (im.bpp == 2 || im.bpp == 4) ? im.bpp - 1 : im.bpp;
+    if (num_channels < 1) return;
+    
+    int tile_width = im.width / tiles_x;
+    int tile_height = im.height / tiles_y;
+    int pixels_per_tile = tile_width * tile_height;
+    
+    // Calcular límite de recorte en píxeles
+    unsigned int clip_limit_pixels = (unsigned int)((clip_limit * pixels_per_tile) / CLAHE_NUM_BINS);
+    if (clip_limit_pixels < 1) clip_limit_pixels = 1;
+    
+    LOG_DEBUG("CLAHE: tiles=%dx%d, tile_size=%dx%d, clip_limit=%.2f (%u pixels)", 
+              tiles_x, tiles_y, tile_width, tile_height, clip_limit, clip_limit_pixels);
+    
+    // Procesar cada canal por separado
+    for (int channel = 0; channel < num_channels; channel++) {
+        // Asignar memoria para LUTs (Look-Up Tables) de todos los tiles
+        unsigned char (*lut)[tiles_x][CLAHE_NUM_BINS] = 
+            malloc(sizeof(unsigned char[tiles_y][tiles_x][CLAHE_NUM_BINS]));
+        
+        if (lut == NULL) {
+            LOG_ERROR("No se pudo asignar memoria para CLAHE LUTs");
+            return;
+        }
+        
+        // Paso 1: Calcular LUTs para cada tile (paralelizable)
+        #pragma omp parallel for collapse(2)
+        for (int ty = 0; ty < tiles_y; ty++) {
+            for (int tx = 0; tx < tiles_x; tx++) {
+                unsigned int hist[CLAHE_NUM_BINS] = {0};
+                
+                // Definir límites del tile
+                int x_start = tx * tile_width;
+                int y_start = ty * tile_height;
+                int x_end = (tx == tiles_x - 1) ? im.width : x_start + tile_width;
+                int y_end = (ty == tiles_y - 1) ? im.height : y_start + tile_height;
+                
+                // Calcular histograma local
+                for (int y = y_start; y < y_end; y++) {
+                    for (int x = x_start; x < x_end; x++) {
+                        int idx = (y * im.width + x) * im.bpp + channel;
+                        hist[im.data[idx]]++;
+                    }
+                }
+                
+                // Recortar histograma
+                clip_histogram(hist, clip_limit_pixels);
+                
+                // Calcular mapeo CDF y guardar en LUT
+                int actual_pixels = (x_end - x_start) * (y_end - y_start);
+                calculate_cdf_mapping(hist, lut[ty][tx], actual_pixels);
+            }
+        }
+        
+        // Paso 2: Aplicar interpolación bilinear pixel por pixel
+        #pragma omp parallel for
+        for (int y = 0; y < im.height; y++) {
+            for (int x = 0; x < im.width; x++) {
+                int idx = (y * im.width + x) * im.bpp + channel;
+                unsigned char pixel_val = im.data[idx];
+                
+                // Calcular posición en el espacio de tiles (en coordenadas continuas)
+                float fx = ((float)x / tile_width) - 0.5f;
+                float fy = ((float)y / tile_height) - 0.5f;
+                
+                // Encontrar tiles vecinos
+                int tx = (int)fx;
+                int ty = (int)fy;
+                
+                // Clampear a límites válidos
+                if (tx < 0) tx = 0;
+                if (ty < 0) ty = 0;
+                if (tx >= tiles_x - 1) tx = tiles_x - 2;
+                if (ty >= tiles_y - 1) ty = tiles_y - 2;
+                
+                // Calcular coeficientes de interpolación
+                float dx = fx - tx;
+                float dy = fy - ty;
+                
+                if (dx < 0) dx = 0;
+                if (dy < 0) dy = 0;
+                if (dx > 1) dx = 1;
+                if (dy > 1) dy = 1;
+                
+                // Obtener valores mapeados de los 4 tiles vecinos
+                unsigned char val_tl = lut[ty][tx][pixel_val];         // Top-Left
+                unsigned char val_tr = lut[ty][tx + 1][pixel_val];     // Top-Right
+                unsigned char val_bl = lut[ty + 1][tx][pixel_val];     // Bottom-Left
+                unsigned char val_br = lut[ty + 1][tx + 1][pixel_val]; // Bottom-Right
+                
+                // Interpolación bilinear
+                float val_top = val_tl * (1.0f - dx) + val_tr * dx;
+                float val_bot = val_bl * (1.0f - dx) + val_br * dx;
+                float val_final = val_top * (1.0f - dy) + val_bot * dy;
+                
+                im.data[idx] = (unsigned char)(val_final + 0.5f);
+            }
+        }
+        
+        free(lut);
+    }
+    
+    LOG_INFO("CLAHE aplicado: tiles=%dx%d, clip_limit=%.2f", tiles_x, tiles_y, clip_limit);
 }
 
 ImageData image_upsample_bilinear(const ImageData* src, int factor) {

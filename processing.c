@@ -94,11 +94,26 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     // --- Opciones de procesamiento ---
     const bool invert_values = ap_found(parser, "invert");
     const bool apply_histogram = ap_found(parser, "histo");
+    const char* clahe_params = ap_get_str_value(parser, "clahe");
     const bool use_alpha = ap_found(parser, "alpha");
     const float gamma = ap_get_dbl_value(parser, "gamma");
     const int scale = ap_get_int_value(parser, "scale");
     const bool do_reprojection = ap_found(parser, "geographics");
     const bool force_geotiff = ap_found(parser, "geotiff");
+    
+    // Parsear parámetros de CLAHE (defecto: 8x8 tiles, clip_limit=4.0)
+    int clahe_tiles_x = 8, clahe_tiles_y = 8;
+    float clahe_clip_limit = 4.0f;
+    if (clahe_params) {
+        int parsed = sscanf(clahe_params, "%d,%d,%f", &clahe_tiles_x, &clahe_tiles_y, &clahe_clip_limit);
+        if (parsed < 3) {
+            // Si no se especifican todos los parámetros, usar defaults para los faltantes
+            if (parsed < 1) clahe_tiles_x = 8;
+            if (parsed < 2) clahe_tiles_y = 8;
+            if (parsed < 3) clahe_clip_limit = 4.0f;
+        }
+        LOG_DEBUG("CLAHE params: tiles=%dx%d, clip_limit=%.2f", clahe_tiles_x, clahe_tiles_y, clahe_clip_limit);
+    }
 
     // --- Nombre de archivo de salida ---
     char* out_filename_generated = NULL;
@@ -269,6 +284,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
 
     if (gamma != 1.0) image_apply_gamma(imout, gamma);
     if (apply_histogram) image_apply_histogram(imout);
+    if (clahe_params) image_apply_clahe(imout, clahe_tiles_x, clahe_tiles_y, clahe_clip_limit);
     
     // --- REMUESTREO (si se solicitó) ---
     if (scale < 0) {

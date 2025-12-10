@@ -64,6 +64,11 @@ void image_apply_histogram(ImageData im);
 // Apply gamma correction to image
 void image_apply_gamma(ImageData im, float gamma);
 
+// Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
+// tiles_x, tiles_y: number of tiles (typically 8x8)
+// clip_limit: contrast limit factor (typically 2.0-4.0, higher = more contrast)
+void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit);
+
 // Resample image using bilinear interpolation for upsampling (factor > 1)
 ImageData image_upsample_bilinear(const ImageData* src, int factor);
 
