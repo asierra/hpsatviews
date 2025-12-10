@@ -91,3 +91,5 @@ Hechos brillo, alpha y escala. Falta fondo de luces de las ciudades
 para composición nocturna. Eso dará oportunidad para también revisar
 umbrales.
 
+https://earthobservatory.nasa.gov/features/NightLights/page3.php
+
