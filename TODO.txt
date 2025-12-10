@@ -84,3 +84,10 @@ Opción de umbral para transparencia.
 Exportar máscara con base en umbrales y criterios.
 Editar readme.
 
+
+Wed Dec 10 03:51:54 PM CST 2025
+
+Hechos brillo, alpha y escala. Falta fondo de luces de las ciudades
+para composición nocturna. Eso dará oportunidad para también revisar
+umbrales.
+
