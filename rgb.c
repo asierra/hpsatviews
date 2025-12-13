@@ -14,6 +14,7 @@
 #include "reader_nc.h"
 #include "reprojection.h"
 #include "writer_geotiff.h"
+#include "reader_png.h"
 #include "writer_png.h"
 #include <dirent.h>
 #include <libgen.h>
@@ -38,8 +39,8 @@ typedef struct {
 // --- Prototipos de funciones internas ---
 ImageData create_truecolor_rgb(DataF B, DataF R, DataF NiR);
 ImageData create_truecolor_rgb_rayleigh(DataF B, DataF R, DataF NiR,
-                                        const char *filename, bool apply);
-ImageData create_nocturnal_pseudocolor(DataNC datanc);
+                                        const char *filename, bool apply_rayleigh);
+ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* fondo);
 ImageData blend_images(ImageData bottom, ImageData top, ImageData mask);
 
 // NOTA: Eliminamos el prototipo local de image_crop para usar el de image.h
@@ -288,6 +289,7 @@ int run_rgb(ArgParser *parser) {
   const char* clahe_params = ap_get_str_value(parser, "clahe-params");
   const bool force_geotiff = ap_found(parser, "geotiff");
   const bool apply_rayleigh = ap_found(parser, "rayleigh");
+  const bool use_citylights = ap_found(parser, "citylights");
   const bool use_alpha = ap_found(parser, "alpha");
   
   // CLAHE se activa si se da --clahe o --clahe-params
@@ -655,7 +657,35 @@ int run_rgb(ArgParser *parser) {
             : create_truecolor_rgb(c[1].fdata, c[2].fdata, c[3].fdata);
   } else if (strcmp(mode, "night") == 0) {
     LOG_INFO("Generando 'night'...");
-    final_image = create_nocturnal_pseudocolor(c[13]);
+    ImageData citylights_bg = {0};
+    if (use_citylights) {
+        const char* bg_path = (c[ref_ch_idx].fdata.width == 2500)
+            ? "/usr/local/share/lanot/images/land_lights_2012_conus.png"
+            : "/usr/local/share/lanot/images/land_lights_2012_fd.png";
+        
+        LOG_INFO("Cargando fondo de luces de ciudad: %s", bg_path);
+        ImageData raw_bg = reader_load_png(bg_path);
+        if (raw_bg.data) {
+            // Remuestrear el fondo para que coincida con las dimensiones del canal 13
+            if (raw_bg.width != c[13].fdata.width || raw_bg.height != c[13].fdata.height) {
+                LOG_INFO("Remuestreando fondo de %ux%u a %zux%zu", 
+                         raw_bg.width, raw_bg.height, c[13].fdata.width, c[13].fdata.height);
+                int factor = raw_bg.width / c[13].fdata.width;
+                if (factor > 1) {
+                    citylights_bg = image_downsample_boxfilter(&raw_bg, factor);
+                } else {
+                    LOG_WARN("No se pudo determinar factor de remuestreo para el fondo. Ignorando.");
+                }
+                image_destroy(&raw_bg);
+            } else {
+                citylights_bg = raw_bg;
+            }
+        } else {
+            LOG_WARN("No se pudo cargar el archivo de fondo. Se continuará sin él.");
+        }
+    }
+    final_image = create_nocturnal_pseudocolor(&c[13].fdata, citylights_bg.data ? &citylights_bg : NULL);
+    image_destroy(&citylights_bg);
   } else if (strcmp(mode, "ash") == 0) {
     LOG_INFO("Generando 'ash'...");
     r_ch = dataf_op_dataf(&c[15].fdata, &c[13].fdata, OP_SUB);
@@ -686,7 +716,31 @@ int run_rgb(ArgParser *parser) {
       image_apply_histogram(diurna);
     if (apply_clahe)
       image_apply_clahe(diurna, clahe_tiles_x, clahe_tiles_y, clahe_clip_limit);
-    ImageData nocturna = create_nocturnal_pseudocolor(c[13]);
+
+    ImageData citylights_bg = {0};
+    if (use_citylights) {
+        const char* bg_path = (c[ref_ch_idx].fdata.width == 2500)
+            ? "/usr/local/share/lanot/images/land_lights_2012_conus.png"
+            : "/usr/local/share/lanot/images/land_lights_2012_fd.png";
+        
+        LOG_INFO("Cargando fondo de luces de ciudad: %s", bg_path);
+        ImageData raw_bg = reader_load_png(bg_path);
+        if (raw_bg.data) {
+            if (raw_bg.width != c[13].fdata.width || raw_bg.height != c[13].fdata.height) {
+                LOG_INFO("Remuestreando fondo de %ux%u a %zux%zu", 
+                         raw_bg.width, raw_bg.height, c[13].fdata.width, c[13].fdata.height);
+                int factor = raw_bg.width / c[13].fdata.width;
+                citylights_bg = image_downsample_boxfilter(&raw_bg, factor);
+                image_destroy(&raw_bg);
+            } else {
+                citylights_bg = raw_bg;
+            }
+        } else {
+            LOG_WARN("No se pudo cargar el archivo de fondo. Se continuará sin él.");
+        }
+    }
+    ImageData nocturna = create_nocturnal_pseudocolor(&c[13].fdata, citylights_bg.data ? &citylights_bg : NULL);
+    image_destroy(&citylights_bg);
     float dnratio;
     ImageData mask =
         create_daynight_mask(c[13], navla, navlo, &dnratio, 263.15);

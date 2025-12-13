@@ -1,13 +1,11 @@
-/* Night composite image generation
-
-   Esta versión es sencilla, sin fondo de luces de ciudad ni transparencia.
-
+/*
+ * Generación de imagen de pseudocolor nocturno.
+ * 
  * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Labotatorio Nacional de Observación de la Tierra, UNAM
  */
 #include <math.h>
 #include <omp.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -16,46 +14,64 @@
 #include "paleta.h"
 #include "logger.h"
 
-ImageData create_nocturnal_pseudocolor(DataNC datanc) {
-  // Asegurarnos de que estamos trabajando con datos float.
-  if (!datanc.is_float) {
-    LOG_ERROR("create_nocturnal_pseudocolor requiere datos de punto flotante (float).");
-    return image_create(0, 0, 0);
+/**
+ * @brief Genera una imagen de pseudocolor nocturno a partir de datos de temperatura de brillo.
+ *
+ * Esta función toma datos de temperatura de brillo en Kelvin (banda 13 de GOES),
+ * los mapea a una paleta de colores (definida en paleta.h) y opcionalmente los mezcla
+ * con una imagen de fondo (como luces de ciudad) para crear una visualización nocturna.
+ *
+ * @param temp_data Puntero a la estructura DataF con los datos de temperatura.
+ * @param fondo Puntero opcional a una imagen de fondo (ImageData). Si es NULL, no se usa fondo.
+ * @return Una estructura ImageData con la imagen RGB resultante. Si falla, la imagen
+ *         devuelta tendrá ancho y alto cero. El llamador es responsable de liberar
+ *         la memoria de la imagen con image_destroy().
+ */
+ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* fondo) {
+  if (!temp_data || !temp_data->data_in) {
+    LOG_ERROR("Datos de temperatura inválidos para create_nocturnal_pseudocolor.");
+    return image_create(0, 0, 0); // Devuelve imagen vacía
   }
 
-  ImageData imout = image_create(datanc.fdata.width, datanc.fdata.height, 3);
+  ImageData imout = image_create(temp_data->width, temp_data->height, 3);
   
-  // Check if allocation was successful
   if (imout.data == NULL) {
-    return imout; // Return empty image on allocation failure
+    LOG_ERROR("No fue posible apartar memoria para la imagen nocturna.");
+    return imout;
   }
-
-  float tmin = 1e10, tmax = -1e10;
 
   double start = omp_get_wtime();
-  float *temp_data = datanc.fdata.data_in;
+  LOG_INFO("Iniciando generación de pseudocolor nocturno...");
 
-#pragma omp parallel for shared(temp_data, imout) reduction(min:tmin) reduction(max:tmax)
+  const float max_ir_temp = 263.15f; // Límite de temperatura para nubes altas (aprox -10°C)
+
+#pragma omp parallel for
   for (int y = 0; y < imout.height; y++) {
     for (int x = 0; x < imout.width; x++) {
-      int i = y * imout.width + x;
-      int po = i * imout.bpp;
+      size_t i = (size_t)y * imout.width + x;
+      size_t po = i * imout.bpp;
       unsigned char r, g, b;
 
       r = g = b = 0;
-      if (temp_data[i] != NonData) {
-        float f = temp_data[i];
-        if (f < tmin)
-          tmin = f;
-        if (f > tmax)
-          tmax = f;
+      float f = temp_data->data_in[i];
+
+      if (!IS_NONDATA(f)) {
         int t;
         for (t = 0; t < 255; t++)
           if (f >= paleta[t].d && f < paleta[t + 1].d)
             break;
+
         r = (unsigned char)(255 * paleta[t].r);
         g = (unsigned char)(255 * paleta[t].g);
         b = (unsigned char)(255 * paleta[t].b);
+
+        if (fondo && f > max_ir_temp) {
+          float w = 1. - paleta[t].a;
+          size_t pf = i * fondo->bpp;
+          r = (unsigned char)(r * (1 - w) + w * fondo->data[pf]);
+          g = (unsigned char)(g * (1 - w) + w * fondo->data[pf + 1]);
+          b = (unsigned char)(b * (1 - w) + w * fondo->data[pf + 2]);
+        }
 
         imout.data[po] = r;
         imout.data[po + 1] = g;
@@ -63,9 +79,9 @@ ImageData create_nocturnal_pseudocolor(DataNC datanc) {
       }
     }
   }
-  printf("temp min %g K   temp max %g K\n", tmin, tmax);
+
   double end = omp_get_wtime();
-  printf("Tiempo pseudo %lf\n", end - start);
+  LOG_INFO("Pseudocolor nocturno generado en %.3f segundos.", end - start);
 
   return imout;
 }

@@ -96,6 +96,7 @@ int main(int argc, char *argv[]) {
                                  "                          'composite' (defecto), 'truecolor', 'night', 'ash', 'airmass', 'so2'.\n"
                                  "  --rayleigh              Aplica corrección atmosférica de Rayleigh (solo modos truecolor/composite).\n"
                                 "Para opciones comunes (out, clip, gamma, histo, scale, alpha, etc.), use 'hpsatviews --help'.");
+        ap_add_flag(rgb_cmd, "citylights l");
         ap_add_str_opt(rgb_cmd, "mode m", "composite");
         add_common_opts(rgb_cmd);
         ap_add_flag(rgb_cmd, "rayleigh");
@@ -150,4 +151,3 @@ int main(int argc, char *argv[]) {
     ap_free(parser);
     return 0;
 }
-

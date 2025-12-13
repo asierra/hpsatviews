@@ -668,8 +668,8 @@ Esta fase se centra en eliminar "números mágicos" y modernizar módulos depend
     * Si el PNG no se encuentra o falla la carga, registrar `LOG_WARN` y **continuar sin fondo** (no abortar).
     * Devolver `ImageData` vacío (`width=0`) y hacer que el compositor nocturno ignore el blend cuando falte el fondo.
 *   **Interfaz sugerida:**
-    * Nuevo flag `--night-citylights` para habilitar el uso del fondo (por defecto desactivado para no depender de assets externos).
-    * Opcional: `--night-citylights-path <png>` para forzar ruta personalizada.
+    * Nuevo flag `--citylights` para habilitar el uso del fondo (por defecto desactivado para no depender de assets externos).
+    * Opcional: `--citylights-path <png>` para forzar ruta personalizada.
 *   **Integración en compositor nocturno:**
     * Cargar fondo si flag activo; si la carga falla, seguir con la imagen nocturna actual.
     * Para el modo `composite`, la función `compose_composite_day_night` mezcla `diurna` con `nocturna`; el fondo de luces se aplica **antes** de mezclar o como capa adicional detrás de `nocturna` usando `blend_images_rgb_indexed` (si `nocturna` es indexada) o `blend_images` (si es RGB).
