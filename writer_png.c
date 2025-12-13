@@ -5,189 +5,199 @@
  * Modified by Yoshimasa Niwa to make it much simpler
  * and support all defined color_type.
  *
- * Simplified for particular use by Alejandro Aguilar Sierra.
+ * Refactored for hpsatviews by Alejandro Aguilar Sierra.
  *
  * Copyright 2002-2010 Guillaume Cottenceau.
- *
- * This software may be freely redistributed under the terms
- * of the X11 license.
+ * Copyright (c) 2025 Alejandro Aguilar Sierra (asierra@unam.mx)
  *
  */
 #include <png.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "logger.h"
 #include "image.h"
 
-
-typedef struct {
-  int width, height;
-  png_byte color_type;
-  png_byte bit_depth;
-  png_bytep *row_pointers;
-  png_color* palette;
-  unsigned palette_size;
-  png_byte* transp;
-  unsigned transp_size;
-} png_t;
-
-void write_png_file(const char *filename, png_t *pngt);
-
-int write_image_png_palette(const char *filename, ImageData *image, ColorArray *palette) {
-  if (image->bpp != 1 && image->bpp != 2) {
-    LOG_ERROR("write_image_png_palette solo acepta bpp=1 o bpp=2 (recibido: %u)", image->bpp);
-    return 1; 
-  }
-  
-  png_t mipng;
-  mipng.width = image->width;
-  mipng.height = image->height;
-  mipng.color_type = PNG_COLOR_TYPE_PALETTE;
-  mipng.bit_depth = 8;
-  mipng.palette = (struct png_color_struct *)&palette->colors;
-  mipng.palette_size = palette->length;
-  mipng.transp = NULL;
-  mipng.transp_size = 0;
-  
-  if (image->bpp == 2) {
-    // Extraer valores alpha únicos por índice de paleta
-    mipng.transp = (png_byte*)calloc(palette->length, sizeof(png_byte));
-    // Inicializar todos a 255 (opaco)
-    for (unsigned i = 0; i < palette->length; i++) {
-      mipng.transp[i] = 255;
-    }
-    
-    // Recorrer imagen y marcar transparencia por índice
-    for (int y = 0; y < image->height; y++) {
-      for (int x = 0; x < image->width; x++) {
-        int idx = (y * image->width + x) * 2;
-        uint8_t palette_idx = image->data[idx];
-        uint8_t alpha = image->data[idx + 1];
-        
-        if (palette_idx < palette->length) {
-          // Usar el mínimo alpha encontrado para este índice
-          if (alpha < mipng.transp[palette_idx]) {
-            mipng.transp[palette_idx] = alpha;
-          }
-        }
-      }
-    }
-    mipng.transp_size = palette->length;
-    
-    // Debug: contar índices con transparencia
-    int transparent_indices = 0;
-    for (unsigned i = 0; i < palette->length; i++) {
-      if (mipng.transp[i] < 255) transparent_indices++;
-    }
-    LOG_DEBUG("PNG palette: %u colors, %d with transparency", palette->length, transparent_indices);
-    
-    // Crear row_pointers solo con índices (sin alpha)
-    mipng.row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * mipng.height);
-    for (int y = 0; y < mipng.height; y++) {
-      mipng.row_pointers[y] = (png_byte*)malloc(mipng.width);
-      for (int x = 0; x < mipng.width; x++) {
-        int src_idx = (y * mipng.width + x) * 2;
-        mipng.row_pointers[y][x] = image->data[src_idx]; // Solo el índice
-      }
-    }
-  } else {
-    // bpp=1: sin alpha, usar datos directamente
-    mipng.row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * mipng.height);
-    for (int y = 0; y < mipng.height; y++) {
-      int p = y * mipng.width;
-      mipng.row_pointers[y] = &(image->data[p]);
-    }
-  }
-  
-  write_png_file(filename, &mipng);
-  
-  // Limpiar memoria temporal
-  if (image->bpp == 2) {
-    for (int y = 0; y < mipng.height; y++) {
-      free(mipng.row_pointers[y]);
-    }
-    free(mipng.transp);
-  }
-  free(mipng.row_pointers);
-
-  return 0;
-}
-
-
-int write_image_png(const char *filename, ImageData *image) {
-  int bpp = image->bpp;
-  png_t mipng;
-
-  mipng.width = image->width;
-  mipng.height = image->height;
-  if (bpp == 1)
-    mipng.color_type = PNG_COLOR_TYPE_GRAY;
-  if (bpp == 2)
-    mipng.color_type = PNG_COLOR_TYPE_GRAY_ALPHA;
-  else if (bpp == 3)
-    mipng.color_type = PNG_COLOR_TYPE_RGB;
-  else if (bpp == 4)
-    mipng.color_type = PNG_COLOR_TYPE_RGB_ALPHA;
-
-  mipng.bit_depth = 8;
-  mipng.row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * mipng.height);
-  for (int y = 0; y < mipng.height; y++) {
-    int p = y * mipng.width * bpp;
-    mipng.row_pointers[y] = &(image->data[p]);
-  }
-  write_png_file(filename, &mipng);
-
-  return 0;
-}
-
-void write_png_file(const char *filename, png_t *pngt) {
+/**
+ * @brief Función interna para escribir datos de imagen a un archivo PNG.
+ * 
+ * Esta es la función principal que interactúa con libpng.
+ * 
+ * @param filename Ruta del archivo.
+ * @param image Puntero a la imagen a guardar.
+ * @param color_type Tipo de color de PNG (ej. PNG_COLOR_TYPE_RGB).
+ * @param palette Puntero a la paleta de colores (solo para PNG_COLOR_TYPE_PALETTE).
+ * @param transp Puntero al array de transparencia (solo para PNG_COLOR_TYPE_PALETTE).
+ * @return 0 en éxito, 1 en error.
+ */
+static int write_png_core(const char *filename, const ImageData *image, png_byte color_type,
+                          const ColorArray *palette, const png_byte *transp) {
   FILE *fp = fopen(filename, "wb");
-  if (!fp)
-    abort();
+  if (!fp) {
+    LOG_ERROR("No se pudo abrir el archivo PNG para escritura: %s", filename);
+    return 1;
+  }
 
-  png_structp png =
-      png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-  if (!png)
-    abort();
+  png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+  if (!png) {
+    LOG_ERROR("png_create_write_struct falló.");
+    fclose(fp);
+    return 1;
+  }
 
   png_infop info = png_create_info_struct(png);
-  if (!info)
-    abort();
+  if (!info) {
+    LOG_ERROR("png_create_info_struct falló.");
+    png_destroy_write_struct(&png, NULL);
+    fclose(fp);
+    return 1;
+  }
 
-  if (setjmp(png_jmpbuf(png)))
-    abort();
+  if (setjmp(png_jmpbuf(png))) {
+    LOG_ERROR("Error durante la inicialización de I/O de libpng.");
+    png_destroy_write_struct(&png, &info);
+    fclose(fp);
+    return 1;
+  }
 
   png_init_io(png, fp);
 
-  // Output is always 8bit depth
-  png_set_IHDR(png, info, pngt->width, pngt->height, 8, pngt->color_type,
+  // Escribir el header del PNG. Asumimos siempre 8 bits de profundidad.
+  png_set_IHDR(png, info, image->width, image->height, 8, color_type,
                PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT,
                PNG_FILTER_TYPE_DEFAULT);
 
-  if(pngt->color_type==PNG_COLOR_TYPE_PALETTE) {
-    png_set_PLTE(png, info, pngt->palette, pngt->palette_size);
-    
-    // Agregar transparencia (tRNS) si está presente
-    if (pngt->transp && pngt->transp_size > 0) {
-      png_set_tRNS(png, info, pngt->transp, pngt->transp_size, NULL);
+  // Si es una imagen con paleta, escribir los chunks PLTE y tRNS.
+  if (color_type == PNG_COLOR_TYPE_PALETTE && palette) {
+    png_set_PLTE(png, info, (png_colorp)palette->colors, palette->length);
+    if (transp) {
+      png_set_tRNS(png, info, (png_bytep)transp, palette->length, NULL);
     }
   }
 
   png_write_info(png, info);
 
-  // To remove the alpha channel for PNG_COLOR_TYPE_RGB format,
-  // Use png_set_filler().
-  // png_set_filler(png, 0, PNG_FILLER_AFTER);
+  // Crear un array de punteros a las filas de la imagen.
+  // Esto no copia los datos, solo crea punteros.
+  png_bytep *row_pointers = (png_bytep*)malloc(sizeof(png_bytep) * image->height);
+  if (!row_pointers) {
+    LOG_FATAL("Falla de memoria para los punteros de fila de PNG.");
+    png_destroy_write_struct(&png, &info);
+    fclose(fp);
+    return 1;
+  }
 
-  png_write_image(png, pngt->row_pointers);
+  for (unsigned int y = 0; y < image->height; y++) {
+    row_pointers[y] = image->data + (y * image->width * image->bpp);
+  }
+
+  // Escribir los datos de la imagen.
+  png_write_image(png, row_pointers);
   png_write_end(png, NULL);
 
-  /*
-  for(int y = 0; y < pngt->height; y++) {
-    free(pngt->row_pointers[y]);
-  }
-  free(pngt->row_pointers);
-  */
+  // Limpieza.
+  free(row_pointers);
+  png_destroy_write_struct(&png, &info);
   fclose(fp);
+
+  LOG_INFO("PNG guardado: %s (%ux%u, %u bpp)", filename, image->width, image->height, image->bpp);
+  return 0;
+}
+
+int writer_save_png_palette(const char *filename, const ImageData *image, const ColorArray *palette) {
+  if (image->bpp != 1 && image->bpp != 2) {
+    LOG_ERROR("writer_save_png_palette solo acepta bpp=1 o bpp=2 (recibido: %u)", image->bpp);
+    return 1;
+  }
+  if (!palette || palette->length == 0) {
+    LOG_ERROR("Se requiere una paleta válida para guardar una imagen con paleta.");
+    return 1;
+  }
+
+  png_byte *transp = NULL;
+  ImageData image_to_write = *image; // Por defecto, usar la imagen original.
+  ImageData temp_image = {0}; // Imagen temporal si bpp=2
+
+  // Si bpp=2, la imagen es [índice, alfa]. Necesitamos extraer el canal alfa
+  // al chunk tRNS y crear una imagen temporal de bpp=1 solo con los índices.
+  if (image->bpp == 2) {
+    transp = (png_byte*)calloc(palette->length, sizeof(png_byte));
+    if (!transp) {
+      LOG_FATAL("Falla de memoria al crear buffer de transparencia.");
+      return 1;
+    }
+    // Inicializar todos los valores de transparencia a opaco (255).
+    memset(transp, 255, palette->length * sizeof(png_byte));
+
+    // Crear una imagen temporal de 1 bpp para los índices.
+    temp_image = image_create(image->width, image->height, 1);
+    if (!temp_image.data) {
+      LOG_FATAL("Falla de memoria al crear imagen temporal para índices.");
+      free(transp);
+      return 1;
+    }
+
+    // Recorrer la imagen original para separar índices y alfa.
+    for (size_t i = 0; i < image->width * image->height; ++i) {
+      uint8_t palette_idx = image->data[i * 2];
+      uint8_t alpha = image->data[i * 2 + 1];
+      
+      temp_image.data[i] = palette_idx; // Guardar solo el índice.
+
+      // Guardar el valor de alfa más bajo encontrado para cada índice de la paleta.
+      if (palette_idx < palette->length && alpha < transp[palette_idx]) {
+        transp[palette_idx] = alpha;
+      }
+    }
+    image_to_write = temp_image; // Apuntar a la imagen temporal para la escritura.
+  }
+
+  int result = write_png_core(filename, &image_to_write, PNG_COLOR_TYPE_PALETTE, palette, transp);
+
+  // Limpiar memoria temporal si fue usada.
+  if (transp) {
+    free(transp);
+  }
+  if (temp_image.data) {
+    image_destroy(&temp_image);
+  }
+
+  return result;
+}
+
+int writer_save_png(const char *filename, const ImageData *image) {
+  png_byte color_type;
+
+  switch (image->bpp) {
+    case 1:
+      color_type = PNG_COLOR_TYPE_GRAY;
+      break;
+    case 2:
+      color_type = PNG_COLOR_TYPE_GRAY_ALPHA;
+      break;
+    case 3:
+      color_type = PNG_COLOR_TYPE_RGB;
+      break;
+    case 4:
+      color_type = PNG_COLOR_TYPE_RGB_ALPHA;
+      break;
+    default:
+      LOG_ERROR("BPP no soportado para escritura PNG: %u. Soportados: 1, 2, 3, 4.", image->bpp);
+      return 1;
+  }
+
+  return write_png_core(filename, image, color_type, NULL, NULL);
+}
+
+/* --- Funciones antiguas, mantenidas por compatibilidad pero marcadas como obsoletas --- */
+
+/** @deprecated Usar writer_save_png_palette en su lugar. */
+int write_image_png_palette(const char *filename, ImageData *image, ColorArray *palette) {
+    return writer_save_png_palette(filename, image, palette);
+}
+
+/** @deprecated Usar writer_save_png en su lugar. */
+int write_image_png(const char *filename, ImageData *image) {
+    return writer_save_png(filename, image);
 }

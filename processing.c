@@ -390,9 +390,9 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     } else {
         if (is_pseudocolor && color_array) {
             LOG_DEBUG("Escribiendo PNG con paleta: %ux%u bpp=%u", imout.width, imout.height, imout.bpp);
-            write_image_png_palette(outfn, &imout, color_array);
+            writer_save_png_palette(outfn, &imout, color_array);
         } else {
-            write_image_png(outfn, &imout);
+            writer_save_png(outfn, &imout);
         }
     }
     LOG_INFO("Imagen guardada en: %s", outfn);

@@ -93,11 +93,13 @@ static bool process_clip_coords(ArgParser *parser, const char *clip_csv_path,
 // --- Funciones de normalización y creación de RGB ---
 static unsigned char *normalize_to_u8(const DataF *data, float min_val,
                                       float max_val) {
-  unsigned char *buffer = malloc(data->size * sizeof(unsigned char));
-  if (!buffer) {
-    LOG_FATAL("Falla de memoria al normalizar canal a 8-bit.");
-    return NULL;
-  }
+  size_t buffer_size = data->size * sizeof(unsigned char);
+  unsigned char *buffer = malloc(buffer_size);
+  // Usamos la macro MALLOC_CHECK para estandarizar el manejo de errores de memoria.
+  // Esta macro termina el programa si la memoria no se puede asignar.
+  // Si quisiéramos propagar el error, devolveríamos NULL y lo manejaríamos en la función que llama.
+  // Por ahora, un fallo aquí es suficientemente crítico para terminar.
+  MALLOC_CHECK(buffer, buffer_size);
 
   float range = max_val - min_val;
   if (range < 1e-9)
@@ -134,9 +136,20 @@ ImageData create_multiband_rgb(const DataF *r_ch, const DataF *g_ch,
   if (imout.data == NULL)
     return imout;
 
+  // Verificar la asignación de memoria para cada canal normalizado.
   unsigned char *r_norm = normalize_to_u8(r_ch, r_min, r_max);
+  if (!r_norm) { image_destroy(&imout); return imout; }
+
   unsigned char *g_norm = normalize_to_u8(g_ch, g_min, g_max);
+  if (!g_norm) { free(r_norm); image_destroy(&imout); return imout; }
+
   unsigned char *b_norm = normalize_to_u8(b_ch, b_min, b_max);
+  if (!b_norm) {
+    free(r_norm);
+    free(g_norm);
+    image_destroy(&imout);
+    return imout;
+  }
 
   size_t num_pixels = imout.width * imout.height;
 #pragma omp parallel for
@@ -158,19 +171,26 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo,
 // --- Gestión de ChannelSet ---
 ChannelSet *channelset_create(const char *channel_names[], int count) {
   ChannelSet *set = malloc(sizeof(ChannelSet));
-  if (!set)
+  if (!set) {
+    LOG_FATAL("Falla de memoria al crear ChannelSet.");
     return NULL;
+  }
+
   set->channels = malloc(sizeof(ChannelInfo) * count);
   if (!set->channels) {
+    LOG_FATAL("Falla de memoria para los canales en ChannelSet.");
     free(set);
     return NULL;
   }
+
   set->id_signature = malloc(40);
   if (!set->id_signature) {
+    LOG_FATAL("Falla de memoria para la firma de ID en ChannelSet.");
     free(set->channels);
     free(set);
     return NULL;
   }
+
   set->count = count;
   for (int i = 0; i < count; i++) {
     set->channels[i].name = channel_names[i];
@@ -320,6 +340,11 @@ int run_rgb(ArgParser *parser) {
     return -1;
   }
 
+  if (!channels) {
+    LOG_FATAL("Falla de memoria al crear el conjunto de canales.");
+    free(dirnm_dup);
+    return -1;
+  }
   if (find_id_from_name(basenm, channels->id_signature) != 0) {
     LOG_ERROR("No se pudo extraer el ID del nombre de archivo: %s", basenm);
     channelset_destroy(channels);
@@ -782,7 +807,7 @@ int run_rgb(ArgParser *parser) {
                         crop_y_offset);
     }
   } else {
-    write_image_png(out_filename, &final_image);
+    writer_save_png(out_filename, &final_image);
   }
   LOG_INFO("Imagen guardada en: %s", out_filename);
 
