@@ -156,6 +156,30 @@ char* expand_filename_pattern(const char* pattern, const char* input_filename) {
     if (!pattern) return NULL;
     if (!input_filename) return strdup(pattern);
 
+    // Extract channel number (e.g., "C01", "C02", "C13")
+    char channel[4] = "C00";
+    const char* ch_ptr = strstr(input_filename, "M6C");
+    if (!ch_ptr) ch_ptr = strstr(input_filename, "M3C");
+    if (ch_ptr) {
+        ch_ptr += 3; // Skip "M6C" or "M3C"
+        if (ch_ptr[0] >= '0' && ch_ptr[0] <= '9' && ch_ptr[1] >= '0' && ch_ptr[1] <= '9') {
+            channel[0] = 'C';
+            channel[1] = ch_ptr[0];
+            channel[2] = ch_ptr[1];
+            channel[3] = '\0';
+        }
+    }
+
+    // Extract satellite name (e.g., "G16" -> "goes-16", "G19" -> "goes-19")
+    char satellite[10] = "goes-00";
+    const char* sat_ptr = strstr(input_filename, "_G");
+    if (sat_ptr) {
+        sat_ptr += 2; // Skip "_G"
+        if (sat_ptr[0] >= '0' && sat_ptr[0] <= '9' && sat_ptr[1] >= '0' && sat_ptr[1] <= '9') {
+            sprintf(satellite, "goes-%c%c", sat_ptr[0], sat_ptr[1]);
+        }
+    }
+
     // Extract timestamp: sYYYYJJJHHMMSS
     const char* s_prefix = "_s";
     const char* start_ptr = strstr(input_filename, s_prefix);
@@ -209,6 +233,8 @@ char* expand_filename_pattern(const char* pattern, const char* input_filename) {
         {"{mm}", s_min},
         {"{ss}", s_sec},
         {"{JJJ}", s_jday},
+        {"{CH}", channel},
+        {"{SAT}", satellite},
         {NULL, NULL}
     };
 

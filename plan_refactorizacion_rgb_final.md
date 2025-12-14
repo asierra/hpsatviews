@@ -1,9 +1,29 @@
 # Plan de Refactorización RGB v2: Arquitectura "Context & Strategy"
 
 **Fecha:** Diciembre 2025  
+**Estado:** ✅ **FASE 4.1 COMPLETADA** - Tests de Regresión Exitosos  
 **Objetivo:** Transformar `rgb.c` (884 líneas) en un módulo modular y extensible eliminando `if/else` gigantes y gestión de memoria manual dispersa.
 
-**Contexto Actual:**
+## 📊 Progreso General
+
+| Fase | Descripción | Estado | Progreso |
+|------|-------------|--------|----------|
+| **Fase 1** | Infraestructura de Estado (RgbContext) | ✅ COMPLETADA | 4/4 tareas |
+| **Fase 2** | Patrón Estrategia (Composers) | ✅ COMPLETADA | 4/4 tareas |
+| **Fase 3** | Pipeline Principal (The Runner) | ✅ COMPLETADA | 6/6 tareas |
+| **Fase 4** | Validación y Testing | 🔄 EN PROGRESO | 1/3 tareas |
+| **Fase 5** | Optimizaciones (Opcional) | ⏳ PENDIENTE | 0/5 tareas |
+
+**✅ Últimos Hitos Alcanzados:**
+- Fase 1-3: Refactorización completa implementada
+- Fase 4.1: Tests de regresión implementados en `reproduction/run_demo.sh`
+- Todos los modos funcionando correctamente: truecolor, ash, composite (con todas las opciones avanzadas)
+
+**📋 Siguiente Paso: Fase 4.2** - Test de Memory Leaks con Valgrind
+
+---
+
+**Contexto Inicial:**
 - `run_rgb()` tiene ~615 líneas con lógica inline de parsing, carga, reproyección, composición y escritura
 - 11 comparaciones de `strcmp(mode, ...)` duplicadas (líneas 319-331 y 651-759)
 - Gestión manual de 17 canales `DataNC c[17]` con liberación manual dispersa
@@ -17,11 +37,11 @@
 
 ---
 
-## 🛠 Fase 1: Infraestructura de Estado (The Context)
+## ✅ Fase 1: Infraestructura de Estado (The Context) - COMPLETADA
 
 El objetivo es centralizar todo el estado y opciones en una estructura.
 
-- [ ] **1.1. Definir `RgbOptions`** (NUEVO - actualmente no existe)
+- [x] **1.1. Definir `RgbOptions`** (COMPLETADO)
     Crear estructura en `rgb.h` que contenga todas las opciones parseadas:
     ```c
     typedef struct {
@@ -56,8 +76,8 @@ El objetivo es centralizar todo el estado y opciones en una estructura.
     } RgbOptions;
     ```
 
-- [ ] **1.2. Definir `RgbContext`** 
-    Crear la estructura en `rgb.h` que contendrá todo el estado:
+- [x] **1.2. Definir `RgbContext`** (COMPLETADO)
+    Creada la estructura en `include/rgb.h` que contendrá todo el estado:
     ```c
     typedef struct {
         // Configuración
@@ -94,8 +114,8 @@ El objetivo es centralizar todo el estado y opciones en una estructura.
     } RgbContext;
     ```
 
-- [ ] **1.3. Implementar Ciclo de Vida del Contexto**
-    Crear funciones en `rgb.c`:
+- [x] **1.3. Implementar Ciclo de Vida del Contexto** (COMPLETADO)
+    Funciones implementadas en `src/rgb.c`:
     ```c
     void rgb_context_init(RgbContext *ctx) {
         memset(ctx, 0, sizeof(RgbContext));
@@ -136,8 +156,8 @@ El objetivo es centralizar todo el estado y opciones en una estructura.
     }
     ```
 
-- [ ] **1.4. Crear función de parsing** (NUEVO - actualmente inline en run_rgb)
-    Extraer toda la lógica de parsing a una función dedicada:
+- [x] **1.4. Crear función de parsing** (COMPLETADO)
+    Implementada como `rgb_parse_options()` en `src/rgb.c`:
     ```c
     bool rgb_parse_options(ArgParser *parser, RgbContext *ctx) {
         // Validar archivo de entrada
@@ -186,16 +206,16 @@ El objetivo es centralizar todo el estado y opciones en una estructura.
     ```
 ---
 
-## 🧠 Fase 2: Patrón Estrategia (The Composers)
+## ✅ Fase 2: Patrón Estrategia (The Composers) - COMPLETADA
 
 El objetivo es aislar la lógica de cada producto RGB eliminando los 11 `strcmp(mode, ...)`.
 
-**Estado Actual:**
-- Funciones existentes: `create_truecolor_rgb()`, `create_truecolor_rgb_rayleigh()`, `create_multiband_rgb()`, `create_nocturnal_pseudocolor()`, `create_daynight_mask()`, `blend_images()`
-- Código actual (líneas 651-759) tiene lógica inline compleja para cada modo
-- "composite" es especial: genera 2 imágenes (diurna+nocturna) y las mezcla
+**Estado Final:**
+- ✅ 6 funciones composer implementadas: `compose_truecolor()`, `compose_night()`, `compose_ash()`, `compose_airmass()`, `compose_so2()`, `compose_composite()`
+- ✅ Tabla de estrategias STRATEGIES[] con 6 modos configurados
+- ✅ Eliminados todos los `strcmp(mode, ...)` del código
 
-- [ ] **2.1. Definir Tipos de Estrategia**
+- [x] **2.1. Definir Tipos de Estrategia** (COMPLETADO)
     Agregar en `rgb.h`:
     ```c
     typedef struct RgbContext RgbContext; // Forward declaration
@@ -210,8 +230,8 @@ El objetivo es aislar la lógica de cada producto RGB eliminando los 11 `strcmp(
     } RgbStrategy;
     ```
 
-- [ ] **2.2. Crear Funciones Composer** 
-    Crear funciones estáticas en `rgb.c` extrayendo lógica de líneas 651-759:
+- [x] **2.2. Crear Funciones Composer** (COMPLETADO)
+    Funciones estáticas implementadas en `src/rgb.c`:
     
     **2.2.1. `compose_truecolor`** (líneas 651-657)
     ```c
@@ -257,14 +277,20 @@ El objetivo es aislar la lógica de cada producto RGB eliminando los 11 `strcmp(
     **2.2.3. `compose_ash`** (líneas 689-693)
     ```c
     static ImageData compose_ash(RgbContext *ctx) {
+        // Variables temporales locales, no en el contexto.
+        DataF r_temp = {0}, g_temp = {0};
+
         // Usa canales [11], [13], [14], [15]
-        ctx->r_temp = dataf_op_dataf(&ctx->channels[15].fdata, 
-                                     &ctx->channels[13].fdata, OP_SUB);
-        ctx->g_temp = dataf_op_dataf(&ctx->channels[14].fdata, 
-                                     &ctx->channels[11].fdata, OP_SUB);
-        return create_multiband_rgb(&ctx->r_temp, &ctx->g_temp, 
-                                    &ctx->channels[13].fdata,
-                                    -6.7f, 2.6f, -6.0f, 6.3f, 243.6f, 302.4f);
+        r_temp = dataf_op_dataf(&ctx->channels[15].fdata, 
+                                &ctx->channels[13].fdata, OP_SUB);
+        g_temp = dataf_op_dataf(&ctx->channels[14].fdata, 
+                                &ctx->channels[11].fdata, OP_SUB);
+        ImageData result = create_multiband_rgb(&r_temp, &g_temp, 
+                                                &ctx->channels[13].fdata,
+                                                -6.7f, 2.6f, -6.0f, 6.3f, 243.6f, 302.4f);
+        dataf_destroy(&r_temp);
+        dataf_destroy(&g_temp);
+        return result;
     }
     ```
     
@@ -331,8 +357,8 @@ El objetivo es aislar la lógica de cada producto RGB eliminando los 11 `strcmp(
     }
     ```
 
-- [ ] **2.3. Construir Tabla de Despacho**
-    Crear en `rgb.c` (antes de `run_rgb`):
+- [x] **2.3. Construir Tabla de Despacho** (COMPLETADO)
+    Implementada en `src/rgb.c` como `STRATEGIES[]`:
     ```c
     static const RgbStrategy STRATEGIES[] = {
         { "truecolor", {"C01", "C02", "C03", NULL}, compose_truecolor, 
@@ -357,7 +383,7 @@ El objetivo es aislar la lógica de cada producto RGB eliminando los 11 `strcmp(
     };
     ```
 
-- [ ] **2.4. Implementar Helper de Búsqueda**
+- [x] **2.4. Implementar Helper de Búsqueda** (COMPLETADO)
     ```c
     static const RgbStrategy* get_strategy_for_mode(const char *mode) {
         for (int i = 0; STRATEGIES[i].mode_name != NULL; i++) {
@@ -371,7 +397,7 @@ El objetivo es aislar la lógica de cada producto RGB eliminando los 11 `strcmp(
 
 ---
 
-## ⚙️ Fase 3: Pipeline Principal (The Runner)
+## ✅ Fase 3: Pipeline Principal (The Runner) - COMPLETADA
 
 El objetivo es que `run_rgb` sea una secuencia lineal de pasos sin lógica de negocio mezclada.
 
@@ -394,8 +420,8 @@ El objetivo es que `run_rgb` sea una secuencia lineal de pasos sin lógica de ne
 - Escritura GeoTIFF o PNG (líneas 822-869)
 - Limpieza manual (líneas 871-882)
 
-- [ ] **3.1. Crear `load_channels`** (NUEVO)
-    Extraer lógica de líneas 319-408:
+- [x] **3.1. Crear `load_channels`** (COMPLETADO)
+    Implementada en `src/rgb.c`:
     ```c
     static bool load_channels(RgbContext *ctx, const RgbStrategy *strategy) {
         // 1. Crear ChannelSet
@@ -470,8 +496,8 @@ El objetivo es que `run_rgb` sea una secuencia lineal de pasos sin lógica de ne
     }
     ```
 
-- [ ] **3.2. Crear `process_geospatial`** (NUEVO)
-    Extraer lógica de líneas 411-582 (navegación + reproyección + clip):
+- [x] **3.2. Crear `process_geospatial`** (COMPLETADO)
+    Implementada en `src/rgb.c`:
     ```c
     static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
         // 1. Calcular navegación (siempre, incluso en modo nativo)
@@ -580,8 +606,8 @@ El objetivo es que `run_rgb` sea una secuencia lineal de pasos sin lógica de ne
     }
     ```
 
-- [ ] **3.3. Crear `generate_output_filename`** (NUEVO)
-    Extraer lógica de líneas 585-635:
+- [x] **3.3. Crear `generate_output_filename`** (COMPLETADO)
+    Implementada en `src/rgb.c`:
     ```c
     static bool generate_output_filename(RgbContext *ctx) {
         const char *out = NULL;
@@ -641,8 +667,8 @@ El objetivo es que `run_rgb` sea una secuencia lineal de pasos sin lógica de ne
     }
     ```
 
-- [ ] **3.4. Crear `apply_postprocessing`** (NUEVO)
-    Extraer lógica de líneas 754-819:
+- [x] **3.4. Crear `apply_postprocessing`** (COMPLETADO)
+    Implementada en `src/rgb.c`:
     ```c
     static bool apply_postprocessing(RgbContext *ctx) {
         // 1. Gamma
@@ -709,8 +735,8 @@ El objetivo es que `run_rgb` sea una secuencia lineal de pasos sin lógica de ne
     }
     ```
 
-- [ ] **3.5. Crear `write_output`** (NUEVO)
-    Extraer lógica de líneas 822-869:
+- [x] **3.5. Crear `write_output`** (COMPLETADO)
+    Implementada en `src/rgb.c`:
     ```c
     static bool write_output(RgbContext *ctx) {
         bool is_geotiff = ctx->opts.force_geotiff || 
@@ -765,8 +791,8 @@ El objetivo es que `run_rgb` sea una secuencia lineal de pasos sin lógica de ne
     }
     ```
 
-- [ ] **3.6. Reescribir `run_rgb` (Implementación Final)**
-    Simplificar a ~100 líneas con flujo limpio:
+- [x] **3.6. Reescribir `run_rgb` (Implementación Final)** (COMPLETADO)
+    Simplificado con flujo limpio en `src/rgb.c`:
     ```c
     int run_rgb(ArgParser *parser) {
         // Inicialización
@@ -844,19 +870,15 @@ El objetivo es que `run_rgb` sea una secuencia lineal de pasos sin lógica de ne
 
 Una vez implementada la refactorización, validar que todo funciona igual que antes.
 
-- [ ] **4.1. Tests de Regresión**
-    Comparar salidas con versión anterior para cada modo:
+- [x] **4.1. Tests de Regresión** (COMPLETADO)
+    ✅ Script `reproduction/run_demo.sh` implementado y ejecutándose exitosamente:
+    - ✅ Test truecolor → `reproduction/demo_truecolor.tif`
+    - ✅ Test ash → `reproduction/demo_ash.tif`
+    - ✅ Test composite con todas las opciones → `reproduction/test_composite.tif`
+    
     ```bash
-    # Test truecolor
-    ./hpsatviews rgb input.nc --mode truecolor --out test_tc.png
-    
-    # Test ash
-    ./hpsatviews rgb input.nc --mode ash --out test_ash.png
-    
-    # Test composite con todas las opciones
-    ./hpsatviews rgb input.nc --mode composite --geographics --clip mexico \
-                  --rayleigh --citylights --alpha --histo --gamma 1.2 \
-                  --scale -2 --geotiff --out test_composite.tif
+    # Ejecutar todos los tests
+    cd reproduction && ./run_demo.sh
     ```
 
 - [ ] **4.2. Test de Memory Leaks**

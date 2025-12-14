@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-g -I./include -Wall -std=c11 -D_POSIX_C_SOURCE=200809L -fopenmp $(shell gdal-config --cflags)
+CFLAGS=-g -I./include -Wall -std=c11 -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE -fopenmp $(shell gdal-config --cflags)
 LDFLAGS=-lm -lnetcdf -lpng -fopenmp $(shell gdal-config --libs)
 
 # Nombre del ejecutable final
@@ -19,6 +19,7 @@ SRCS = $(SRC_DIR)/main.c \
        $(SRC_DIR)/processing.c \
        $(SRC_DIR)/reprojection.c \
        $(SRC_DIR)/args.c \
+       $(SRC_DIR)/channelset.c \
        $(SRC_DIR)/datanc.c \
        $(SRC_DIR)/daynight_mask.c \
        $(SRC_DIR)/image.c \

@@ -22,13 +22,15 @@
 char* generate_default_output_filename(const char* input_file_path, const char* processing_mode, const char* output_extension);
 
 /**
- * @brief Expande un patrón de nombre de archivo reemplazando marcadores de tiempo.
- *        Marcadores soportados: {YYYY}, {YY}, {MM}, {DD}, {hh}, {mm}, {ss}, {JJJ}.
- *        La información de tiempo se extrae del nombre de archivo de entrada (formato GOES).
+ * @brief Expande un patrón de nombre de archivo reemplazando marcadores de tiempo y metadatos.
+ *        Marcadores soportados: {YYYY}, {YY}, {MM}, {DD}, {hh}, {mm}, {ss}, {JJJ}, {CH}, {SAT}.
+ *        La información se extrae del nombre de archivo de entrada (formato GOES).
+ *        {CH}: Número de banda (ej. C01, C02, C13)
+ *        {SAT}: Nombre del satélite (ej. goes-16, goes-19)
  * 
- * @param pattern El patrón de nombre de archivo (ej. "img_{YYYY}{MM}{DD}_{hh}{mm}.tif").
- * @param input_filename El nombre del archivo de entrada del cual extraer la fecha/hora.
- * @return Una nueva cadena con los marcadores reemplazados, o una copia del patrón si no se encuentra fecha.
+ * @param pattern El patrón de nombre de archivo (ej. "img_{SAT}_{CH}_{YYYY}{MM}{DD}_{hh}{mm}.tif").
+ * @param input_filename El nombre del archivo de entrada del cual extraer los metadatos.
+ * @return Una nueva cadena con los marcadores reemplazados, o una copia del patrón si no se encuentra información.
  *         El llamador debe liberar la memoria.
  */
 char* expand_filename_pattern(const char* pattern, const char* input_filename);

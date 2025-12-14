@@ -269,3 +269,70 @@ ImageData create_truecolor_rgb_rayleigh(DataF c01_blue, DataF c02_red, DataF c03
   
   return imout;
 }
+ImageData create_multiband_rgb(const DataF* r_ch, const DataF* g_ch, const DataF* b_ch,
+                               float r_min, float r_max, float g_min, float g_max,
+                               float b_min, float b_max) {
+    if (!r_ch || !g_ch || !b_ch || !r_ch->data_in || !g_ch->data_in || !b_ch->data_in) {
+        LOG_ERROR("Invalid input channels for create_multiband_rgb");
+        return image_create(0, 0, 0);
+    }
+
+    if (r_ch->width != g_ch->width || r_ch->height != g_ch->height ||
+        r_ch->width != b_ch->width || r_ch->height != b_ch->height) {
+        LOG_ERROR("Channel dimensions mismatch in create_multiband_rgb");
+        return image_create(0, 0, 0);
+    }
+
+    ImageData imout = image_create(r_ch->width, r_ch->height, 3);
+    if (imout.data == NULL) {
+        LOG_ERROR("Memory allocation failed for output image");
+        return image_create(0, 0, 0);
+    }
+
+    size_t size = r_ch->size;
+    float r_range = r_max - r_min;
+    float g_range = g_max - g_min;
+    float b_range = b_max - b_min;
+
+    // Avoid division by zero
+    if (fabs(r_range) < 1e-6) r_range = 1.0f;
+    if (fabs(g_range) < 1e-6) g_range = 1.0f;
+    if (fabs(b_range) < 1e-6) b_range = 1.0f;
+
+    #pragma omp parallel for
+    for (size_t i = 0; i < size; i++) {
+        float r_val = r_ch->data_in[i];
+        float g_val = g_ch->data_in[i];
+        float b_val = b_ch->data_in[i];
+
+        uint8_t r_byte = 0, g_byte = 0, b_byte = 0;
+
+        if (!IS_NONDATA(r_val)) {
+            float norm = (r_val - r_min) / r_range;
+            if (norm < 0.0f) norm = 0.0f;
+            if (norm > 1.0f) norm = 1.0f;
+            r_byte = (uint8_t)(norm * 255.0f);
+        }
+
+        if (!IS_NONDATA(g_val)) {
+            float norm = (g_val - g_min) / g_range;
+            if (norm < 0.0f) norm = 0.0f;
+            if (norm > 1.0f) norm = 1.0f;
+            g_byte = (uint8_t)(norm * 255.0f);
+        }
+
+        if (!IS_NONDATA(b_val)) {
+            float norm = (b_val - b_min) / b_range;
+            if (norm < 0.0f) norm = 0.0f;
+            if (norm > 1.0f) norm = 1.0f;
+            b_byte = (uint8_t)(norm * 255.0f);
+        }
+
+        size_t idx = i * 3;
+        imout.data[idx] = r_byte;
+        imout.data[idx + 1] = g_byte;
+        imout.data[idx + 2] = b_byte;
+    }
+
+    return imout;
+}

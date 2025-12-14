@@ -28,6 +28,15 @@ HPSATVIEWS es una aplicación de alto rendimiento controlada por línea de coman
   - `so2`: Detección de dióxido de azufre.
   - `night`: Visualización infrarroja nocturna.
   - `composite`: Mezcla inteligente día/noche de `truecolor` y `night`.
+- **Resampling Automático Inteligente** - Gestión de canales con diferentes resoluciones
+  - Detecta automáticamente la resolución más alta entre canales de entrada
+  - Upsamplea canales de menor resolución con interpolación bilinear de alta calidad
+  - Preserva máxima calidad disponible (no aplica downsampling por defecto)
+  - Ejemplo: C01 (1km) + C02 (500m) + C03 (1km) → todos a 500m
+- **Patrones de Nombre de Archivo** - Expansión automática de metadatos en nombres de salida
+  - Patrones de fecha/hora: `{YYYY}`, `{MM}`, `{DD}`, `{hh}`, `{mm}`, `{ss}`, `{JJJ}`, `{YY}`
+  - Patrones de metadatos: `{CH}` (canal/banda), `{SAT}` (satélite)
+  - Ejemplo: `test_{SAT}_{CH}_{YYYY}{MM}{DD}.png` → `test_goes-16_C01_20240807.png`
 - **Corrección Atmosférica de Rayleigh** - Eliminación de dispersión atmosférica en imágenes true color
   - Compatible con modos `truecolor` y `composite`
   - Implementación estándar siguiendo geo2grid/satpy
@@ -267,6 +276,47 @@ El recorte geográfico soporta dos formatos:
 ./hpsatviews rgb -m truecolor -o salida.tif archivo.nc  # Detecta automáticamente
 ```
 
+**Patrones de Nombre de Archivo:**
+
+El parámetro `-o/--out` soporta expansión automática de patrones extrayendo información del nombre del archivo de entrada:
+
+| Patrón | Descripción | Ejemplo |
+|--------|-------------|---------|
+| `{YYYY}` | Año 4 dígitos | 2024 |
+| `{YY}` | Año 2 dígitos | 24 |
+| `{MM}` | Mes (01-12) | 08 |
+| `{DD}` | Día (01-31) | 07 |
+| `{JJJ}` | Día juliano (001-366) | 220 |
+| `{hh}` | Hora (00-23) | 18 |
+| `{mm}` | Minuto (00-59) | 01 |
+| `{ss}` | Segundo (00-59) | 17 |
+| `{CH}` | Número de banda/canal | C01, C02, C13 |
+| `{SAT}` | Nombre del satélite | goes-16, goes-18, goes-19 |
+
+```bash
+# Con patrones de fecha/hora
+./hpsatviews rgb -o "truecolor_{YYYY}-{MM}-{DD}_{hh}:{mm}.png" \
+  OR_ABI-L1b-RadF-M6C01_G16_s20242190300217_e20242190309525_c20242190310008.nc
+# → truecolor_2024-08-07_18:01.png
+
+# Con patrones de satélite y canal
+./hpsatviews rgb -o "test_{SAT}_{CH}_{YYYY}{MM}{DD}_{hh}{mm}.png" \
+  OR_ABI-L1b-RadF-M6C01_G16_s20242190300217_e20242190309525_c20242190310008.nc \
+  OR_ABI-L1b-RadF-M6C02_G16_s20242190300217_e20242190309525_c20242190310008.nc \
+  OR_ABI-L1b-RadF-M6C03_G16_s20242190300217_e20242190309525_c20242190310008.nc
+# → test_goes-16_C01_20240807_1801.png
+
+# Funciona con todos los comandos
+./hpsatviews singlegray -o "ir_{SAT}_{CH}_{YYYY}{MM}{DD}.png" \
+  OR_ABI-L1b-RadF-M6C13_G16_s20242190300217_e20242190309525_c20242190310008.nc
+# → ir_goes-16_C13_20240807.png
+
+# Con GeoTIFF
+./hpsatviews pseudocolor -p paleta.cpt -o "ash_{SAT}_band{CH}_{YYYY}-{MM}-{DD}_{hh}:{mm}:{ss}.tif" \
+  OR_ABI-L1b-RadF-M6C01_G16_s20242190300217_e20242190309525_c20242190310008.nc
+# → ash_goes-16_bandC01_2024-08-07_18:01:17.tif
+```
+
 **Opciones específicas del comando rgb:**
 - `-m, --mode <modo>` - Modo de operación: `composite` (defecto), `truecolor`, `night`, `ash`, `airmass`, `so2`
 - `--rayleigh` - Aplicar corrección atmosférica de Rayleigh (solo truecolor/composite)
@@ -334,47 +384,99 @@ Esta estandarización mejora la consistencia de la interfaz y facilita el aprend
 
 ```
 hpsatviews/
-├── 📄 main.c                      # Programa principal con parseo de comandos
-├── 🔧 Makefile                    # Sistema de construcción con soporte GDAL
-├── 📊 logger.h/.c                 # Sistema de logging (DEBUG, INFO, WARN, ERROR)
-├── 🖼️ image.h/.c                  # Estructuras y manipulación de imágenes
-├── 🌈 datanc.h/.c                 # Estructuras de datos y algoritmos numéricos
-├── ⚙️ args.h/.c                   # Procesamiento de argumentos de línea de comandos
+├── � include/                    # Headers públicos (.h)
+│   ├── args.h                     # Procesamiento de argumentos
+│   ├── channelset.h               # Gestión de conjuntos de canales
+│   ├── clip_loader.h              # Carga de recortes predefinidos
+│   ├── datanc.h                   # Estructuras de datos y algoritmos
+│   ├── daynight_mask.h            # Máscara día/noche
+│   ├── filename_utils.h           # Utilidades de nombres de archivo
+│   ├── image.h                    # Estructuras de imágenes
+│   ├── logger.h                   # Sistema de logging
+│   ├── nocturnal_pseudocolor.h    # Pseudocolor nocturno
+│   ├── paleta.h                   # Definiciones de paletas
+│   ├── processing.h               # Pipeline singlegray/pseudocolor
+│   ├── rayleigh.h                 # Corrección Rayleigh
+│   ├── rayleigh_lut_embedded.h    # LUTs embebidas
+│   ├── reader_cpt.h               # Lector de paletas CPT
+│   ├── reader_nc.h                # Lector NetCDF
+│   ├── reader_png.h               # Lector PNG
+│   ├── reprojection.h             # Reproyección geográfica
+│   ├── rgb.h                      # Pipeline RGB multicanal
+│   ├── singlegray.h               # Módulo singlegray
+│   ├── truecolor.h                # Auxiliares true color
+│   ├── writer_geotiff.h           # Escritor GeoTIFF
+│   └── writer_png.h               # Escritor PNG
 │
-├── 📡 reader_nc.h/.c              # Lectura NetCDF + cálculo de metadatos de proyección
-├── 💾 writer_png.h/.c             # Escritura de archivos PNG
-├── 🗺️ writer_geotiff.h/.c         # Escritura de archivos GeoTIFF georreferenciados
-├── 📚 reader_cpt.h/.c             # Lectura de paletas CPT (Generic Mapping Tools)
+├── 📂 src/                        # Código fuente (.c)
+│   ├── main.c                     # Programa principal
+│   ├── args.c                     # Parseo de argumentos CLI
+│   ├── channelset.c               # Gestión multi-resolución
+│   ├── clip_loader.c              # Carga de recortes CSV
+│   ├── datanc.c                   # Operaciones sobre datos
+│   ├── daynight_mask.c            # Cálculo de máscara solar
+│   ├── filename_utils.c           # Expansión de patrones {CH}, {SAT}, etc.
+│   ├── image.c                    # Manipulación de imágenes (CLAHE, gamma)
+│   ├── logger.c                   # Logging estructurado
+│   ├── nocturnal_pseudocolor.c    # Visualización infrarroja nocturna
+│   ├── processing.c               # Pipeline singlegray/pseudocolor
+│   ├── rayleigh.c                 # Corrección atmosférica
+│   ├── rayleigh_lut_embedded.c    # LUTs compiladas
+│   ├── reader_cpt.c               # Lectura de paletas GMT
+│   ├── reader_nc.c                # Lectura NetCDF + metadatos
+│   ├── reader_png.c               # Lectura PNG
+│   ├── reprojection.c             # Geoestacionaria → Geográfica
+│   ├── rgb.c                      # Compuestos RGB (composite, truecolor, ash, etc.)
+│   ├── singlegray.c               # Escala de grises
+│   ├── truecolor_rgb.c            # True color + verde sintético
+│   ├── writer_geotiff.c           # Salida GeoTIFF georreferenciada
+│   └── writer_png.c               # Salida PNG
 │
-├── 🗺️ reprojection.h/.c           # Reproyección geoestacionaria → geográfica
-├── 🎨 rgb.h/.c                    # Pipeline de compuestos RGB multicanal
-├── 🔬 processing.h/.c             # Pipeline singlegray y pseudocolor
-├── 🌅 truecolor_rgb.c             # Generación de true color con verde sintético
-├── 🌙 nocturnal_pseudocolor.c     # Imágenes infrarrojas nocturnas
-├── 🌗 daynight_mask.c             # Cálculo de máscara día/noche por ángulo solar
+├── 📂 sample_data/                # Datos de ejemplo GOES-16 L2 CMI
+│   ├── OR_ABI-L2-CMIPC-M6C01_G16...nc  # Canal 01 (Blue, 1km)
+│   ├── OR_ABI-L2-CMIPC-M6C02_G16...nc  # Canal 02 (Red, 500m)
+│   ├── OR_ABI-L2-CMIPC-M6C03_G16...nc  # Canal 03 (Veggie, 1km)
+│   ├── OR_ABI-L2-CMIPC-M6C08_G16...nc  # Canal 08 (Upper-level WV)
+│   ├── OR_ABI-L2-CMIPC-M6C10_G16...nc  # Canal 10 (Lower-level WV)
+│   ├── OR_ABI-L2-CMIPC-M6C11_G16...nc  # Canal 11 (Cloud-top IR)
+│   ├── OR_ABI-L2-CMIPC-M6C12_G16...nc  # Canal 12 (Ozone)
+│   ├── OR_ABI-L2-CMIPC-M6C13_G16...nc  # Canal 13 (Clean IR)
+│   ├── OR_ABI-L2-CMIPC-M6C14_G16...nc  # Canal 14 (IR Longwave)
+│   └── OR_ABI-L2-CMIPC-M6C15_G16...nc  # Canal 15 (Dirty IR)
 │
-├── ☁️ rayleigh.h/.c                # Corrección atmosférica de dispersión Rayleigh
-├── 📦 rayleigh_lut_embedded.h/.c  # LUTs de Rayleigh embebidas (C01, C02, C03)
-├── 🧰 filename_utils.h/.c         # Utilidades de manejo de nombres de archivo
-├── 📍 clip_loader.h/.c            # Carga de recortes geográficos predefinidos desde CSV
+├── 📂 reproduction/               # Scripts de demo y reproducibilidad
+│   ├── run_demo.sh                # Demo completo (4 tests: truecolor, ash, composite)
+│   ├── crea_rgbs.sh               # Generación batch de productos RGB
+│   ├── download_sample.sh         # Descarga de datos de ejemplo
+│   └── expected_output/           # Salidas de referencia para validación
 │
-├── 📋 singlegray.h/.c             # Módulo de procesamiento singlegray
-├── 🎨 truecolor.h/.c              # Funciones auxiliares true color
+├── 🔧 Makefile                    # Sistema de construcción (gcc + GDAL + NetCDF)
 ├── 📖 README.md                   # Documentación principal
-├── 📝 TODO.txt                    # Lista de tareas pendientes
-├── 📝 plan_rayleigh.md            # Plan de implementación Rayleigh
-├── 📝 PLAN_GEOTIFF.md             # Plan de implementación GeoTIFF
-├── 📝 PLAN_FIX_CLIP_CORNERS.md    # Plan de corrección de clipping
-└── 🧪 test_clip_fix.sh            # Script de testing para clipping
+├── 📝 LICENSE                     # Licencia GPLv3
+├── 📝 TODO.txt                    # Tareas pendientes
+├── 📝 codemeta.json               # Metadatos de software (schema.org)
+│
+├── 📊 plan_rayleigh.md            # Documentación de corrección Rayleigh
+├── 📊 PLAN_GEOTIFF.md             # Documentación de GeoTIFF
+├── 📊 PLAN_FIX_CLIP_CORNERS.md    # Optimización de clipping
+├── 📊 implementacion_clahe.md     # Detalles de implementación CLAHE
+│
+└── 🧪 Scripts auxiliares
+    ├── extract_rayleigh_lut.py    # Extracción de LUTs desde pyspectral
+    ├── compara_gdal.sh            # Comparación con GDAL
+    ├── valida_geotiff.py          # Validación de GeoTIFF
+    └── test_clip_fix.sh           # Testing de clipping
 ```
+
+**Organización modular**:
+- **`include/`**: Headers públicos con prototipos y documentación de API
+- **`src/`**: Implementaciones en C11 con optimizaciones OpenMP
+- **`sample_data/`**: Datos GOES-16 L2 CMI del 2024-08-07 18:01 UTC (10 canales)
+- **`reproduction/`**: Scripts para demos y validación de reproducibilidad
 
 **Archivos de datos embebidos**:
 - Las LUTs de Rayleigh están compiladas en el ejecutable (no se requieren archivos .bin externos)
-
-**Scripts auxiliares**:
-- `extract_rayleigh_lut.py` - Extracción de LUTs desde pyspectral (uso offline)
-- `compara_gdal.sh` - Comparación de salidas con GDAL
-- `valida_geotiff.py` - Validación de GeoTIFF generados
+- Recortes geográficos predefinidos cargados desde `clips.csv` en memoria
 
 ---
 
@@ -557,7 +659,11 @@ LOG_ERROR("Error al abrir archivo: %s", error_msg);
 
 ### Procesamiento True Color RGB
 1. **Lectura de canales** C01 (azul), C02 (rojo), C03 (vegetal)
-2. **Downsampling** de C01, C02, C03 a resolución común (2km)
+2. **Resampling automático** de canales a resolución común:
+   - Detecta resolución más alta entre todos los canales
+   - Upsamplea canales de menor resolución usando interpolación bilineal
+   - Ejemplo: C01 (1km) + C02 (500m) + C03 (1km) → todos a 500m
+   - Downsampling ya NO se aplica por defecto (preserva máxima calidad)
 3. **Canal verde sintético** usando coeficientes EDC: `0.45706946*C01 + 0.48358168*C02 + 0.06038137*C03`
 4. **Normalización radiométrica** con factores de escala NetCDF
 5. **Corrección gamma** para visualización óptima (recomendado: 2.0)
@@ -643,6 +749,28 @@ dataf_destroy(&data);
 image_destroy(&image);
 ```
 
+### Gestión de Conjuntos de Canales (ChannelSet)
+```c
+// Crear conjunto de canales con resampling automático
+ChannelSet* chset = channelset_create(3);  // 3 canales (R, G, B)
+
+// Agregar canales con diferentes resoluciones
+channelset_add(chset, &channel_r);  // 500m
+channelset_add(chset, &channel_g);  // 1km
+channelset_add(chset, &channel_b);  // 1km
+
+// Upsamplear automáticamente todos los canales a la resolución más alta
+channelset_upsample_all(chset);  // Todos a 500m
+
+// Acceder a canales resampleados
+DataF* r = channelset_get(chset, 0);
+DataF* g = channelset_get(chset, 1);
+DataF* b = channelset_get(chset, 2);
+
+// Liberar
+channelset_destroy(&chset);
+```
+
 ### Procesamiento de Canales
 ```c
 // Cargar datos NetCDF (funciona con L1b y L2)
@@ -650,9 +778,12 @@ DataNC channel;
 load_nc_sf("archivo.nc", "Rad", &channel);  // L1b
 load_nc_sf("archivo.nc", "CMI", &channel);  // L2
 
-// Remuestreo
+// Resampling automático inteligente
+// upsample_bilinear() ahora acepta dimensiones objetivo
+DataF resampled = upsample_bilinear(&source, target_width, target_height);
+
+// Remuestreo manual con factor específico
 DataF downsampled = downsample_boxfilter(channel.base, factor);
-DataF upsampled = upsample_bilinear(channel.base, factor);
 
 // Recorte de regiones
 DataF cropped = dataf_crop(&data, x_start, y_start, width, height);
@@ -783,6 +914,41 @@ Consulta el archivo [LICENSE](LICENSE) para más detalles.
 ---
 
 ## 📅 Historial de Cambios
+
+### Diciembre 2025 - Patrones de Archivo, Resampling Automático y Refactorización
+
+**Nuevos patrones de expansión de archivo:**
+- ✅ Patrón `{CH}`: Extrae número de canal/banda del nombre de archivo (C01, C02, C13, etc.)
+- ✅ Patrón `{SAT}`: Extrae nombre del satélite (_G16 → goes-16, _G18 → goes-18, _G19 → goes-19)
+- ✅ Funciona en todos los comandos (rgb, singlegray, pseudocolor)
+- ✅ Ejemplos: `"test_{SAT}_{CH}_{YYYY}{MM}{DD}.png"` → `test_goes-16_C01_20240807.png`
+
+**Resampling automático inteligente:**
+- ✅ Detecta automáticamente resolución más alta entre canales de entrada
+- ✅ Upsamplea canales de menor resolución usando interpolación bilineal de alta calidad
+- ✅ Preserva máxima calidad: C01 (1km) + C02 (500m) + C03 (1km) → todos a 500m
+- ✅ Elimina downsampling por defecto (antes forzaba todo a 2km)
+- ✅ Implementación optimizada: `upsample_bilinear()` ahora acepta dimensiones objetivo
+
+**Refactorización mayor de código RGB:**
+- ✅ Nuevo módulo `channelset`: Gestión unificada de conjuntos de canales con diferentes resoluciones
+- ✅ Movido `rgb.h` de `src/` a `include/` para mejor organización
+- ✅ Creados headers faltantes: `singlegray.h`, `nocturnal_pseudocolor.h`, `daynight_mask.h`
+- ✅ Nueva función `create_multiband_rgb()` en `truecolor_rgb.c` para composiciones multi-banda
+- ✅ Eliminado código duplicado y mejorada mantenibilidad
+
+**Reorganización de estructura del proyecto:**
+- ✅ Separación completa de headers (`include/`) y código fuente (`src/`)
+- ✅ Todos los archivos `.h` movidos a `include/` para API clara y consistente
+- ✅ Todos los archivos `.c` movidos a `src/` para mejor organización
+- ✅ Carpeta `sample_data/` consolidada con 10 canales GOES-16 L2 CMI de ejemplo
+- ✅ Carpeta `reproduction/` para scripts de demo y validación
+
+**Mejoras en run_demo.sh:**
+- ✅ Actualizado para usar archivos de `sample_data/`
+- ✅ Agregada prueba de composite con todas las opciones avanzadas
+- ✅ Incluye: `--geographics`, `--clip mexico`, `--rayleigh`, `--citylights`, `--alpha`, `--histo`, `--gamma 1.2`, `--scale -2`, `--geotiff`
+- ✅ 4 tests completos: truecolor, ash, composite con full-disk y recorte
 
 ### Diciembre 2025 - CLAHE, Estandarización de CLI y Optimización de Clipping
 
