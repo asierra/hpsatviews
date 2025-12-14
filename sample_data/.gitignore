@@ -1,0 +1,4 @@
+# Ignorar todos los archivos NetCDF descargados
+*
+# Excepto este .gitignore
+!.gitignore

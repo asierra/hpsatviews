@@ -1,0 +1,4 @@
+# Ignorar archivos generados durante pruebas
+*.tif
+*.png
+*.nc
