@@ -41,3 +41,6 @@ hpsatviews
 *.xml
 
 *.bin
+
+# Archivos NetCDF grandes (datos satelitales)
+*.nc
