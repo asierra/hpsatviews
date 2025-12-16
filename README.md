@@ -26,13 +26,13 @@ HPSATVIEWS es una aplicación de alto rendimiento controlada por línea de coman
   - `ash`: Detección de ceniza volcánica.
   - `airmass`: Clasificación de masas de aire.
   - `so2`: Detección de dióxido de azufre.
-  - `night`: Visualización infrarroja nocturna.
-  - `composite`: Mezcla inteligente día/noche de `truecolor` y `night`.
-- **Resampling Automático Inteligente** - Gestión de canales con diferentes resoluciones
-  - Detecta automáticamente la resolución más alta entre canales de entrada
-  - Upsamplea canales de menor resolución con interpolación bilinear de alta calidad
-  - Preserva máxima calidad disponible (no aplica downsampling por defecto)
-  - Ejemplo: C01 (1km) + C02 (500m) + C03 (1km) → todos a 500m
+  - `night`: Visualización infrarroja nocturna con pseudocolor y luces de ciudad.
+  - `composite`: Mezcla inteligente día/noche de `truecolor` y `night` (con luces de ciudad automáticas).
+- **Resampling Automático Inteligente** - Gestión de canales con diferentes resoluciones.
+  - **Rápido por defecto**: Usa el canal de menor resolución como referencia y aplica *downsampling* a los demás. Ideal para vistas previas rápidas.
+  - **Máxima calidad opcional**: Con la bandera `--full-res`, usa el canal de mayor resolución como referencia y aplica *upsampling* a los demás para preservar el máximo detalle.
+  - Ejemplo (defecto): C01(1km) + C02(0.5km) + C03(2km) → todos a 2km.
+  - Ejemplo (`--full-res`): C01(1km) + C02(0.5km) + C03(1km) → todos a 0.5km.
 - **Patrones de Nombre de Archivo** - Expansión automática de metadatos en nombres de salida
   - Patrones de fecha/hora: `{YYYY}`, `{MM}`, `{DD}`, `{hh}`, `{mm}`, `{ss}`, `{JJJ}`, `{YY}`
   - Patrones de metadatos: `{CH}` (canal/banda), `{SAT}` (satélite)
