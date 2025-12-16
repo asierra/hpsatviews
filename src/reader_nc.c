@@ -41,22 +41,26 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
 
   // Recuperamos las dimensiones de los datos
   size_t width, height, total_size;
-  if ((retval = nc_inq_dimlen(ncid, xid, &width))) ERR(retval);
-  if ((retval = nc_inq_dimlen(ncid, yid, &height))) ERR(retval);
+  if ((retval = nc_inq_dimlen(ncid, xid, &width)))
+    ERR(retval);
+  if ((retval = nc_inq_dimlen(ncid, yid, &height)))
+    ERR(retval);
   total_size = width * height;
-  LOG_INFO("NetCDF dimensions: %lux%lu (total: %lu)", width,
-           height, total_size);
+  LOG_INFO("NetCDF dimensions: %lux%lu (total: %lu)", width, height,
+           total_size);
 
   // Leer resolución espacial nativa del sensor (atributo global)
   char spatial_res_str[128];
   datanc->native_resolution_km = 0.0f; // Por defecto
-  if ((retval = nc_get_att_text(ncid, NC_GLOBAL, "spatial_resolution", spatial_res_str)) == NC_NOERR) {
+  if ((retval = nc_get_att_text(ncid, NC_GLOBAL, "spatial_resolution",
+                                spatial_res_str)) == NC_NOERR) {
     spatial_res_str[127] = '\0'; // Asegurar terminación
     // El atributo típicamente es algo como "1km at nadir" o "2km at nadir"
     float res_val;
     if (sscanf(spatial_res_str, "%fkm", &res_val) == 1) {
       datanc->native_resolution_km = res_val;
-      LOG_INFO("Native sensor resolution: %.1f km", datanc->native_resolution_km);
+      LOG_INFO("Native sensor resolution: %.1f km",
+               datanc->native_resolution_km);
     }
   }
 
@@ -85,7 +89,8 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
   if ((retval = nc_inq_vartype(ncid, rad_varid, &var_type)))
     ERR(retval);
 
-  size_t type_size = (var_type == NC_BYTE) ? sizeof(signed char) : sizeof(short);
+  size_t type_size =
+      (var_type == NC_BYTE) ? sizeof(signed char) : sizeof(short);
   void *datatmp = malloc(type_size * total_size);
   if (datatmp == NULL) {
     LOG_FATAL("Failed to allocate memory for NetCDF data");
@@ -103,10 +108,7 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
     ERR(retval);
   long tt = (long)(tiempo);
   time_t dt = 946728000 + tt;
-  char buf[80];
   struct tm ts = *gmtime(&dt);
-  strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
-  printf("%s\n", buf);
   datanc->year = ts.tm_year + 1900;
   datanc->mon = ts.tm_mon + 1;
   datanc->day = ts.tm_mday;
@@ -144,15 +146,12 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
         ERR(retval);
       if ((retval = nc_get_var_float(ncid, bc2_varid, &planck_bc2)))
         ERR(retval);
-      printf("Planck %g %g %g %g\n", planck_fk1, planck_fk2, planck_bc1,
-             planck_bc2);
     } else if (datanc->band_id >= 1) {
       int kappa0_varid;
       if ((retval = nc_inq_varid(ncid, "kappa0", &kappa0_varid)))
         ERR(retval);
       if ((retval = nc_get_var_float(ncid, kappa0_varid, &kappa0)))
         ERR(retval);
-      printf("Kappa0 %g\n", kappa0);
     }
   } else {
     datanc->band_id = 0;
@@ -164,78 +163,85 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
   datanc->proj_code = PROJ_UNKNOWN;
   datanc->proj_info.valid = false;
   int proj_varid;
-  
+
   // 1. Leer parámetros de la proyección (Elipsoide y Altura) [cite: 19, 20]
   if (nc_inq_varid(ncid, "goes_imager_projection", &proj_varid) == NC_NOERR) {
-	  datanc->proj_code = PROJ_GEOS;
-      nc_get_att_double(ncid, proj_varid, "perspective_point_height", &datanc->proj_info.sat_height);
-      nc_get_att_double(ncid, proj_varid, "semi_major_axis", &datanc->proj_info.semi_major);
-      nc_get_att_double(ncid, proj_varid, "semi_minor_axis", &datanc->proj_info.semi_minor);
-      nc_get_att_double(ncid, proj_varid, "longitude_of_projection_origin", &datanc->proj_info.lon_origin);
-      nc_get_att_double(ncid, proj_varid, "inverse_flattening", &datanc->proj_info.inv_flat);
-      datanc->proj_info.valid = true;
+    datanc->proj_code = PROJ_GEOS;
+    nc_get_att_double(ncid, proj_varid, "perspective_point_height",
+                      &datanc->proj_info.sat_height);
+    nc_get_att_double(ncid, proj_varid, "semi_major_axis",
+                      &datanc->proj_info.semi_major);
+    nc_get_att_double(ncid, proj_varid, "semi_minor_axis",
+                      &datanc->proj_info.semi_minor);
+    nc_get_att_double(ncid, proj_varid, "longitude_of_projection_origin",
+                      &datanc->proj_info.lon_origin);
+    nc_get_att_double(ncid, proj_varid, "inverse_flattening",
+                      &datanc->proj_info.inv_flat);
+    datanc->proj_info.valid = true;
   }
 
   // 2. Calcular GeoTransform (Bounding Box y Resolución)
   // Necesitamos leer el primer valor de 'x' y 'y' y sus factores de escala
   int x_varid_coord, y_varid_coord;
-  if (datanc->proj_info.valid && 
-      nc_inq_varid(ncid, "x", &x_varid_coord) == NC_NOERR && 
+  if (datanc->proj_info.valid &&
+      nc_inq_varid(ncid, "x", &x_varid_coord) == NC_NOERR &&
       nc_inq_varid(ncid, "y", &y_varid_coord) == NC_NOERR) {
 
-      // Leer scale_factor y add_offset de las coordenadas [cite: 3, 4]
-      // Aunque el NetCDF define scale_factor como float, al multiplicarlo
-      // por la altura del satélite (~35 millones de metros), la falta de 
-      // precisión del float introduce un error de desplazamiento de ~200m (0.2 px).
-      double x_scale, x_offset, y_scale, y_offset;       
-      nc_get_att_double(ncid, x_varid_coord, "scale_factor", &x_scale);
-      nc_get_att_double(ncid, x_varid_coord, "add_offset", &x_offset);
-      nc_get_att_double(ncid, y_varid_coord, "scale_factor", &y_scale);
-      nc_get_att_double(ncid, y_varid_coord, "add_offset", &y_offset);
+    // Leer scale_factor y add_offset de las coordenadas [cite: 3, 4]
+    // Aunque el NetCDF define scale_factor como float, al multiplicarlo
+    // por la altura del satélite (~35 millones de metros), la falta de
+    // precisión del float introduce un error de desplazamiento de ~200m (0.2
+    // px).
+    double x_scale, x_offset, y_scale, y_offset;
+    nc_get_att_double(ncid, x_varid_coord, "scale_factor", &x_scale);
+    nc_get_att_double(ncid, x_varid_coord, "add_offset", &x_offset);
+    nc_get_att_double(ncid, y_varid_coord, "scale_factor", &y_scale);
+    nc_get_att_double(ncid, y_varid_coord, "add_offset", &y_offset);
 
-      // Leer el valor crudo del primer píxel (índice 0) de X e Y
-      // NetCDF GOES almacena las coordenadas en variables 1D 'x' y 'y'
-      short x0_raw, y0_raw;
-      size_t index[] = {0};
-      nc_get_var1_short(ncid, x_varid_coord, index, &x0_raw);
-      nc_get_var1_short(ncid, y_varid_coord, index, &y0_raw);
+    // Leer el valor crudo del primer píxel (índice 0) de X e Y
+    // NetCDF GOES almacena las coordenadas en variables 1D 'x' y 'y'
+    short x0_raw, y0_raw;
+    size_t index[] = {0};
+    nc_get_var1_short(ncid, x_varid_coord, index, &x0_raw);
+    nc_get_var1_short(ncid, y_varid_coord, index, &y0_raw);
 
-      // Convertir a radianes (unidades de proyección)
-      double x0_rad = (double)x0_raw * x_scale + x_offset;
-      double y0_rad = (double)y0_raw * y_scale + y_offset;
+    // Convertir a radianes (unidades de proyección)
+    double x0_rad = (double)x0_raw * x_scale + x_offset;
+    double y0_rad = (double)y0_raw * y_scale + y_offset;
 
-      // --- Construcción del GeoTransform ---
-      // GDAL requiere la esquina SUPERIOR IZQUIERDA del píxel, no el centro.
-      // Por eso restamos (o sumamos) medio píxel.
-      
-      // GT[0]: Top Left X
-      datanc->geotransform[0] = x0_rad - (x_scale / 2.0); 
-      
-      // GT[1]: Ancho de píxel (siempre positivo en proyección fija)
-      datanc->geotransform[1] = x_scale;
-      
-      // GT[2]: Rotación X (0)
-      datanc->geotransform[2] = 0.0;
-      
-      // GT[3]: Top Left Y
-      // Nota: En GOES 'y_scale' suele ser negativo (-2.8e-05)[cite: 2].
-      // Si y0_rad es el centro del primer píxel (Norte), la esquina está "arriba" 
-      // (hacia valores más positivos si es radianes N>S, pero cuidado con el signo).
-      // Matemáticamente: Centro + (Tamaño / 2) * (-SignoEscala) ... simplificado:
-      datanc->geotransform[3] = y0_rad - (y_scale / 2.0);
-      
-      // GT[4]: Rotación Y (0)
-      datanc->geotransform[4] = 0.0;
-      
-      // GT[5]: Alto de píxel (debe ser negativo para imágenes N->S standard)
-      datanc->geotransform[5] = y_scale; 
+    // --- Construcción del GeoTransform ---
+    // GDAL requiere la esquina SUPERIOR IZQUIERDA del píxel, no el centro.
+    // Por eso restamos (o sumamos) medio píxel.
 
-      LOG_INFO("GeoTransform calculado: Origin (%.6f, %.6f) Res (%.6f, %.6f)", 
-               datanc->geotransform[0], datanc->geotransform[3],
-               datanc->geotransform[1], datanc->geotransform[5]);
+    // GT[0]: Top Left X
+    datanc->geotransform[0] = x0_rad - (x_scale / 2.0);
+
+    // GT[1]: Ancho de píxel (siempre positivo en proyección fija)
+    datanc->geotransform[1] = x_scale;
+
+    // GT[2]: Rotación X (0)
+    datanc->geotransform[2] = 0.0;
+
+    // GT[3]: Top Left Y
+    // Nota: En GOES 'y_scale' suele ser negativo (-2.8e-05)[cite: 2].
+    // Si y0_rad es el centro del primer píxel (Norte), la esquina está "arriba"
+    // (hacia valores más positivos si es radianes N>S, pero cuidado con el
+    // signo). Matemáticamente: Centro + (Tamaño / 2) * (-SignoEscala) ...
+    // simplificado:
+    datanc->geotransform[3] = y0_rad - (y_scale / 2.0);
+
+    // GT[4]: Rotación Y (0)
+    datanc->geotransform[4] = 0.0;
+
+    // GT[5]: Alto de píxel (debe ser negativo para imágenes N->S standard)
+    datanc->geotransform[5] = y_scale;
+
+    LOG_INFO("GeoTransform calculado: Origin (%.6f, %.6f) Res (%.6f, %.6f)",
+             datanc->geotransform[0], datanc->geotransform[3],
+             datanc->geotransform[1], datanc->geotransform[5]);
   }
   // =========================================================================
-  
+
   if ((retval = nc_close(ncid)))
     ERR(retval);
 
@@ -290,8 +296,10 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
         } else { // Variables L2 que no son de radiancia (ej. LST)
           f = rad;
         }
-        if (f > fmax) fmax = f;
-        if (f < fmin) fmin = f;
+        if (f > fmax)
+          fmax = f;
+        if (f < fmin)
+          fmin = f;
         datanc->fdata.data_in[i] = f;
       } else {
         datanc->fdata.data_in[i] = NonData;
@@ -336,7 +344,9 @@ int load_nc_float(const char *filename, DataF *datanc, const char *variable) {
     ERR(retval);
 
   // Apartamos memoria para los datos
-  datanc->data_in = malloc(sizeof(float) * datanc->size); // This function seems unused, but let's fix it.
+  datanc->data_in =
+      malloc(sizeof(float) *
+             datanc->size); // This function seems unused, but let's fix it.
 
   // Recupera los datos
   if ((retval = nc_get_var_float(ncid, varid, datanc->data_in)))
@@ -373,10 +383,11 @@ void compute_lalo(float x, float y, float *la, float *lo) {
                       sm_min2 * sqrt(((H - sx) * (H - sx)) + (sy * sy))) *
                 rad2deg);
   double lon_rad = lambda_0 - atan2(sy, H - sx);
-  
+
   // Normalizar la longitud al rango [-PI, PI] antes de convertir a grados
   lon_rad = fmod(lon_rad + M_PI, 2.0 * M_PI);
-  if (lon_rad < 0) lon_rad += 2.0 * M_PI;
+  if (lon_rad < 0)
+    lon_rad += 2.0 * M_PI;
   *lo = (float)((lon_rad - M_PI) * rad2deg);
 }
 
@@ -395,16 +406,15 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
 
   // Recuperamos las dimensiones de los datos
   size_t width, height;
-  if ((retval = nc_inq_dimlen(ncid, xid, &width))) ERR(retval);
-  if ((retval = nc_inq_dimlen(ncid, yid, &height))) ERR(retval);
+  if ((retval = nc_inq_dimlen(ncid, xid, &width)))
+    ERR(retval);
+  if ((retval = nc_inq_dimlen(ncid, yid, &height)))
+    ERR(retval);
   *navla = dataf_create(width, height);
   navla->size = navla->width * navla->height;
   navlo->width = navla->width;
   navlo->height = navla->height;
   navlo->size = navla->size;
-  // printf("Dimensiones x %lu y %lu total %lu\n", navla->width,
-  // navla->height,
-  //        navla->size);
 
   if ((retval = nc_inq_varid(ncid, "goes_imager_projection", &varid)))
     ERR(retval);
@@ -421,18 +431,17 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
     WRN(retval);
   H = sm_maj + hsat;
   lambda_0 = lo_proj_orig / rad2deg;
-  // printf("hsat %g %g %g %g %g\n", hsat, sm_maj, sm_min, lo_proj_orig, H);
 
   // Obtiene el factor de escala y offset de las VARIABLES (no dimensiones)
   float x_sf, y_sf, x_ao, y_ao;
   int x_varid, y_varid;
-  
+
   // Buscar las variables x e y (no las dimensiones)
   if ((retval = nc_inq_varid(ncid, "x", &x_varid)))
     ERR(retval);
   if ((retval = nc_inq_varid(ncid, "y", &y_varid)))
     ERR(retval);
-    
+
   if ((retval = nc_get_att_float(ncid, x_varid, "scale_factor", &x_sf)))
     WRN(retval);
   if ((retval = nc_get_att_float(ncid, x_varid, "add_offset", &x_ao)))
@@ -443,9 +452,9 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
     WRN(retval);
 
   // Leer los arreglos x[] e y[] del NetCDF
-  short* x_vals_raw = malloc(width * sizeof(short));
-  short* y_vals_raw = malloc(height * sizeof(short));
-  
+  short *x_vals_raw = malloc(width * sizeof(short));
+  short *y_vals_raw = malloc(height * sizeof(short));
+
   if (!x_vals_raw || !y_vals_raw) {
     free(x_vals_raw);
     free(y_vals_raw);
@@ -453,7 +462,7 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
     LOG_ERROR("Error de memoria al leer x[], y[]");
     return -1;
   }
-  
+
   if ((retval = nc_get_var_short(ncid, x_varid, x_vals_raw))) {
     free(x_vals_raw);
     free(y_vals_raw);
@@ -473,7 +482,7 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
   int k = 0;
   float lomin = 1e10, lamin = 1e10, lomax = -lomin, lamax = -lamin;
   int valid_count = 0;
-  
+
   for (int j = 0; j < navla->height; j++) {
     float y = (float)y_vals_raw[j] * y_sf + y_ao;
     for (int i = 0; i < navla->width; i++) {
@@ -481,7 +490,6 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
       float x = (float)x_vals_raw[i] * x_sf + x_ao;
       compute_lalo(x, y, &la, &lo);
       if (isnan(la) || isnan(lo)) {
-        // printf("Is nan %g\n", la);
         navla->data_in[k] = NonData;
         navlo->data_in[k] = NonData;
       } else {
@@ -500,7 +508,7 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
       k++;
     }
   }
-  
+
   // Solo actualizar los límites si encontramos al menos un píxel válido
   if (valid_count > 0) {
     navla->fmin = lamin;
@@ -508,18 +516,21 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
     navlo->fmin = lomin;
     navlo->fmax = lomax;
   } else {
-    // Si no hay píxeles válidos, establecer límites por defecto para evitar valores centinela
+    // Si no hay píxeles válidos, establecer límites por defecto para evitar
+    // valores centinela
     navla->fmin = -90.0f;
     navla->fmax = 90.0f;
     navlo->fmin = -180.0f;
     navlo->fmax = 180.0f;
-    LOG_WARN("No se encontraron coordenadas válidas en compute_navigation_nc. Usando límites por defecto.");
+    LOG_WARN("No se encontraron coordenadas válidas en compute_navigation_nc. "
+             "Usando límites por defecto.");
   }
-  
+
   free(x_vals_raw);
   free(y_vals_raw);
-  
-  printf("corners %g %g  %g %g (valid: %d/%lu)\n", lomin, lamin, lomax, lamax, valid_count, navla->size);
+
+  printf("corners %g %g  %g %g (valid: %d/%lu)\n", lomin, lamin, lomax, lamax,
+         valid_count, navla->size);
   if ((retval = nc_close(ncid)))
     ERR(retval);
 
@@ -528,11 +539,13 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
 }
 
 /**
- * @brief Crea mallas de navegación (lat/lon) para una cuadrícula geográfica ya existente.
+ * @brief Crea mallas de navegación (lat/lon) para una cuadrícula geográfica ya
+ * existente.
  *
- * En lugar de calcular desde coordenadas geostacionarias, esta función genera las mallas
- * de latitud y longitud por interpolación lineal simple, basándose en los límites
- * geográficos conocidos de la cuadrícula. Es mucho más eficiente para datos ya reproyectados.
+ * En lugar de calcular desde coordenadas geostacionarias, esta función genera
+ * las mallas de latitud y longitud por interpolación lineal simple, basándose
+ * en los límites geográficos conocidos de la cuadrícula. Es mucho más eficiente
+ * para datos ya reproyectados.
  *
  * @param navla Puntero a la estructura DataF para la latitud de salida.
  * @param navlo Puntero a la estructura DataF para la longitud de salida.
@@ -544,28 +557,35 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
  * @param lat_max Latitud máxima.
  * @return 0 en éxito.
  */
-int create_navigation_from_reprojected_bounds(DataF *navla, DataF *navlo, size_t width, size_t height, float lon_min, float lon_max, float lat_min, float lat_max) {
-    *navla = dataf_create(width, height);
-    *navlo = dataf_create(width, height);
-    if (navla->data_in == NULL || navlo->data_in == NULL) {
-        LOG_FATAL("Falla de memoria al crear mallas de navegación para datos reproyectados.");
-        return -1;
-    }
+int create_navigation_from_reprojected_bounds(DataF *navla, DataF *navlo,
+                                              size_t width, size_t height,
+                                              float lon_min, float lon_max,
+                                              float lat_min, float lat_max) {
+  *navla = dataf_create(width, height);
+  *navlo = dataf_create(width, height);
+  if (navla->data_in == NULL || navlo->data_in == NULL) {
+    LOG_FATAL("Falla de memoria al crear mallas de navegación para datos "
+              "reproyectados.");
+    return -1;
+  }
 
-    float lat_range = lat_max - lat_min;
-    float lon_range = lon_max - lon_min;
+  float lat_range = lat_max - lat_min;
+  float lon_range = lon_max - lon_min;
 
-    #pragma omp parallel for collapse(2)
-    for (size_t y = 0; y < height; y++) {
-        for (size_t x = 0; x < width; x++) {
-            size_t i = y * width + x;
-            navlo->data_in[i] = lon_min + ( (float)x / (float)(width - 1) ) * lon_range;
-            navla->data_in[i] = lat_max - ( (float)y / (float)(height - 1) ) * lat_range;
-        }
+#pragma omp parallel for collapse(2)
+  for (size_t y = 0; y < height; y++) {
+    for (size_t x = 0; x < width; x++) {
+      size_t i = y * width + x;
+      navlo->data_in[i] = lon_min + ((float)x / (float)(width - 1)) * lon_range;
+      navla->data_in[i] =
+          lat_max - ((float)y / (float)(height - 1)) * lat_range;
     }
-    navla->fmin = lat_min; navla->fmax = lat_max;
-    navlo->fmin = lon_min; navlo->fmax = lon_max;
-    return 0;
+  }
+  navla->fmin = lat_min;
+  navla->fmax = lat_max;
+  navlo->fmin = lon_min;
+  navlo->fmax = lon_max;
+  return 0;
 }
 
 /*
@@ -635,10 +655,12 @@ DataF dataf_load_from_netcdf(const char *filename, const char *varname) {
 }
 
 /**
- * @brief Calcula la geometría solar (ángulo cenital y azimutal) para una ubicación y tiempo dados.
- * 
- * Usa el mismo algoritmo que sun_zenith_angle en daynight_mask.c para consistencia.
- * 
+ * @brief Calcula la geometría solar (ángulo cenital y azimutal) para una
+ * ubicación y tiempo dados.
+ *
+ * Usa el mismo algoritmo que sun_zenith_angle en daynight_mask.c para
+ * consistencia.
+ *
  * @param la Latitud en grados [-90, 90]
  * @param lo Longitud en grados [-180, 180]
  * @param year Año (ej. 2025)
@@ -647,19 +669,19 @@ DataF dataf_load_from_netcdf(const char *filename, const char *varname) {
  * @param hour Hora UTC [0-23]
  * @param min Minuto [0-59]
  * @param sec Segundo [0-59]
- * @param zenith_out Puntero para retornar ángulo cenital solar en grados [0-180]
+ * @param zenith_out Puntero para retornar ángulo cenital solar en grados
+ * [0-180]
  * @param azimuth_out Puntero para retornar azimut solar en grados [-180, 180]
  */
-static void compute_sun_geometry(float la, float lo, 
-                                 int year, int month, int day,
-                                 int hour, int min, int sec,
+static void compute_sun_geometry(float la, float lo, int year, int month,
+                                 int day, int hour, int min, int sec,
                                  double *zenith_out, double *azimuth_out) {
   // Variables auxiliares
-  double t, te, wte, s1, c1, s2, c2, s3, c3, sp, cp, sd, cd, cH,
-      se0, ep, De, lambda, epsi, sl, cl, se, ce, L, nu, Dlam;
+  double t, te, wte, s1, c1, s2, c2, s3, c3, sp, cp, sd, cd, cH, se0, ep, De,
+      lambda, epsi, sl, cl, se, ce, L, nu, Dlam;
   int yt, mt;
   double RightAscension, Declination, HourAngle, Zenith, Azimuth;
-  
+
   double PI = M_PI;
   double PI2 = 2 * M_PI;
   double PIM = M_PI_2;
@@ -744,95 +766,101 @@ static void compute_sun_geometry(float la, float lo,
     De = 0.0;
 
   Zenith = PIM - ep - De;
-  
-  if (zenith_out) *zenith_out = Zenith * 180.0 / M_PI;
-  if (azimuth_out) *azimuth_out = Azimuth * 180.0 / M_PI;
+
+  if (zenith_out)
+    *zenith_out = Zenith * 180.0 / M_PI;
+  if (azimuth_out)
+    *azimuth_out = Azimuth * 180.0 / M_PI;
 }
 
 /**
  * @brief Calcula el ángulo de visión del satélite para un píxel dado.
- * 
+ *
  * Para satélites geoestacionarios, calcula el ángulo cenital de visión
  * basado en la geometría entre el píxel terrestre y la posición del satélite.
- * 
+ *
  * @param pixel_lat Latitud del píxel en grados
  * @param pixel_lon Longitud del píxel en grados
  * @param sat_lon Longitud del satélite en grados (subpunto)
  * @param sat_height Altura del satélite sobre el elipsoide en metros
- * @param vza_out Puntero para retornar ángulo cenital de visión en grados [0-90]
+ * @param vza_out Puntero para retornar ángulo cenital de visión en grados
+ * [0-90]
  * @param vaa_out Puntero para retornar azimut de visión en grados [-180, 180]
  */
 static void compute_satellite_view_angles(float pixel_lat, float pixel_lon,
                                           float sat_lon, float sat_height,
                                           double *vza_out, double *vaa_out) {
   // Constantes del elipsoide WGS84
-  const double a = 6378137.0;        // Semi-eje mayor (m)
+  const double a = 6378137.0;           // Semi-eje mayor (m)
   const double f = 1.0 / 298.257223563; // Aplanamiento
-  
+
   // Convertir a radianes
   double lat_rad = pixel_lat * M_PI / 180.0;
   double lon_rad = pixel_lon * M_PI / 180.0;
   double sat_lon_rad = sat_lon * M_PI / 180.0;
-  
+
   // Posición del píxel en coordenadas cartesianas geocéntricas
-  double N = a / sqrt(1.0 - (2.0*f - f*f) * sin(lat_rad) * sin(lat_rad));
+  double N = a / sqrt(1.0 - (2.0 * f - f * f) * sin(lat_rad) * sin(lat_rad));
   double x_pixel = N * cos(lat_rad) * cos(lon_rad);
   double y_pixel = N * cos(lat_rad) * sin(lon_rad);
-  double z_pixel = N * (1.0 - (2.0*f - f*f)) * sin(lat_rad);
-  
+  double z_pixel = N * (1.0 - (2.0 * f - f * f)) * sin(lat_rad);
+
   // Posición del satélite (en el ecuador, sobre sat_lon)
   double sat_radius = a + sat_height;
   double x_sat = sat_radius * cos(sat_lon_rad);
   double y_sat = sat_radius * sin(sat_lon_rad);
   double z_sat = 0.0; // Satélite geoestacionario en el plano ecuatorial
-  
+
   // Vector del satélite al píxel (dirección de visión desde el satélite)
   double dx = x_pixel - x_sat;
   double dy = y_pixel - y_sat;
   double dz = z_pixel - z_sat;
-  double dist = sqrt(dx*dx + dy*dy + dz*dz);
-  
+  double dist = sqrt(dx * dx + dy * dy + dz * dz);
+
   // Normalizar el vector de visión
   dx /= dist;
   dy /= dist;
   dz /= dist;
-  
+
   // Vector normal local en el píxel (apunta hacia arriba desde la superficie)
-  double n_len = sqrt(x_pixel*x_pixel + y_pixel*y_pixel + z_pixel*z_pixel);
+  double n_len =
+      sqrt(x_pixel * x_pixel + y_pixel * y_pixel + z_pixel * z_pixel);
   double nx = x_pixel / n_len;
   double ny = y_pixel / n_len;
   double nz = z_pixel / n_len;
-  
+
   // Ángulo cenital de visión: ángulo entre la dirección de visión y la normal
   // cos(VZA) = -dot(view_direction, surface_normal)
   // El signo negativo porque view_direction apunta hacia el píxel (hacia abajo)
-  double cos_vza = -(dx*nx + dy*ny + dz*nz);
+  double cos_vza = -(dx * nx + dy * ny + dz * nz);
   double vza = acos(fmax(-1.0, fmin(1.0, cos_vza))) * 180.0 / M_PI;
-  
+
   // Azimut de visión: proyección en el plano local
   // Sistema local: Este-Norte-Arriba (ENU)
   double east_x = -sin(lon_rad);
   double east_y = cos(lon_rad);
   double east_z = 0.0;
-  
+
   double north_x = -sin(lat_rad) * cos(lon_rad);
   double north_y = -sin(lat_rad) * sin(lon_rad);
   double north_z = cos(lat_rad);
-  
-  double view_east = dx*east_x + dy*east_y + dz*east_z;
-  double view_north = dx*north_x + dy*north_y + dz*north_z;
+
+  double view_east = dx * east_x + dy * east_y + dz * east_z;
+  double view_north = dx * north_x + dy * north_y + dz * north_z;
   double vaa = atan2(view_east, view_north) * 180.0 / M_PI;
-  
-  if (vza_out) *vza_out = vza;
-  if (vaa_out) *vaa_out = vaa;
+
+  if (vza_out)
+    *vza_out = vza;
+  if (vaa_out)
+    *vaa_out = vaa;
 }
 
 /**
  * @brief Calcula mapas de geometría solar (SZA y SAA) para toda la imagen.
- * 
+ *
  * Esta función procesa píxel por píxel usando las coordenadas geográficas
  * precalculadas y los metadatos temporales del archivo NetCDF.
- * 
+ *
  * @param filename Ruta al archivo NetCDF GOES L1b
  * @param navla Malla de latitudes (ya calculada)
  * @param navlo Malla de longitudes (ya calculada)
@@ -840,16 +868,13 @@ static void compute_satellite_view_angles(float pixel_lat, float pixel_lon,
  * @param saa Estructura DataF de salida para Solar Azimuth Angle
  * @return 0 en éxito, ERRCODE en error
  */
-int compute_solar_angles_nc(const char *filename, 
-                            const DataF *navla, 
-                            const DataF *navlo,
-                            DataF *sza,
-                            DataF *saa) {
+int compute_solar_angles_nc(const char *filename, const DataF *navla,
+                            const DataF *navlo, DataF *sza, DataF *saa) {
   int ncid, retval;
-  
+
   if ((retval = nc_open(filename, NC_NOWRITE, &ncid)))
     ERR(retval);
-  
+
   // Leer metadatos de tiempo
   int time_varid;
   if ((retval = nc_inq_varid(ncid, "t", &time_varid)))
@@ -857,9 +882,9 @@ int compute_solar_angles_nc(const char *filename,
   double tiempo;
   if ((retval = nc_get_var_double(ncid, time_varid, &tiempo)))
     ERR(retval);
-  
+
   LOG_DEBUG("Tiempo J2000 leído del NetCDF: %.1f segundos", tiempo);
-  
+
   // Convertir tiempo J2000 a fecha/hora
   long tt = (long)(tiempo);
   time_t dt = 946728000 + tt; // Epoch J2000
@@ -870,58 +895,59 @@ int compute_solar_angles_nc(const char *filename,
   int hour = ts.tm_hour;
   int min = ts.tm_min;
   int sec = ts.tm_sec;
-  
+
   if ((retval = nc_close(ncid)))
     ERR(retval);
-  
+
   // Log de fecha/hora para debugging
-  LOG_DEBUG("Fecha/hora para cálculo solar: %04d-%02d-%02d %02d:%02d:%02d UTC", 
+  LOG_DEBUG("Fecha/hora para cálculo solar: %04d-%02d-%02d %02d:%02d:%02d UTC",
             year, month, day, hour, min, sec);
-  
+
   // Crear estructuras de salida
   *sza = dataf_create(navla->width, navla->height);
   *saa = dataf_create(navla->width, navla->height);
-  
+
   if (sza->data_in == NULL || saa->data_in == NULL) {
     LOG_FATAL("Falla de memoria al crear mapas de ángulos solares.");
     return ERRCODE;
   }
-  
+
   LOG_INFO("Calculando geometría solar para %04d-%02d-%02d %02d:%02d:%02d UTC",
            year, month, day, hour, min, sec);
-  
+
   double start_time = omp_get_wtime();
-  
-  // Calcular para cada píxel
-  #pragma omp parallel for
+
+// Calcular para cada píxel
+#pragma omp parallel for
   for (size_t i = 0; i < navla->size; i++) {
     float la = navla->data_in[i];
     float lo = navlo->data_in[i];
-    
+
     if (la == NonData || lo == NonData) {
       sza->data_in[i] = NonData;
       saa->data_in[i] = NonData;
     } else {
       double zenith, azimuth;
-      compute_sun_geometry(la, lo, year, month, day, hour, min, sec, 
-                          &zenith, &azimuth);
+      compute_sun_geometry(la, lo, year, month, day, hour, min, sec, &zenith,
+                           &azimuth);
       sza->data_in[i] = (float)zenith;
       saa->data_in[i] = (float)azimuth;
     }
   }
-  
+
   double elapsed = omp_get_wtime() - start_time;
   LOG_INFO("Geometría solar calculada en %.3f segundos.", elapsed);
-  
+
   return 0;
 }
 
 /**
- * @brief Calcula mapas de geometría del satélite (VZA y VAA) para toda la imagen.
- * 
+ * @brief Calcula mapas de geometría del satélite (VZA y VAA) para toda la
+ * imagen.
+ *
  * Para satélites geoestacionarios GOES, calcula los ángulos de visión desde
  * el satélite hacia cada píxel.
- * 
+ *
  * @param filename Ruta al archivo NetCDF GOES L1b
  * @param navla Malla de latitudes (ya calculada)
  * @param navlo Malla de longitudes (ya calculada)
@@ -929,104 +955,104 @@ int compute_solar_angles_nc(const char *filename,
  * @param vaa Estructura DataF de salida para View Azimuth Angle
  * @return 0 en éxito, ERRCODE en error
  */
-int compute_satellite_angles_nc(const char *filename,
-                                const DataF *navla,
-                                const DataF *navlo,
-                                DataF *vza,
-                                DataF *vaa) {
+int compute_satellite_angles_nc(const char *filename, const DataF *navla,
+                                const DataF *navlo, DataF *vza, DataF *vaa) {
   int ncid, varid, retval;
-  
+
   if ((retval = nc_open(filename, NC_NOWRITE, &ncid)))
     ERR(retval);
-  
+
   // Leer parámetros del satélite
   if ((retval = nc_inq_varid(ncid, "goes_imager_projection", &varid)))
     ERR(retval);
-  
+
   float sat_lon, sat_height_km;
-  if ((retval = nc_get_att_float(ncid, varid, "longitude_of_projection_origin", &sat_lon)))
+  if ((retval = nc_get_att_float(ncid, varid, "longitude_of_projection_origin",
+                                 &sat_lon)))
     ERR(retval);
-  if ((retval = nc_get_att_float(ncid, varid, "perspective_point_height", &sat_height_km)))
+  if ((retval = nc_get_att_float(ncid, varid, "perspective_point_height",
+                                 &sat_height_km)))
     ERR(retval);
-  
+
   if ((retval = nc_close(ncid)))
     ERR(retval);
-  
-  LOG_INFO("Calculando geometría del satélite (subpunto: %.1f°E, altura: %.0f km)",
-           sat_lon, sat_height_km);
-  
+
+  LOG_INFO(
+      "Calculando geometría del satélite (subpunto: %.1f°E, altura: %.0f km)",
+      sat_lon, sat_height_km);
+
   // Crear estructuras de salida
   *vza = dataf_create(navla->width, navla->height);
   *vaa = dataf_create(navla->width, navla->height);
-  
+
   if (vza->data_in == NULL || vaa->data_in == NULL) {
     LOG_FATAL("Falla de memoria al crear mapas de ángulos del satélite.");
     return ERRCODE;
   }
-  
+
   double start_time = omp_get_wtime();
-  
-  // Calcular para cada píxel
-  #pragma omp parallel for
+
+// Calcular para cada píxel
+#pragma omp parallel for
   for (size_t i = 0; i < navla->size; i++) {
     float la = navla->data_in[i];
     float lo = navlo->data_in[i];
-    
+
     if (la == NonData || lo == NonData) {
       vza->data_in[i] = NonData;
       vaa->data_in[i] = NonData;
     } else {
       double view_zenith, view_azimuth;
       compute_satellite_view_angles(la, lo, sat_lon, sat_height_km,
-                                   &view_zenith, &view_azimuth);
+                                    &view_zenith, &view_azimuth);
       vza->data_in[i] = (float)view_zenith;
       vaa->data_in[i] = (float)view_azimuth;
     }
   }
-  
+
   double elapsed = omp_get_wtime() - start_time;
   LOG_INFO("Geometría del satélite calculada en %.3f segundos.", elapsed);
-  
+
   return 0;
 }
 
 /**
  * @brief Calcula el azimut relativo entre el sol y el satélite.
- * 
+ *
  * El azimut relativo (RAA) es la diferencia angular entre el azimut solar
  * y el azimut de visión del satélite, normalizado al rango [0, 180].
- * 
+ *
  * @param saa Mapa de Solar Azimuth Angle (entrada)
  * @param vaa Mapa de View Azimuth Angle (entrada)
  * @param raa Mapa de Relative Azimuth Angle (salida)
  */
 void compute_relative_azimuth(const DataF *saa, const DataF *vaa, DataF *raa) {
   *raa = dataf_create(saa->width, saa->height);
-  
+
   if (raa->data_in == NULL) {
     LOG_FATAL("Falla de memoria al crear mapa de azimut relativo.");
     return;
   }
-  
-  #pragma omp parallel for
+
+#pragma omp parallel for
   for (size_t i = 0; i < saa->size; i++) {
     float sa = saa->data_in[i];
     float va = vaa->data_in[i];
-    
+
     if (sa == NonData || va == NonData) {
       raa->data_in[i] = NonData;
     } else {
       // Diferencia absoluta
       float diff = fabsf(sa - va);
-      
+
       // Normalizar al rango [0, 180]
       if (diff > 180.0f) {
         diff = 360.0f - diff;
       }
-      
+
       raa->data_in[i] = diff;
     }
   }
-  
+
   LOG_INFO("Azimut relativo calculado para %zu píxeles.", raa->size);
 }

@@ -45,6 +45,7 @@ typedef struct {
     bool use_citylights;           // --citylights (solo night/composite)
     bool use_alpha;                // --alpha
     bool force_geotiff;            // --geotiff
+    bool use_full_res;             // --full-res
     
     // Interno
     bool is_l2_product;            // Detectado automáticamente (contiene "CMIP")

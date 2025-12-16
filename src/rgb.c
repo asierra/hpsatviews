@@ -184,28 +184,24 @@ static ImageData compose_truecolor(RgbContext *ctx) {
 }
 
 static ImageData compose_night(RgbContext *ctx) {
-    // TODO: Implementar composición nocturna completa con pseudocolor y citylights
-    // Por ahora retornamos una imagen simple del canal 13
-    
-    DataF *c13 = &ctx->channels[13].fdata;
-    
-    // Crear imagen grayscale del canal IR
-    ImageData result = image_create(c13->width, c13->height, 1);
-    if (!result.data) {
-        LOG_ERROR("Fallo al crear imagen para modo night");
-        return result;
+    // Cargar imagen de fondo (luces de ciudad) si se solicita
+    ImageData fondo_img = {0};
+    const ImageData* fondo_ptr = NULL;
+    if (ctx->opts.use_citylights) {
+        const char* bg_path = (ctx->channels[ctx->ref_channel_idx].fdata.width == 2500)
+                ? "/usr/local/share/lanot/images/land_lights_2012_conus.png"
+                : "/usr/local/share/lanot/images/land_lights_2012_fd.png";
+        LOG_INFO("Cargando imagen de fondo: %s", bg_path);
+        fondo_img = reader_load_png(bg_path);
+        if (fondo_img.data != NULL) {
+            fondo_ptr = &fondo_img;
+        } else {
+            LOG_WARN("No se pudo cargar la imagen de fondo de luces de ciudad.");
+        }
     }
-    
-    // Normalizar valores de temperatura a 0-255
-    for (unsigned int i = 0; i < c13->width * c13->height; i++) {
-        float val = c13->data_in[i];
-        // Normalizar temperatura de 180K-320K a 0-255
-        int normalized = (int)((val - 180.0f) * 255.0f / (320.0f - 180.0f));
-        if (normalized < 0) normalized = 0;
-        if (normalized > 255) normalized = 255;
-        result.data[i] = (unsigned char)normalized;
-    }
-    
+
+    ImageData result = create_nocturnal_pseudocolor(&ctx->channels[13].fdata, fondo_ptr);
+    image_destroy(&fondo_img); // Liberar la imagen de fondo si fue cargada
     return result;
 }
 
@@ -261,22 +257,62 @@ static ImageData compose_composite(RgbContext *ctx) {
     ImageData diurna = compose_truecolor(ctx);
     
     // Aplicar histogram/CLAHE a la diurna ANTES del blend
-    if (ctx->opts.apply_histogram) image_apply_histogram(diurna);
-    if (ctx->opts.apply_clahe) {
-        image_apply_clahe(diurna, ctx->opts.clahe_tiles_x, 
-                          ctx->opts.clahe_tiles_y, ctx->opts.clahe_clip_limit);
+    //if (ctx->opts.apply_histogram) image_apply_histogram(diurna);
+    //if (ctx->opts.apply_clahe) {
+    //    image_apply_clahe(diurna, ctx->opts.clahe_tiles_x, 
+    //                      ctx->opts.clahe_tiles_y, ctx->opts.clahe_clip_limit);
+    //}
+    
+    // Para el modo composite, forzamos el uso de citylights para la parte nocturna.
+    // Guardamos el estado original de la opción para restaurarlo después.
+    bool original_use_citylights = ctx->opts.use_citylights;
+    ctx->opts.use_citylights = true;
+    ImageData nocturna = compose_night(ctx);
+    ctx->opts.use_citylights = original_use_citylights; // Restaurar estado original
+    
+    // --- INICIO: Corrección de dimensiones para la máscara ---
+    DataF *c13_data = &ctx->channels[13].fdata;
+    DataF nav_lat_resampled = {0}, nav_lon_resampled = {0};
+    DataF *nav_lat_ptr = &ctx->nav_lat;
+    DataF *nav_lon_ptr = &ctx->nav_lon;
+
+    // Si la navegación es más grande que el canal 13, hacer downsampling.
+    if (ctx->nav_lat.width > c13_data->width) {
+        int factor = ctx->nav_lat.width / c13_data->width;
+        LOG_INFO("Haciendo downsampling de navegación para máscara día/noche (factor %d)", factor);
+        nav_lat_resampled = downsample_boxfilter(ctx->nav_lat, factor);
+        nav_lon_resampled = downsample_boxfilter(ctx->nav_lon, factor);
+        nav_lat_ptr = &nav_lat_resampled;
+        nav_lon_ptr = &nav_lon_resampled;
+    }
+    // --- FIN: Corrección de dimensiones ---
+
+    // Genera máscara día/noche usando los datos del contexto
+    float day_night_ratio = 0.0f;
+    ImageData mask = create_daynight_mask(
+        ctx->channels[13], 
+        *nav_lat_ptr, 
+        *nav_lon_ptr, 
+        &day_night_ratio, 
+        263.15f);
+    
+    ImageData result = {0};
+    // Si hay una porción significativa de noche (>15%), mezclamos las imágenes.
+    // De lo contrario, usamos la imagen diurna directamente para ahorrar procesamiento.
+    if (day_night_ratio > 0.15f && mask.data) {
+        LOG_INFO("Mezclando imágenes diurna y nocturna (ratio día/noche: %.2f)", day_night_ratio);
+        result = blend_images(nocturna, diurna, mask);
+        image_destroy(&diurna); // La diurna ya no se necesita, blend_images crea una nueva
+    } else {
+        LOG_INFO("La escena es mayormente diurna, usando solo imagen diurna.");
+        result = diurna; // Asignamos la imagen diurna directamente al resultado
     }
     
-    // Genera imagen nocturna (con citylights)
-    ImageData nocturna = compose_night(ctx);
-    
-    // TODO: Generar máscara día/noche real con solar_elevation
-    // Por ahora, usamos la imagen diurna como resultado
-    ImageData result = diurna;
-    
-    // Limpiar temporales
+    // Liberar las imágenes temporales que ya no se necesitan
     image_destroy(&nocturna);
-    
+    image_destroy(&mask);
+    dataf_destroy(&nav_lat_resampled); // Es seguro llamar aunque esté vacía
+    dataf_destroy(&nav_lon_resampled);
     return result;
 }
 
@@ -363,8 +399,16 @@ static bool load_channels(RgbContext *ctx, const RgbStrategy *strategy) {
             }
             
             // Identificar canal de referencia (mayor resolución)
-            if (ctx->ref_channel_idx == 0 || ctx->channels[cn].native_resolution_km < ctx->channels[ctx->ref_channel_idx].native_resolution_km) {
-                ctx->ref_channel_idx = cn;
+            if (ctx->opts.use_full_res) {
+                // Modo --full-res: buscar la MAYOR resolución (valor en km MÁS PEQUEÑO)
+                if (ctx->ref_channel_idx == 0 || ctx->channels[cn].native_resolution_km < ctx->channels[ctx->ref_channel_idx].native_resolution_km) {
+                    ctx->ref_channel_idx = cn;
+                }
+            } else {
+                // Modo por defecto: buscar la MENOR resolución (valor en km MÁS GRANDE)
+                if (ctx->ref_channel_idx == 0 || ctx->channels[cn].native_resolution_km > ctx->channels[ctx->ref_channel_idx].native_resolution_km) {
+                    ctx->ref_channel_idx = cn;
+                }
             }
         }
     }
@@ -373,23 +417,36 @@ static bool load_channels(RgbContext *ctx, const RgbStrategy *strategy) {
     // Resample channels to match reference resolution
     float ref_res = ctx->channels[ctx->ref_channel_idx].native_resolution_km;
     for (int i = 0; i < ctx->channel_set->count; i++) {
-        int cn = atoi(ctx->channel_set->channels[i].name + 1);
-        if (cn > 0 && cn <= 16 && ctx->channels[cn].fdata.data_in != NULL) {
-            float res = ctx->channels[cn].native_resolution_km;
-            // Allow small tolerance for float comparison
-            if (res > ref_res + 0.01f) {
-                int factor = (int)(res / ref_res + 0.5f);
-                if (factor > 1) {
-                    LOG_INFO("Upsampling C%02d (%.1fkm -> %.1fkm, factor %d)", cn, res, ref_res, factor);
-                    DataF upsampled = upsample_bilinear(ctx->channels[cn].fdata, factor);
-                    if (upsampled.data_in) {
-                        dataf_destroy(&ctx->channels[cn].fdata);
-                        ctx->channels[cn].fdata = upsampled;
-                    } else {
-                        snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Fallo al upsamplear canal C%02d", cn);
-                        return false;
-                    }
+        int cn = atoi(ctx->channel_set->channels[i].name + 1); // "C01" -> 1
+        if (cn == ctx->ref_channel_idx || ctx->channels[cn].fdata.data_in == NULL) {
+            continue; // No remuestrear el canal de referencia o canales vacíos
+        }
+
+        float res = ctx->channels[cn].native_resolution_km;
+        float factor_f = res / ref_res;
+
+        if (fabs(factor_f - 1.0f) > 0.01f) {
+            int factor = (int)(factor_f + 0.5f);
+            DataF resampled = {0};
+
+            if (factor_f < 1.0f) { // La resolución de este canal es mayor que la de referencia -> Downsample
+                factor = (int)((1.0f / factor_f) + 0.5f);
+                LOG_INFO("Downsampling C%02d (%.1fkm -> %.1fkm, factor %d)", cn, res, ref_res, factor);
+                resampled = downsample_boxfilter(ctx->channels[cn].fdata, factor);
+            } else { // La resolución de este canal es menor que la de referencia -> Upsample
+                LOG_INFO("Upsampling C%02d (%.1fkm -> %.1fkm, factor %d)", cn, res, ref_res, factor);
+                resampled = upsample_bilinear(ctx->channels[cn].fdata, factor);
+            }
+
+            if (resampled.data_in) {
+                dataf_destroy(&ctx->channels[cn].fdata);
+                ctx->channels[cn].fdata = resampled;
+            } else {
+                snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Fallo al remuestrear el canal C%02d", cn);
+                for (int j = 0; j < i; j++) { // Limpiar los ya remuestreados en esta vuelta
+                    dataf_destroy(&ctx->channels[atoi(ctx->channel_set->channels[j].name + 1)].fdata);
                 }
+                return false;
             }
         }
     }

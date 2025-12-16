@@ -4,12 +4,10 @@
  */
 #include <math.h>
 #include <omp.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "datanc.h"
-#include "image.h"
+#include "truecolor.h"
 #include "logger.h"
 #include "rayleigh.h"
 #include "reader_nc.h"
@@ -269,6 +267,8 @@ ImageData create_truecolor_rgb_rayleigh(DataF c01_blue, DataF c02_red, DataF c03
   
   return imout;
 }
+
+
 ImageData create_multiband_rgb(const DataF* r_ch, const DataF* g_ch, const DataF* b_ch,
                                float r_min, float r_max, float g_min, float g_max,
                                float b_min, float b_max) {

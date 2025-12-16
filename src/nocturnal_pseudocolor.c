@@ -61,6 +61,11 @@ ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* 
           if (f >= paleta[t].d && f < paleta[t + 1].d)
             break;
 
+        // Si el bucle termina, 't' será 255, lo que significa que el valor
+        // es mayor o igual al último umbral. Clampeamos 't' a 254 para
+        // evitar un acceso fuera de límites en paleta[t+1].
+        if (t == 255) t = 254;
+
         r = (unsigned char)(255 * paleta[t].r);
         g = (unsigned char)(255 * paleta[t].g);
         b = (unsigned char)(255 * paleta[t].b);

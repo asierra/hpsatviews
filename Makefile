@@ -5,10 +5,10 @@ LDFLAGS=-lm -lnetcdf -lpng -fopenmp $(shell gdal-config --libs)
 # Nombre del ejecutable final
 TARGET = hpsatviews
 
-# Directorio de archivos fuente
+# Directorios
 SRC_DIR = src
-# Directorio de archivos objeto (se crean en raíz)
-OBJ_DIR = .
+# Cambio clave: definimos una carpeta dedicada para objetos
+OBJ_DIR = obj
 
 # Archivos de cabecera en include/
 DEPS = $(wildcard include/*.h)
@@ -31,24 +31,33 @@ SRCS = $(SRC_DIR)/main.c \
        $(SRC_DIR)/reader_nc.c \
        $(SRC_DIR)/reader_png.c \
        $(SRC_DIR)/singlegray.c \
-       $(SRC_DIR)/truecolor_rgb.c \
+       $(SRC_DIR)/truecolor.c \
        $(SRC_DIR)/writer_geotiff.c \
        $(SRC_DIR)/writer_png.c \
        $(SRC_DIR)/filename_utils.c \
        $(SRC_DIR)/clip_loader.c
 
-# Archivos objeto (en raíz)
+# Generación de la lista de objetos: 
+# Cambia src/archivo.c -> obj/archivo.o
 OBJS = $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SRCS))
 
 .PHONY: all clean
 
 all: $(TARGET)
 
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c $(DEPS)
+# Regla para crear el directorio de objetos si no existe
+$(OBJ_DIR):
+	mkdir -p $(OBJ_DIR)
+
+# Regla de compilación
+# Nota el "| $(OBJ_DIR)". Esto es un "order-only prerequisite".
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c $(DEPS) | $(OBJ_DIR)
 	$(CC) -c -o $@ $< $(CFLAGS)
 
+# Linkeo final
 $(TARGET): $(OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
 
 clean:
-	rm -f $(OBJ_DIR)/*.o *~ $(TARGET)
+	rm -rf $(OBJ_DIR) $(TARGET) *~
+

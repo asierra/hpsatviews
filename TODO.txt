@@ -93,3 +93,10 @@ umbrales.
 
 https://earthobservatory.nasa.gov/features/NightLights/page3.php
 
+
+Tue Dec 16 03:23:59 PM CST 2025
+
+Muy buenos avances, ya casi queda como estaba el original. Falta
+afinar detalles con el composite, aplicar rayleigh y algún realce de
+brillo.
+
