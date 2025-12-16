@@ -96,7 +96,9 @@ https://earthobservatory.nasa.gov/features/NightLights/page3.php
 
 Tue Dec 16 03:23:59 PM CST 2025
 
-Muy buenos avances, ya casi queda como estaba el original. Falta
-afinar detalles con el composite, aplicar rayleigh y algún realce de
-brillo.
+Muy buenos avances, ya casi queda como estaba el original.
+
+Falta afinar detalles con el composite, aplicar rayleigh y algún
+realce de brillo. Es posible que haya remuestreos innecesarios, basta
+con guardar desde el principio la resolución de referencia.
 
