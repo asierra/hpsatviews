@@ -92,6 +92,7 @@ bool rgb_parse_options(ArgParser *parser, RgbContext *ctx) {
     ctx->opts.apply_rayleigh = ap_found(parser, "rayleigh");
     ctx->opts.use_citylights = ap_found(parser, "citylights");
     ctx->opts.use_alpha = ap_found(parser, "alpha");
+    ctx->opts.use_full_res = ap_found(parser, "full-res");
     
     // Parsear opciones con valores
     ctx->opts.mode = ap_get_str_value(parser, "mode");
@@ -118,13 +119,32 @@ bool rgb_parse_options(ArgParser *parser, RgbContext *ctx) {
     }
     
     // Parsear clip
-    // TODO: Implementar la lógica completa de clip en una fase posterior
     ctx->opts.has_clip = false;
     if (ap_found(parser, "clip")) {
-        const char *clip_name = ap_get_str_value(parser, "clip");
-        if (clip_name) {
-            // Por ahora, solo marcamos que hay clip pero no procesamos las coordenadas
-            LOG_WARN("La opción --clip aún no está completamente implementada en la refactorización");
+        const char* clip_value = ap_get_str_value(parser, "clip");
+        if (clip_value && strlen(clip_value) > 0) {
+            // Intentar parsear como 4 coordenadas
+            int parsed = sscanf(clip_value, "%f%*[, ]%f%*[, ]%f%*[, ]%f", 
+                               &ctx->opts.clip_coords[0], &ctx->opts.clip_coords[1], 
+                               &ctx->opts.clip_coords[2], &ctx->opts.clip_coords[3]);
+            
+            if (parsed == 4) {
+                ctx->opts.has_clip = true;
+                LOG_INFO("Usando recorte con coordenadas directas");
+            } else {
+                // Intentar cargar desde CSV
+                GeoClip clip = buscar_clip_por_clave("/usr/local/share/lanot/docs/recortes_coordenadas.csv", clip_value);
+                if (clip.encontrado) {
+                    ctx->opts.clip_coords[0] = (float)clip.ul_x; // lon_min
+                    ctx->opts.clip_coords[1] = (float)clip.ul_y; // lat_max
+                    ctx->opts.clip_coords[2] = (float)clip.lr_x; // lon_max
+                    ctx->opts.clip_coords[3] = (float)clip.lr_y; // lat_min
+                    ctx->opts.has_clip = true;
+                    LOG_INFO("Usando recorte '%s': %s", clip_value, clip.region);
+                } else {
+                    LOG_WARN("No se pudo cargar el recorte '%s'", clip_value);
+                }
+            }
         }
     }
     
@@ -270,22 +290,10 @@ static ImageData compose_composite(RgbContext *ctx) {
     ImageData nocturna = compose_night(ctx);
     ctx->opts.use_citylights = original_use_citylights; // Restaurar estado original
     
-    // --- INICIO: Corrección de dimensiones para la máscara ---
-    DataF *c13_data = &ctx->channels[13].fdata;
-    DataF nav_lat_resampled = {0}, nav_lon_resampled = {0};
+    // La navegación ya está remuestreada al tamaño de referencia en process_geospatial,
+    // así que podemos usarla directamente
     DataF *nav_lat_ptr = &ctx->nav_lat;
     DataF *nav_lon_ptr = &ctx->nav_lon;
-
-    // Si la navegación es más grande que el canal 13, hacer downsampling.
-    if (ctx->nav_lat.width > c13_data->width) {
-        int factor = ctx->nav_lat.width / c13_data->width;
-        LOG_INFO("Haciendo downsampling de navegación para máscara día/noche (factor %d)", factor);
-        nav_lat_resampled = downsample_boxfilter(ctx->nav_lat, factor);
-        nav_lon_resampled = downsample_boxfilter(ctx->nav_lon, factor);
-        nav_lat_ptr = &nav_lat_resampled;
-        nav_lon_ptr = &nav_lon_resampled;
-    }
-    // --- FIN: Corrección de dimensiones ---
 
     // Genera máscara día/noche usando los datos del contexto
     float day_night_ratio = 0.0f;
@@ -311,8 +319,6 @@ static ImageData compose_composite(RgbContext *ctx) {
     // Liberar las imágenes temporales que ya no se necesitan
     image_destroy(&nocturna);
     image_destroy(&mask);
-    dataf_destroy(&nav_lat_resampled); // Es seguro llamar aunque esté vacía
-    dataf_destroy(&nav_lon_resampled);
     return result;
 }
 
@@ -398,7 +404,7 @@ static bool load_channels(RgbContext *ctx, const RgbStrategy *strategy) {
                 return false;
             }
             
-            // Identificar canal de referencia (mayor resolución)
+            // Identificar canal de referencia
             if (ctx->opts.use_full_res) {
                 // Modo --full-res: buscar la MAYOR resolución (valor en km MÁS PEQUEÑO)
                 if (ctx->ref_channel_idx == 0 || ctx->channels[cn].native_resolution_km < ctx->channels[ctx->ref_channel_idx].native_resolution_km) {
@@ -412,6 +418,16 @@ static bool load_channels(RgbContext *ctx, const RgbStrategy *strategy) {
             }
         }
     }
+    
+    // Log de canales cargados para debug
+    LOG_DEBUG("Canales cargados:");
+    for (int i = 0; i < ctx->channel_set->count; i++) {
+        int cn = atoi(ctx->channel_set->channels[i].name + 1);
+        if (ctx->channels[cn].fdata.data_in) {
+            LOG_DEBUG("  C%02d: %.1f km", cn, ctx->channels[cn].native_resolution_km);
+        }
+    }
+    
     LOG_INFO("Canal de referencia: C%02d (%.1fkm)", ctx->ref_channel_idx, ctx->channels[ctx->ref_channel_idx].native_resolution_km);
     
     // Resample channels to match reference resolution
@@ -470,8 +486,47 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
         return false;
     }
     
-    // TODO: Implementar la lógica completa de reproyección y recorte de la v2.
-    // Por ahora, es un placeholder.
+    // 3. Remuestrear navegación al tamaño del canal de referencia si es necesario
+    if (ctx->has_navigation && ctx->ref_channel_idx > 0) {
+        size_t nav_width = ctx->nav_lat.width;
+        size_t ref_width = ctx->channels[ctx->ref_channel_idx].fdata.width;
+        
+        if (nav_width != ref_width) {
+            if (nav_width > ref_width) {
+                // Downsampling de navegación
+                int factor = nav_width / ref_width;
+                LOG_INFO("Remuestreando navegación al tamaño de referencia (factor downsample %d)", factor);
+                DataF nav_lat_resampled = downsample_boxfilter(ctx->nav_lat, factor);
+                DataF nav_lon_resampled = downsample_boxfilter(ctx->nav_lon, factor);
+                
+                if (nav_lat_resampled.data_in && nav_lon_resampled.data_in) {
+                    dataf_destroy(&ctx->nav_lat);
+                    dataf_destroy(&ctx->nav_lon);
+                    ctx->nav_lat = nav_lat_resampled;
+                    ctx->nav_lon = nav_lon_resampled;
+                } else {
+                    LOG_ERROR("Fallo al remuestrear la navegación");
+                    return false;
+                }
+            } else {
+                // Upsampling de navegación
+                int factor = ref_width / nav_width;
+                LOG_INFO("Remuestreando navegación al tamaño de referencia (factor upsample %d)", factor);
+                DataF nav_lat_resampled = upsample_bilinear(ctx->nav_lat, factor);
+                DataF nav_lon_resampled = upsample_bilinear(ctx->nav_lon, factor);
+                
+                if (nav_lat_resampled.data_in && nav_lon_resampled.data_in) {
+                    dataf_destroy(&ctx->nav_lat);
+                    dataf_destroy(&ctx->nav_lon);
+                    ctx->nav_lat = nav_lat_resampled;
+                    ctx->nav_lon = nav_lon_resampled;
+                } else {
+                    LOG_ERROR("Fallo al remuestrear la navegación");
+                    return false;
+                }
+            }
+        }
+    }
     
     return true;
 }
@@ -638,6 +693,42 @@ int run_rgb(ArgParser *parser) {
     if (ctx.final_image.data == NULL) {
         LOG_ERROR("Fallo al generar la imagen RGB para el modo '%s'.", strategy->mode_name);
         goto cleanup;
+    }
+
+    // Paso 6.5: Reproyección (si fue solicitada)
+    if (ctx.opts.do_reprojection) {
+        if (!ctx.has_navigation) {
+            LOG_ERROR("La reproyección fue solicitada pero no se pudo cargar la navegación.");
+            goto cleanup;
+        }
+        
+        LOG_INFO("Iniciando reproyección de imagen RGB a coordenadas geográficas...");
+        ImageData reprojected = reproject_image_to_geographics(
+            &ctx.final_image, &ctx.nav_lat, &ctx.nav_lon, 
+            ctx.channels[ctx.ref_channel_idx].native_resolution_km,
+            ctx.opts.has_clip ? ctx.opts.clip_coords : NULL
+        );
+        
+        if (reprojected.data == NULL) {
+            LOG_ERROR("Fallo durante la reproyección de la imagen RGB.");
+            goto cleanup;
+        }
+        
+        image_destroy(&ctx.final_image);
+        ctx.final_image = reprojected;
+        
+        // Actualizar límites geográficos para GeoTIFF
+        if (ctx.opts.has_clip) {
+            ctx.final_lon_min = ctx.opts.clip_coords[0];
+            ctx.final_lat_max = ctx.opts.clip_coords[1];
+            ctx.final_lon_max = ctx.opts.clip_coords[2];
+            ctx.final_lat_min = ctx.opts.clip_coords[3];
+        } else {
+            ctx.final_lon_min = ctx.nav_lon.fmin;
+            ctx.final_lon_max = ctx.nav_lon.fmax;
+            ctx.final_lat_min = ctx.nav_lat.fmin;
+            ctx.final_lat_max = ctx.nav_lat.fmax;
+        }
     }
 
     // Paso 7: Post-procesamiento (gamma, histogram, CLAHE, scale, alpha)

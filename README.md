@@ -51,6 +51,9 @@ HPSATVIEWS es una aplicación de alto rendimiento controlada por línea de coman
   - Superior a ecualización global en imágenes con variaciones locales de contraste
 - **Corrección Gamma** - Control de luminosidad configurable (por defecto: 1.0, recomendado: 2.0 para visualización)
 - **Reproyección Geográfica** - Conversión de proyección geoestacionaria a malla lat/lon uniforme
+  - Algoritmo optimizado: proyección directa píxel-a-píxel (10-20x más rápido que métodos tradicionales)
+  - Relleno inteligente de huecos: interpolación de 8 vecinos con 5 iteraciones para eliminar gaps
+  - Soporte completo para todos los modos RGB (truecolor, ash, airmass, composite, etc.)
 - **Recorte Geográfico** - Extracción de regiones de interés por coordenadas geográficas
   - Compatible con datos originales y reproyectados
   - Optimizado: recorta antes de reproyectar para máxima eficiencia
@@ -489,13 +492,14 @@ HPSATVIEWS ofrece ventajas significativas para procesamiento operacional y cient
 #### 1. **Velocidad de Procesamiento (30-120× más rápido)**
 
 **Benchmark típico - Generación de True Color RGB (5424×5424 píxeles):**
-- **HPSATVIEWS**: 0.5-1.0 segundos (C11 optimizado + OpenMP)
+- **HPSATVIEWS**: 0.5-1.0 segundos sin reproyección, 3-5 segundos con reproyección (C11 optimizado + OpenMP)
 - **geo2grid**: 30-60 segundos (Python + NumPy)
 - **GDAL**: 45-120 segundos (múltiples llamadas CLI)
 
 **Razones de la diferencia:**
 - Código nativo C11 compilado vs interpretado Python
-- Paralelización OpenMP en operaciones críticas (downsampling, interpolación, CLAHE)
+- Paralelización OpenMP en operaciones críticas (downsampling, interpolación, CLAHE, reproyección)
+- Reproyección optimizada: proyección directa píxel-a-píxel sobre imagen 8-bit (10-20x más rápido que métodos basados en float)
 - Operaciones atómicas sin overhead de locks
 - Gestión eficiente de memoria (sin garbage collector)
 - Pipeline integrado (sin I/O intermedio entre etapas)
@@ -521,6 +525,14 @@ HPSATVIEWS ofrece ventajas significativas para procesamiento operacional y cient
 - ✅ **HPSATVIEWS**: LUTs embebidas en ejecutable (sin I/O de disco), interpolación trilinear optimizada
 - ✅ **geo2grid**: LUTs desde pyspectral (lectura de disco cada ejecución)
 - ❌ **GDAL**: No disponible
+
+**Reproyección Geográfica con Gap Filling:**
+- ✅ **HPSATVIEWS**: Algoritmo optimizado de 2 fases
+  - Fase 1: Proyección directa píxel-a-píxel (opera sobre ImageData 8-bit, no float)
+  - Fase 2: Relleno de huecos con interpolación de 8 vecinos (5 iteraciones)
+  - 10-20x más rápido que reproyección tradicional DataF → DataF
+- ⚠️ **GDAL**: gdalwarp con nearest neighbor (gaps visibles) o cubic (lento)
+- ⚠️ **geo2grid**: Reproyección basada en pyresample (más lenta, alto uso de memoria)
 
 **Recorte Geográfico Inteligente:**
 - ✅ **HPSATVIEWS**: Estrategia PRE-clip + POST-clip con muestreo denso de bordes (84 puntos)

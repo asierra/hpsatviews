@@ -317,48 +317,6 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
   return 0;
 }
 
-// Carga un conjunto de datos en NetCDF y lo pone en una estructura DataF
-int load_nc_float(const char *filename, DataF *datanc, const char *variable) {
-  int ncid, varid;
-  int retval;
-
-  if ((retval = nc_open(filename, NC_NOWRITE, &ncid)))
-    ERR(retval);
-
-  int xid, yid;
-  if ((retval = nc_inq_dimid(ncid, "x", &xid)))
-    ERR(retval);
-  if ((retval = nc_inq_dimid(ncid, "y", &yid)))
-    ERR(retval);
-
-  // Recuperamos las dimensiones de los datos
-  if ((retval = nc_inq_dimlen(ncid, xid, &datanc->width)))
-    ERR(retval);
-  if ((retval = nc_inq_dimlen(ncid, yid, &datanc->height)))
-    ERR(retval);
-  datanc->size = datanc->width * datanc->height;
-  printf("Dimensiones x %lu y %lu\n", datanc->width, datanc->height);
-
-  // Obtenemos el id de la variable
-  if ((retval = nc_inq_varid(ncid, variable, &varid)))
-    ERR(retval);
-
-  // Apartamos memoria para los datos
-  datanc->data_in =
-      malloc(sizeof(float) *
-             datanc->size); // This function seems unused, but let's fix it.
-
-  // Recupera los datos
-  if ((retval = nc_get_var_float(ncid, varid, datanc->data_in)))
-    ERR(retval);
-
-  if ((retval = nc_close(ncid)))
-    ERR(retval);
-
-  printf("Exito decodificando %s!\n", filename);
-  return 0;
-}
-
 double rad2deg = 180.0 / M_PI;
 float hsat, sm_maj, sm_min, lambda_0, H;
 
@@ -586,72 +544,6 @@ int create_navigation_from_reprojected_bounds(DataF *navla, DataF *navlo,
   navlo->fmin = lon_min;
   navlo->fmax = lon_max;
   return 0;
-}
-
-/*
- * Carga una variable 2D genérica de un NetCDF en una estructura DataF.
- * Asume que las dimensiones son [y, x] o [height, width].
- */
-DataF dataf_load_from_netcdf(const char *filename, const char *varname) {
-  DataF data = {0}; // Inicializa la estructura a cero
-  int ncid, retval, varid, ndims;
-  int dimids[NC_MAX_VAR_DIMS];
-  size_t height, width;
-
-  if ((retval = nc_open(filename, NC_NOWRITE, &ncid))) {
-    LOG_ERROR("NetCDF error abriendo %s: %s", filename, nc_strerror(retval));
-    return data; // Retorna estructura vacía
-  }
-
-  if ((retval = nc_inq_varid(ncid, varname, &varid))) {
-    LOG_ERROR("No se encontró la variable '%s' en %s: %s", varname, filename,
-              nc_strerror(retval));
-    nc_close(ncid);
-    return data;
-  }
-
-  if ((retval = nc_inq_varndims(ncid, varid, &ndims))) {
-    LOG_ERROR("Error al leer ndims para %s: %s", varname, nc_strerror(retval));
-    nc_close(ncid);
-    return data;
-  }
-
-  if (ndims != 2) {
-    LOG_ERROR("La variable '%s' no es 2D (tiene %d dims).", varname, ndims);
-    nc_close(ncid);
-    return data;
-  }
-
-  if ((retval = nc_inq_vardimid(ncid, varid, dimids))) {
-    LOG_ERROR("Error al leer dimids para %s: %s", varname, nc_strerror(retval));
-    nc_close(ncid);
-    return data;
-  }
-
-  // Asume que las dimensiones son [y, x]
-  if ((retval = nc_inq_dimlen(ncid, dimids[0], &height))) { /*...*/
-  }
-  if ((retval = nc_inq_dimlen(ncid, dimids[1], &width))) { /*...*/
-  }
-
-  // Crear la estructura DataF
-  data = dataf_create(width, height);
-  if (data.data_in == NULL) {
-    LOG_FATAL("Falla de memoria al crear DataF para %s", varname);
-    nc_close(ncid);
-    return data;
-  }
-
-  // Leer los datos
-  if ((retval = nc_get_var_float(ncid, varid, data.data_in))) {
-    LOG_ERROR("Error al leer datos de '%s': %s", varname, nc_strerror(retval));
-    dataf_destroy(&data); // Libera memoria si la lectura falla
-  }
-
-  // TODO: Leer NonData/_FillValue y fmin/fmax si es necesario
-
-  nc_close(ncid);
-  return data;
 }
 
 /**

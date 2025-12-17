@@ -8,17 +8,7 @@
 #define HPSATVIEWS_REPROJECTION_H_
 
 #include "datanc.h"
-
-DataF reproject_to_geographics(const DataF* source_data, const char* nav_reference_file,
-                               float native_resolution_km,
-                               float* out_lon_min, float* out_lon_max,
-                               float* out_lat_min, float* out_lat_max);
-
-DataF reproject_to_geographics_with_nav(const DataF* source_data, const DataF* navla, const DataF* navlo,
-                                        float native_resolution_km,
-                                        float* out_lon_min, float* out_lon_max,
-                                        float* out_lat_min, float* out_lat_max,
-                                        const float* clip_coords);
+#include "image.h"
 
 /**
  * @brief Encuentra el píxel más cercano a una coordenada geográfica dada en una malla no reproyectada.
@@ -60,5 +50,17 @@ int reprojection_find_bounding_box(const DataF* navla, const DataF* navlo,
                                    float clip_lon_max, float clip_lat_min,
                                    int* out_x_start, int* out_y_start,
                                    int* out_width, int* out_height);
+
+/**
+ * @brief Reproyecta una imagen de su proyección nativa a coordenadas geográficas.
+ *
+ * @param src_image La imagen de origen (en proyección geoestacionaria).
+ * @param navla Malla de latitudes correspondiente a la imagen de origen.
+ * @param navlo Malla de longitudes correspondiente a la imagen de origen.
+ * @param native_resolution_km Resolución nativa del sensor en km.
+ * @param clip_coords Opcional, para recortar la salida a un dominio geográfico.
+ * @return Una nueva ImageData reproyectada. El llamador debe liberarla.
+ */
+ImageData reproject_image_to_geographics(const ImageData* src_image, const DataF* navla, const DataF* navlo, float native_resolution_km, const float* clip_coords);
 
 #endif /* HPSATVIEWS_REPROJECTION_H_ */

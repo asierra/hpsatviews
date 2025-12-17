@@ -8,4 +8,6 @@
 
 ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha, const CPTData* cpt);
 
+ImageData create_single_grayb(DataB c01, bool invert_value, bool use_alpha, const CPTData* cpt);
+
 #endif
