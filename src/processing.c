@@ -1,5 +1,5 @@
 /*
- * Single-channel processing module (singlegray and pseudocolor)
+ * Single-channel processing module (gray and pseudocolor)
  *
  * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Laboratorio Nacional de Observación de la Tierra, UNAM
@@ -16,7 +16,7 @@
 #include "image.h"
 #include "datanc.h"
 #include "clip_loader.h"
-#include "singlegray.h"
+#include "gray.h"
 #include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -146,7 +146,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
             }
         }
     } else {
-        const char* mode_name = is_pseudocolor ? "pseudocolor" : "singlegray";
+        const char* mode_name = is_pseudocolor ? "pseudocolor" : "gray";
         const char* extension = force_geotiff ? ".tif" : ".png";
         char* base_filename = generate_default_output_filename(fnc01, mode_name, extension);
         

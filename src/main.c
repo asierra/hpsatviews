@@ -28,7 +28,7 @@ int cmd_pseudocolor(char* cmd_name, ArgParser* cmd_parser) {
     return run_processing(cmd_parser, true); // true = is_pseudocolor
 }
 
-int cmd_singlegray(char* cmd_name, ArgParser* cmd_parser) {
+int cmd_gray(char* cmd_name, ArgParser* cmd_parser) {
     return run_processing(cmd_parser, false); // false = is_pseudocolor
 }
 
@@ -62,7 +62,7 @@ int main(int argc, char *argv[]) {
                             "Comandos:\n"
                             "  rgb          Genera una imagen RGB (ej. color verdadero con composición día/noche).\n"
                             "  pseudocolor  Genera una imagen con paleta de colores a partir de un canal.\n"
-                            "  singlegray   Genera una imagen en escala de grises de un solo canal.\n\n"
+                            "  gray   Genera una imagen en escala de grises de un solo canal.\n\n"
                             "Opciones globales:\n"
                             "  --list-clips            Muestra los recortes geográficos predefinidos disponibles.\n\n"
                             "Opciones comunes (disponibles en todos los comandos):\n"
@@ -90,8 +90,8 @@ int main(int argc, char *argv[]) {
     // --- Comando 'rgb' ---
     ArgParser *rgb_cmd = ap_new_cmd(parser, "rgb");
     if (rgb_cmd) {
-        ap_set_helptext(rgb_cmd, "Usanza: hpsatviews rgb [opciones] <Archivo NetCDF de referencia>\n\n"
-                                 "Genera un compuesto RGB. Requiere varios canales en el mismo directorio.\n\n"
+        ap_set_helptext(rgb_cmd, "Usanza: hpsatviews rgb [opciones] <Archivo ancla NetCDF>\n\n"
+                                 "Genera un compuesto RGB. Requiere varios canales en el mismo directorio y misma fecha y hora que el ancla.\n\n"
                                  "Opciones específicas del comando rgb:\n"
                                  "  -m, --mode <modo>       Modo de operación. Opciones disponibles:\n"
                                  "                          'composite' (defecto), 'truecolor', 'night', 'ash', 'airmass', 'so2'.\n\n"
@@ -122,17 +122,17 @@ int main(int argc, char *argv[]) {
         ap_set_cmd_callback(pc_cmd, cmd_pseudocolor);
     }
 
-    // --- Comando 'singlegray' ---
-    ArgParser *sg_cmd = ap_new_cmd(parser, "singlegray");
+    // --- Comando 'gray' ---
+    ArgParser *sg_cmd = ap_new_cmd(parser, "gray");
     if (sg_cmd) {
-        ap_set_helptext(sg_cmd, "Usanza: hpsatviews singlegray [opciones] <Archivo NetCDF>\n\n"
+        ap_set_helptext(sg_cmd, "Usanza: hpsatviews gray [opciones] <Archivo NetCDF>\n\n"
                                 "Genera una imagen en escala de grises a partir de una variable NetCDF.\n\n"
-                                "Opciones específicas del comando singlegray:\n"
+                                "Opciones específicas del comando gray:\n"
                                 "  -i, --invert            Invierte los valores (blanco y negro).\n\n"
                                 "Para opciones comunes (out, clip, gamma, histo, scale, alpha, etc.), use 'hpsatviews --help'.");
         add_common_opts(sg_cmd);
         ap_add_flag(sg_cmd, "invert i");
-        ap_set_cmd_callback(sg_cmd, cmd_singlegray);
+        ap_set_cmd_callback(sg_cmd, cmd_gray);
     }
 
     // Parsear los argumentos UNA SOLA VEZ. La librería ejecutará el callback apropiado.

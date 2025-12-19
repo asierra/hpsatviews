@@ -1,5 +1,5 @@
 /*
- * Single-channel processing module (singlegray and pseudocolor)
+ * Single-channel processing module (gray and pseudocolor)
  *
  * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Laboratorio Nacional de Observación de la Tierra, UNAM

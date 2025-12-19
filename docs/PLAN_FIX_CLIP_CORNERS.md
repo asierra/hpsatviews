@@ -41,7 +41,7 @@ derecha y con ellas asignar la esquina superior izquierda.
 | `rgb.c` | líneas 343-390, 541-570 | Lógica de clipping PRE y POST reproyección |
 | `rgb.c` | `calculate_bounding_box()` | Calcula min/max de las 4 esquinas |
 | `reprojection.c` | `reprojection_find_pixel_for_coord()` | Busca píxel más cercano a coord geográfica |
-| `processing.c` | líneas 129-180 | Clipping en comando `singlegray` |
+| `processing.c` | líneas 129-180 | Clipping en comando `gray` |
 
 ### Flujo Actual (con falla)
 
@@ -409,7 +409,7 @@ if (nav_loaded) {
 - **Código afectado:**
   - `rgb.c`: líneas 193-235 (calculate_bounding_box), 343-390 (clip PRE-reproj), 541-570 (clip POST)
   - `reprojection.c`: líneas 175-265 (reprojection_find_pixel_for_coord)
-  - `processing.c`: líneas 129-180 (clip en singlegray)
+  - `processing.c`: líneas 129-180 (clip en gray)
 - **Documentación:** `README.md` sección "Recorte Geográfico Inteligente"
 
 ---

@@ -36,7 +36,7 @@ GDAL_TE="$LON_MIN $LAT_MIN $LON_MAX $LAT_MAX"
 # ---------------------------------------------------------
 # CASO 1: Recorte sin reproyección (Mantiene proyección GOES)
 # ---------------------------------------------------------
-./hpsatviews singlegray \
+./hpsatviews gray \
     --clip $CLIP_COORDS \
     -o a2_sp_hpsv.png \
     "$DATASET" -v
@@ -44,7 +44,7 @@ GDAL_TE="$LON_MIN $LAT_MIN $LON_MAX $LAT_MAX"
 mapdrawer --bounds $CLIP_COORDS \
     --layer COASTLINE:cyan:0.5  --crs goes16 a2_sp_hpsv.png
 
-./hpsatviews singlegray \
+./hpsatviews gray \
     --clip $CLIP_COORDS \
     -o a2_sp_hpsv.tif \
     "$DATASET" -v
@@ -76,7 +76,7 @@ gdal_translate \
 # ---------------------------------------------------------
 # CASO 2: Recorte con reproyección (Transformado a Lat/Lon)
 # ---------------------------------------------------------
-./hpsatviews singlegray \
+./hpsatviews gray \
     --geographics \
     --clip $CLIP_COORDS \
     -o a2_rp_hpsv.png \
@@ -85,7 +85,7 @@ gdal_translate \
 mapdrawer --bounds $CLIP_COORDS \
     --layer COASTLINE:cyan:0.5  a2_rp_hpsv.png
 
-./hpsatviews singlegray \
+./hpsatviews gray \
     --geographics \
     --clip $CLIP_COORDS \
     -o a2_rp_hpsv.tif \

@@ -1,63 +1,89 @@
-CC=gcc
-CFLAGS=-g -I./include -Wall -std=c11 -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE -fopenmp $(shell gdal-config --cflags)
-LDFLAGS=-lm -lnetcdf -lpng -fopenmp $(shell gdal-config --libs)
+# ==========================================
+#  HPSATVIEWS - High Performance Makefile
+# ==========================================
 
-# Nombre del ejecutable final
-TARGET = hpsatviews
+# --- Configuración del Compilador ---
+CC = gcc
 
-# Directorios
+# Banderas base: C11 estándar, advertencias, OpenMP
+# Nota: -march=native optimiza para la CPU donde se compila (ideal para HPC local)
+CFLAGS_COMMON = -Wall -Wextra -std=c11 -fopenmp -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE $(shell gdal-config --cflags)
+LDFLAGS = -lm -lnetcdf -lpng -fopenmp $(shell gdal-config --libs)
+
+# --- Modos de Compilación ---
+# Uso: make (Release por defecto) | make debug (para desarrollo con gdb)
+ifdef DEBUG
+    CFLAGS = $(CFLAGS_COMMON) -g -O0 -DDEBUG_MODE
+    TARGET_NAME = hpsatviews_debug
+else
+    # Release: Optimización máxima (-O3) y nativa de la arquitectura
+    CFLAGS = $(CFLAGS_COMMON) -O3 -march=native -funroll-loops
+    TARGET_NAME = hpsatviews
+endif
+
+# --- Directorios ---
 SRC_DIR = src
-# Cambio clave: definimos una carpeta dedicada para objetos
+INC_DIR = include
 OBJ_DIR = obj
+BIN_DIR = bin
+# Prefijo de instalación estándar (Linux)
+PREFIX = /usr/local
 
-# Archivos de cabecera en include/
-DEPS = $(wildcard include/*.h)
+# --- Archivos ---
+# Busca automáticamente todos los .c en src/ (Cero mantenimiento)
+SRCS = $(wildcard $(SRC_DIR)/*.c)
+# Genera la lista de objetos esperados en obj/
+OBJS = $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(SRCS))
+# El ejecutable final con ruta
+TARGET = $(BIN_DIR)/$(TARGET_NAME)
 
-# Lista de archivos fuente
-SRCS = $(SRC_DIR)/main.c \
-       $(SRC_DIR)/rgb.c \
-       $(SRC_DIR)/processing.c \
-       $(SRC_DIR)/reprojection.c \
-       $(SRC_DIR)/args.c \
-       $(SRC_DIR)/channelset.c \
-       $(SRC_DIR)/datanc.c \
-       $(SRC_DIR)/daynight_mask.c \
-       $(SRC_DIR)/image.c \
-       $(SRC_DIR)/logger.c \
-       $(SRC_DIR)/nocturnal_pseudocolor.c \
-       $(SRC_DIR)/rayleigh.c \
-       $(SRC_DIR)/rayleigh_lut_embedded.c \
-       $(SRC_DIR)/reader_cpt.c \
-       $(SRC_DIR)/reader_nc.c \
-       $(SRC_DIR)/reader_png.c \
-       $(SRC_DIR)/singlegray.c \
-       $(SRC_DIR)/truecolor.c \
-       $(SRC_DIR)/writer_geotiff.c \
-       $(SRC_DIR)/writer_png.c \
-       $(SRC_DIR)/filename_utils.c \
-       $(SRC_DIR)/clip_loader.c
+# Inclusión de cabeceras
+CFLAGS += -I$(INC_DIR)
 
-# Generación de la lista de objetos: 
-# Cambia src/archivo.c -> obj/archivo.o
-OBJS = $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SRCS))
+# ==========================================
+#  Reglas de Construcción
+# ==========================================
 
-.PHONY: all clean
+.PHONY: all clean install uninstall directories debug info
 
-all: $(TARGET)
+all: directories $(TARGET)
+	@echo "========================================"
+	@echo " Build Complete: $(TARGET)"
+	@echo " Mode: $(if $(DEBUG),Debug,Release (HPC Optimized))"
+	@echo "========================================"
 
-# Regla para crear el directorio de objetos si no existe
-$(OBJ_DIR):
-	mkdir -p $(OBJ_DIR)
-
-# Regla de compilación
-# Nota el "| $(OBJ_DIR)". Esto es un "order-only prerequisite".
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c $(DEPS) | $(OBJ_DIR)
-	$(CC) -c -o $@ $< $(CFLAGS)
-
-# Linkeo final
+# Regla para enlazar el ejecutable
 $(TARGET): $(OBJS)
-	$(CC) -o $@ $^ $(LDFLAGS)
+	@echo "Linking $@"
+	@$(CC) $(OBJS) -o $@ $(LDFLAGS)
 
+# Regla genérica para compilar objetos
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
+	@echo "Compiling $<..."
+	@$(CC) $(CFLAGS) -c $< -o $@
+
+# Crear directorios si no existen
+directories:
+	@mkdir -p $(OBJ_DIR)
+	@mkdir -p $(BIN_DIR)
+
+# Limpieza
 clean:
-	rm -rf $(OBJ_DIR) $(TARGET) *~
+	@echo "Cleaning up..."
+	@rm -rf $(OBJ_DIR) $(BIN_DIR)
 
+# Instalación (para el usuario final)
+install: all
+	@echo "Installing into $(PREFIX)/bin..."
+	@install -d $(PREFIX)/bin
+	@install -m 755 $(TARGET) $(PREFIX)/bin/hpsatviews
+	@echo "Installation successful."
+
+uninstall:
+	@rm -f $(PREFIX)/bin/hpsatviews
+	@echo "Uninstalled hpsatviews."
+
+# Ayuda para debuggear el Makefile
+info:
+	@echo "Source files found: $(SRCS)"
+	@echo "Object files target: $(OBJS)"

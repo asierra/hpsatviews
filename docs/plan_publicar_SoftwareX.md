@@ -1,6 +1,6 @@
 # Plan de Conformidad SoftwareX y Datos de Prueba
 
-**Objetivo:** Preparar el repositorio `hpsatviews` para su publicación académica (SoftwareX/JOSS), asegurando que los revisores puedan descargar datos de prueba y ejecutar una demostración funcional sin configurar entornos complejos.
+**Objetivo:** Preparar el repositorio `hpsatviews` para su publicación académica (SoftwareX), asegurando que los revisores puedan descargar datos de prueba y ejecutar una demostración funcional sin configurar entornos complejos.
 
 **Estrategia:** Implementar un "Kit de Reproducción" que use datos del dominio CONUS (Continental US) del satélite GOES-19, optimizando el tamaño de descarga y manteniendo la validación técnica.
 

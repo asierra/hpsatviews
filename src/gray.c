@@ -18,12 +18,12 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha, const
 
   ImageData imout = image_create(c01.width, c01.height, bpp);
   if (imout.data == NULL) {
-    LOG_ERROR("No fue posible apartar memoria para la imagen en singlegray.");
+    LOG_ERROR("No fue posible apartar memoria para la imagen en gray.");
     return imout;
   }
 
   double start = omp_get_wtime();
-  LOG_INFO("Iniciando loop singlegray iw %lu ih %lu min %g max %g", imout.width, imout.height, c01.fmin, c01.fmax);
+  LOG_INFO("Iniciando loop gray iw %lu ih %lu min %g max %g", imout.width, imout.height, c01.fmin, c01.fmax);
 
   uint8_t last_color = (cpt && cpt->has_nan_color) ? cpt->num_colors-1: 255;
   #pragma omp parallel for
@@ -82,12 +82,12 @@ ImageData create_single_grayb(DataB c01, bool invert_value, bool use_alpha, cons
 
   ImageData imout = image_create(c01.width, c01.height, bpp);
   if (imout.data == NULL) {
-    LOG_ERROR("No fue posible apartar memoria para la imagen en singlegrayb.");
+    LOG_ERROR("No fue posible apartar memoria para la imagen en grayb.");
     return imout;
   }
 
   double start = omp_get_wtime();
-  LOG_INFO("Iniciando loop singlegrayb iw %lu ih %lu min %d max %d", imout.width, imout.height, c01.min, c01.max);
+  LOG_INFO("Iniciando loop grayb iw %lu ih %lu min %d max %d", imout.width, imout.height, c01.min, c01.max);
 
   uint8_t last_color = (cpt && cpt->has_nan_color) ? cpt->num_colors-1: 0;
   #pragma omp parallel for

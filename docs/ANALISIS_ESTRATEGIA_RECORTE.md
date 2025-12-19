@@ -89,7 +89,7 @@ iy_end   = ((lat_max - clip_lat_min) / lat_range) * height
    - Eliminadas funciones obsoletas: `infer_missing_corners()`, `calculate_bounding_box()`
 
 2. **`processing.c`**:
-   - **Líneas ~167-256**: Muestreo denso en comando `singlegray`
+   - **Líneas ~167-256**: Muestreo denso en comando `gray`
 
 ### Beneficios
 

@@ -17,7 +17,7 @@
 #include "reader_png.h"
 #include "writer_png.h"
 #include "writer_geotiff.h"
-#include "singlegray.h"
+#include "gray.h"
 #include "nocturnal_pseudocolor.h"
 #include "daynight_mask.h"
 
