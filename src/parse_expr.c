@@ -166,6 +166,65 @@ DataF evaluate_linear_combo(const LinearCombo* combo, const DataNC* channels) {
     return result;
 }
 
+
+/**
+ * Analiza una expresión compleja (ej: "2*C13; C14-C15; C01") y genera 
+ * una lista de strings con los canales únicos requeridos (ej: "C01", "C13", "C14", "C15").
+ * * @param full_expr La cadena completa de --expr
+ * @param channels_out Puntero a un arreglo de strings (char***) que será asignado.
+ * @return Número de canales encontrados.
+ */
+int get_unique_channels_rgb(const char *full_expr, char ***channels_out) {
+    if (!full_expr) return 0;
+
+    bool seen[17] = {false}; // Mapa de bits para bandas C01-C16
+    int count = 0;
+
+    // 1. Trabajar sobre una copia para no alterar el original con strtok
+    char *expr_copy = strdup(full_expr);
+    char *token = strtok(expr_copy, ";");
+
+    // 2. Iterar sobre las 3 partes (R, G, B)
+    while (token != NULL) {
+        LinearCombo combo;
+        // Reutilizamos tu parser existente para extraer las bandas de este segmento
+        if (parse_expr_string(token, &combo) == 0) {
+            for (int i = 0; i < combo.num_terms; i++) {
+                int bid = combo.terms[i].band_id;
+                if (bid >= 1 && bid <= 16 && !seen[bid]) {
+                    seen[bid] = true;
+                    count++;
+                }
+            }
+        }
+        token = strtok(NULL, ";");
+    }
+    free(expr_copy);
+
+    // 3. Si no hay canales, salir
+    if (count == 0) {
+        *channels_out = NULL;
+        return 0;
+    }
+
+    // 4. Crear el arreglo de strings (NULL terminated para compatibilidad con channelset)
+    // Asignamos (count + 1) punteros
+    *channels_out = (char**)malloc(sizeof(char*) * (count + 1));
+    
+    int idx = 0;
+    for (int b = 1; b <= 16; b++) {
+        if (seen[b]) {
+            (*channels_out)[idx] = (char*)malloc(4); // "Cxx\0"
+            snprintf((*channels_out)[idx], 4, "C%02d", b);
+            idx++;
+        }
+    }
+    (*channels_out)[idx] = NULL; // Terminador seguro
+
+    return count;
+}
+
+
 #ifdef PARSE_EXPR_STANDALONE
 int main(int argc, char **argv) {
     if (argc < 2) {

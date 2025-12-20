@@ -20,6 +20,7 @@
 #include "gray.h"
 #include "nocturnal_pseudocolor.h"
 #include "daynight_mask.h"
+#include "parse_expr.h"
 
 
 /**
@@ -148,11 +149,14 @@ bool rgb_parse_options(ArgParser *parser, RgbContext *ctx) {
         }
     }
     
+    // Custom
+    ctx->opts.expr = ap_get_str_value(parser, "expr");
+    
     // Detectar producto L2
     // Es necesario duplicar el string porque basename puede modificarlo
     char *input_dup = strdup(ctx->opts.input_file);
     if (!input_dup) {
-        snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Fallo de memoria al duplicar el nombre de archivo.");
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falla de memoria al duplicar el nombre de archivo.");
         ctx->error_occurred = true;
         return false;
     }
@@ -322,6 +326,54 @@ static ImageData compose_daynite(RgbContext *ctx) {
     return result;
 }
 
+static ImageData compose_custom(RgbContext *ctx) {
+    LOG_INFO("Armando custom RGB con expresión: %s", ctx->opts.expr);
+    
+    LinearCombo combo[3];
+    float ranges[3][2] = {{0, 255}, {0, 255}, {0, 255}}; // Default [min, max] para R, G, B
+    
+    // 1. Parsear expresiones (R;G;B)
+    // Usamos una copia de la cadena porque strtok modifica el original
+    char *expr_copy = strdup(ctx->opts.expr);
+    char *token = strtok(expr_copy, ";");
+    for (int i = 0; i < 3 && token != NULL; i++) {
+        if (parse_expr_string(token, &combo[i]) != 0) {
+            LOG_ERROR("Error parseando expresión componente %d", i);
+        }
+        token = strtok(NULL, ";");
+    }
+    free(expr_copy);
+
+    // 2. Parsear rangos minmax (min,max; min,max; min,max) si los hay
+    if (ctx->opts.minmax) {
+        char *minmax_copy = strdup(ctx->opts.minmax);
+        char *m_token = strtok(minmax_copy, ";");
+        for (int i = 0; i < 3 && m_token != NULL; i++) {
+            sscanf(m_token, "%f,%f", &ranges[i][0], &ranges[i][1]);
+            m_token = strtok(NULL, ";");
+        }
+        free(minmax_copy);
+    }
+
+    // 5. Evaluar las combinaciones lineales
+    DataF r_f = evaluate_linear_combo(&combo[0], ctx->channels);
+    DataF g_f = evaluate_linear_combo(&combo[1], ctx->channels);
+    DataF b_f = evaluate_linear_combo(&combo[2], ctx->channels);
+
+    // 6. Crear la imagen RGB final usando los rangos parseados
+    ImageData result = create_multiband_rgb(&r_f, &g_f, &b_f,
+                                           ranges[0][0], ranges[0][1],
+                                           ranges[1][0], ranges[1][1],
+                                           ranges[2][0], ranges[2][1]);
+
+    // 7. Limpieza de memoria temporal
+    dataf_destroy(&r_f);
+    dataf_destroy(&g_f);
+    dataf_destroy(&b_f);
+
+    return result;
+}
+
 static const RgbStrategy STRATEGIES[] = {
     { "truecolor", {"C01", "C02", "C03", NULL}, compose_truecolor, 
       "True Color RGB (natural)", false },
@@ -335,6 +387,7 @@ static const RgbStrategy STRATEGIES[] = {
       "SO2 Detection RGB", false },
     { "daynite", {"C01", "C02", "C03", "C13", NULL}, compose_daynite, 
       "Day/Night Composite", true },  // needs_navigation = true
+    { "custom", { NULL }, compose_custom, "Custom mode", false},  
     { NULL, {NULL}, NULL, NULL, false }  // Centinela
 };
 
@@ -349,11 +402,11 @@ static const RgbStrategy* get_strategy_for_mode(const char *mode) {
 
 // --- FASE 3: PIPELINE PRINCIPAL (THE RUNNER) ---
 
-static bool load_channels(RgbContext *ctx, const RgbStrategy *strategy) {
+static bool load_channels(RgbContext *ctx, const char **req_channels) {
     // 1. Crear ChannelSet
     int count = 0;
-    while (strategy->req_channels[count] != NULL) count++;
-    ctx->channel_set = channelset_create((const char**)strategy->req_channels, count);
+    while (req_channels[count] != NULL) count++;
+    ctx->channel_set = channelset_create((const char**) req_channels, count);
     if (!ctx->channel_set) {
         snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falla de memoria al crear ChannelSet.");
         return false;
@@ -532,6 +585,7 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
 }
 
 static bool generate_output_filename(RgbContext *ctx, const RgbStrategy *strategy) {
+    (void)strategy; // Evita warning de parámetro no usado
     if (ctx->opts.output_filename) { // Nombre provisto por el usuario (o expandido por patrón)
         return true;
     }
@@ -659,13 +713,33 @@ int run_rgb(ArgParser *parser) {
     // Paso 2: Obtener estrategia
     const RgbStrategy *strategy = get_strategy_for_mode(ctx.opts.mode);
     if (!strategy) {
-        LOG_ERROR("Modo '%s' no reconocido.", ctx.opts.mode);
-        goto cleanup;
+		LOG_ERROR("Modo '%s' no reconocido.", ctx.opts.mode);
+		goto cleanup;
     }
     LOG_INFO("Modo seleccionado: %s - %s", strategy->mode_name, strategy->description);
+	
+    const char **req_channels = NULL;
+    char **custom_channels = NULL;
+	if (strcmp(ctx.opts.mode,"custom")==0) {
+		if (!ctx.opts.expr) {
+            LOG_ERROR("El modo 'custom' requiere especificar una fórmula con --expr");
+            goto cleanup;
+        }
+        int count = get_unique_channels_rgb(ctx.opts.expr, &custom_channels);
+        
+        if (count == 0 || custom_channels == NULL) {
+            LOG_ERROR("No se detectaron bandas válidas (C01-C16) en la expresión: %s", ctx.opts.expr);
+            goto cleanup;
+        }
+        
+        LOG_INFO("Modo Custom: Se requieren %d bandas únicas para la fórmula.", count);
+        req_channels = (const char**)custom_channels;
+	} else {
+        req_channels = (const char**)strategy->req_channels;
+    }
 
     // Paso 3: Cargar canales
-    if (!load_channels(&ctx, strategy)) {
+    if (!load_channels(&ctx, req_channels)) {
         LOG_ERROR("%s", ctx.error_msg);
         goto cleanup;
     }
@@ -742,5 +816,13 @@ int run_rgb(ArgParser *parser) {
 
 cleanup:
     rgb_context_destroy(&ctx);
+    if (custom_channels) {
+        // 1. Liberar cada cadena individual ("C13", "C14", etc.)
+        for (int i = 0; custom_channels[i] != NULL; i++) {
+            free(custom_channels[i]);
+        }
+        // 2. Liberar el arreglo de punteros principal
+        free(custom_channels);
+    }
     return status;
 }

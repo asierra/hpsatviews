@@ -47,6 +47,10 @@ typedef struct {
     bool force_geotiff;            // --geotiff
     bool use_full_res;             // --full-res
     
+    // custom
+    char *expr;
+    char *minmax;
+    
     // Interno
     bool is_l2_product;            // Detectado automáticamente (contiene "CMIP")
 } RgbOptions;
