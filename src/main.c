@@ -44,7 +44,10 @@ static void add_common_opts(ArgParser* cmd_parser) {
     ap_add_int_opt(cmd_parser, "scale s", 1);
     ap_add_flag(cmd_parser, "alpha a");
     ap_add_flag(cmd_parser, "geographics r");
+    ap_add_flag(cmd_parser, "full-res f");
     ap_add_flag(cmd_parser, "verbose v");
+    ap_add_str_opt(cmd_parser, "expr e", NULL);
+    ap_add_str_opt(cmd_parser, "minmax", "0.0,255.0");
 }
 
 int main(int argc, char *argv[]) {
@@ -128,7 +131,9 @@ int main(int argc, char *argv[]) {
         ap_set_helptext(sg_cmd, "Usanza: hpsatviews gray [opciones] <Archivo NetCDF>\n\n"
                                 "Genera una imagen en escala de grises a partir de una variable NetCDF.\n\n"
                                 "Opciones específicas del comando gray:\n"
-                                "  -i, --invert            Invierte los valores (blanco y negro).\n\n"
+                                "  -i, --invert            Invierte los valores (blanco y negro).\n"
+                                "  -e, --expr <expresión>  Álgebra de bandas: combinación lineal (ej. \"2.0*C13 - 4.0*C15 + 0.5\").\n"
+                                "  --minmax <min,max>      Rango para escalar el resultado con --expr (defecto: \"0.0,255.0\").\n\n"
                                 "Para opciones comunes (out, clip, gamma, histo, scale, alpha, etc.), use 'hpsatviews --help'.");
         add_common_opts(sg_cmd);
         ap_add_flag(sg_cmd, "invert i");

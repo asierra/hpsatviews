@@ -17,12 +17,16 @@
 #include "datanc.h"
 #include "clip_loader.h"
 #include "gray.h"
+#include "parse_expr.h"
+#include "channelset.h"
 #include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
 #include <ctype.h>
+#include <libgen.h>  // Para dirname()
+#include <math.h>    // Para fabs()
 
 
 bool strinstr(const char *main_str, const char *sub) {
@@ -106,6 +110,51 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         return -1;
     }
 
+    // --- Detección de modo --expr (álgebra de bandas) ---
+    const bool expr_mode = ap_found(parser, "expr");
+    LinearCombo combo = {0};
+    char* required_channels[17] = {NULL};  // Máximo 16 bandas + terminador NULL
+    int num_required_channels = 0;
+    float minmax[2] = {0.0f, 255.0f};  // Rango por defecto
+
+    if (expr_mode) {
+        // Parsear expresión
+        const char* expr_str = ap_get_str_value(parser, "expr");
+        if (!expr_str || strlen(expr_str) == 0) {
+            LOG_ERROR("La opción --expr requiere una expresión válida.");
+            return -1;
+        }
+
+        LOG_INFO("Modo álgebra de bandas: %s", expr_str);
+        if (parse_expr_string(expr_str, &combo) != 0) {
+            LOG_ERROR("Error al parsear la expresión: %s", expr_str);
+            return -1;
+        }
+
+        // Extraer bandas requeridas
+        num_required_channels = extract_required_channels(&combo, required_channels);
+        if (num_required_channels == 0) {
+            LOG_ERROR("No se encontraron bandas válidas en la expresión.");
+            return -1;
+        }
+
+        LOG_INFO("Expresión parseada correctamente: %d bandas requeridas", num_required_channels);
+        for (int i = 0; i < num_required_channels; i++) {
+            LOG_DEBUG("  - %s", required_channels[i]);
+        }
+
+        // Parsear rango --minmax
+        if (ap_found(parser, "minmax")) {
+            const char* minmax_str = ap_get_str_value(parser, "minmax");
+            if (sscanf(minmax_str, "%f,%f", &minmax[0], &minmax[1]) != 2) {
+                LOG_ERROR("Formato inválido para --minmax. Use: min,max");
+                for (int i = 0; i < num_required_channels; i++) free(required_channels[i]);
+                return -1;
+            }
+            LOG_INFO("Rango de salida: [%.2f, %.2f]", minmax[0], minmax[1]);
+        }
+    }
+
     // --- Opciones de procesamiento ---
     const bool invert_values = ap_found(parser, "invert");
     const bool apply_histogram = ap_found(parser, "histo");
@@ -183,22 +232,232 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         } else {
             LOG_ERROR("No se pudo cargar el archivo de paleta: %s", cptfn);
             if (out_filename_generated) free(out_filename_generated);
+            if (expr_mode) {
+                for (int i = 0; i < num_required_channels; i++) free(required_channels[i]);
+            }
             return -1;
         }
     }
     
     DataNC c01;
-    char *varname = "Rad"; // Default
-    if (strinstr(fnc01, "CMIP")) varname = "CMI"; else if (strinstr(fnc01, "LST")) varname = "LST";
-    else if (strinstr(fnc01, "ACTP")) varname = "Phase"; else if (strinstr(fnc01, "CTP")) varname = "PRES";
+    DataNC channels[17] = {0};  // Array para múltiples canales (índices 1-16)
+    DataF result_data = {0};     // Resultado de la combinación lineal
     
-    // NOTA: load_nc_sf debe llenar los metadatos de DataNC (geotransform, proj_code)
-    if (load_nc_sf(fnc01, varname, &c01) != 0) {
-        LOG_ERROR("No se pudo cargar el archivo NetCDF: %s", fnc01);
-        if (out_filename_generated) free(out_filename_generated);
-        free_cpt_data(cptdata);
-        color_array_destroy(color_array);
-        return -1;
+    if (expr_mode) {
+        // --- MODO EXPR: Cargar múltiples canales ---
+        
+        // 1. Crear ChannelSet con las bandas requeridas
+        ChannelSet* cset = channelset_create((const char**)required_channels, num_required_channels);
+        if (!cset) {
+            LOG_ERROR("No se pudo crear el ChannelSet.");
+            if (out_filename_generated) free(out_filename_generated);
+            for (int i = 0; i < num_required_channels; i++) free(required_channels[i]);
+            free_cpt_data(cptdata);
+            color_array_destroy(color_array);
+            return -1;
+        }
+        
+        // 2. Extraer firma de identificación del archivo ancla (satélite + timestamp)
+        char id_signature[256];
+        char* input_dup_for_id = strdup(fnc01);
+        if (!input_dup_for_id) {
+            LOG_ERROR("Error de memoria al duplicar nombre de archivo.");
+            channelset_destroy(cset);
+            if (out_filename_generated) free(out_filename_generated);
+            for (int i = 0; i < num_required_channels; i++) free(required_channels[i]);
+            free_cpt_data(cptdata);
+            color_array_destroy(color_array);
+            return -1;
+        }
+        const char* basename_input = basename(input_dup_for_id);
+        
+        if (find_id_from_name(basename_input, id_signature, sizeof(id_signature)) != 0) {
+            LOG_ERROR("No se pudo extraer la firma de identificación del archivo ancla: %s", basename_input);
+            free(input_dup_for_id);
+            channelset_destroy(cset);
+            if (out_filename_generated) free(out_filename_generated);
+            for (int i = 0; i < num_required_channels; i++) free(required_channels[i]);
+            free_cpt_data(cptdata);
+            color_array_destroy(color_array);
+            return -1;
+        }
+        strcpy(cset->id_signature, id_signature);
+        free(input_dup_for_id);
+        LOG_DEBUG("Firma de identificación: %s", id_signature);
+        
+        // 3. Buscar archivos para cada canal
+        char* input_dup_for_dir = strdup(fnc01);
+        if (!input_dup_for_dir) {
+            LOG_ERROR("Error de memoria al duplicar nombre de archivo.");
+            channelset_destroy(cset);
+            if (out_filename_generated) free(out_filename_generated);
+            for (int i = 0; i < num_required_channels; i++) free(required_channels[i]);
+            free_cpt_data(cptdata);
+            color_array_destroy(color_array);
+            return -1;
+        }
+        const char* dirnm = dirname(input_dup_for_dir);
+        
+        // Detectar si es producto L2 (CMIP) o L1b (Rad)
+        bool is_l2_product = strinstr(fnc01, "CMIP");
+        
+        if (find_channel_filenames(dirnm, cset, is_l2_product) != 0) {
+            LOG_ERROR("No se pudieron encontrar todos los archivos necesarios en %s", dirnm);
+            free(input_dup_for_dir);
+            channelset_destroy(cset);
+            if (out_filename_generated) free(out_filename_generated);
+            for (int i = 0; i < num_required_channels; i++) free(required_channels[i]);
+            free_cpt_data(cptdata);
+            color_array_destroy(color_array);
+            return -1;
+        }
+        free(input_dup_for_dir);
+        
+        // 4. Cargar cada canal en el array channels[]
+        for (int i = 0; i < cset->count; i++) {
+            const char* ch_name = cset->channels[i].name;
+            const char* ch_file = cset->channels[i].filename;
+            
+            // Extraer band_id de "C01", "C13", etc.
+            int band_id = atoi(ch_name + 1);  // Skip 'C'
+            if (band_id < 1 || band_id > 16) {
+                LOG_ERROR("Band ID inválido: %s", ch_name);
+                channelset_destroy(cset);
+                if (out_filename_generated) free(out_filename_generated);
+                for (int j = 0; j < num_required_channels; j++) free(required_channels[j]);
+                free_cpt_data(cptdata);
+                color_array_destroy(color_array);
+                return -1;
+            }
+            
+            // Cargar NetCDF
+            char* varname = "Rad";
+            if (strstr(ch_file, "CMIP")) varname = "CMI";
+            else if (strstr(ch_file, "LST")) varname = "LST";
+            else if (strstr(ch_file, "ACTP")) varname = "Phase";
+            else if (strstr(ch_file, "CTP")) varname = "PRES";
+            
+            LOG_INFO("Cargando canal %s desde: %s", ch_name, ch_file);
+            if (load_nc_sf(ch_file, varname, &channels[band_id]) != 0) {
+                LOG_ERROR("No se pudo cargar el canal %s: %s", ch_name, ch_file);
+                channelset_destroy(cset);
+                // Limpiar canales ya cargados
+                for (int j = 1; j <= 16; j++) {
+                    if (channels[j].fdata.data_in) datanc_destroy(&channels[j]);
+                }
+                if (out_filename_generated) free(out_filename_generated);
+                for (int j = 0; j < num_required_channels; j++) free(required_channels[j]);
+                free_cpt_data(cptdata);
+                color_array_destroy(color_array);
+                return -1;
+            }
+        }
+        
+        // 5. Identificar canal de referencia y resamplear (Fase 3)
+        int ref_channel_idx = 0;
+        const bool use_full_res = ap_found(parser, "full-res");
+        
+        // Identificar canal de referencia basándose en resolución
+        for (int i = 0; i < cset->count; i++) {
+            int cn = atoi(cset->channels[i].name + 1);
+            if (use_full_res) {
+                // Modo --full-res: buscar la MAYOR resolución (km MÁS PEQUEÑO)
+                if (ref_channel_idx == 0 || channels[cn].native_resolution_km < channels[ref_channel_idx].native_resolution_km) {
+                    ref_channel_idx = cn;
+                }
+            } else {
+                // Modo por defecto: buscar la MENOR resolución (km MÁS GRANDE)
+                if (ref_channel_idx == 0 || channels[cn].native_resolution_km > channels[ref_channel_idx].native_resolution_km) {
+                    ref_channel_idx = cn;
+                }
+            }
+        }
+        
+        LOG_INFO("Canal de referencia para expresión: C%02d (%.1fkm)", ref_channel_idx, channels[ref_channel_idx].native_resolution_km);
+        
+        // Resamplear canales para que coincidan con la resolución de referencia
+        float ref_res = channels[ref_channel_idx].native_resolution_km;
+        for (int i = 0; i < cset->count; i++) {
+            int cn = atoi(cset->channels[i].name + 1);
+            if (cn == ref_channel_idx || channels[cn].fdata.data_in == NULL) {
+                continue; // No resamplear el canal de referencia o canales vacíos
+            }
+            
+            float res = channels[cn].native_resolution_km;
+            float factor_f = res / ref_res;
+            
+            if (fabs(factor_f - 1.0f) > 0.01f) {
+                int factor = (int)(factor_f + 0.5f);
+                DataF resampled = {0};
+                
+                if (factor_f < 1.0f) {
+                    // Resolución mayor que referencia -> Downsample
+                    factor = (int)((1.0f / factor_f) + 0.5f);
+                    LOG_INFO("Downsampling C%02d (%.1fkm -> %.1fkm, factor %d)", cn, res, ref_res, factor);
+                    resampled = downsample_boxfilter(channels[cn].fdata, factor);
+                } else {
+                    // Resolución menor que referencia -> Upsample
+                    LOG_INFO("Upsampling C%02d (%.1fkm -> %.1fkm, factor %d)", cn, res, ref_res, factor);
+                    resampled = upsample_bilinear(channels[cn].fdata, factor);
+                }
+                
+                if (resampled.data_in) {
+                    dataf_destroy(&channels[cn].fdata);
+                    channels[cn].fdata = resampled;
+                } else {
+                    LOG_ERROR("Fallo al resamplear el canal C%02d", cn);
+                    channelset_destroy(cset);
+                    for (int j = 1; j <= 16; j++) {
+                        if (channels[j].fdata.data_in) datanc_destroy(&channels[j]);
+                    }
+                    if (out_filename_generated) free(out_filename_generated);
+                    for (int j = 0; j < num_required_channels; j++) free(required_channels[j]);
+                    free_cpt_data(cptdata);
+                    color_array_destroy(color_array);
+                    return -1;
+                }
+            }
+        }
+        
+        // 6. Evaluar combinación lineal (Fase 4)
+        LOG_INFO("Evaluando expresión algebraica...");
+        result_data = evaluate_linear_combo(&combo, channels);
+        if (!result_data.data_in) {
+            LOG_ERROR("Fallo al evaluar la expresión.");
+            channelset_destroy(cset);
+            for (int j = 1; j <= 16; j++) {
+                if (channels[j].fdata.data_in) datanc_destroy(&channels[j]);
+            }
+            if (out_filename_generated) free(out_filename_generated);
+            for (int j = 0; j < num_required_channels; j++) free(required_channels[j]);
+            free_cpt_data(cptdata);
+            color_array_destroy(color_array);
+            return -1;
+        }
+        
+        // 7. Usar el canal de referencia para metadatos
+        c01 = channels[ref_channel_idx];
+        // Reemplazar fdata con el resultado de la expresión
+        dataf_destroy(&c01.fdata);
+        c01.fdata = result_data;
+        result_data.data_in = NULL;  // Transferir ownership
+        
+        channelset_destroy(cset);
+        
+    } else {
+        // --- MODO NORMAL: Un solo canal ---
+        char *varname = "Rad"; // Default
+        if (strinstr(fnc01, "CMIP")) varname = "CMI"; else if (strinstr(fnc01, "LST")) varname = "LST";
+        else if (strinstr(fnc01, "ACTP")) varname = "Phase"; else if (strinstr(fnc01, "CTP")) varname = "PRES";
+        
+        // NOTA: load_nc_sf debe llenar los metadatos de DataNC (geotransform, proj_code)
+        if (load_nc_sf(fnc01, varname, &c01) != 0) {
+            LOG_ERROR("No se pudo cargar el archivo NetCDF: %s", fnc01);
+            if (out_filename_generated) free(out_filename_generated);
+            free_cpt_data(cptdata);
+            color_array_destroy(color_array);
+            return -1;
+        }
     }
 
     // --- Generar nombre de archivo canónico si el usuario no proveyó uno ---
@@ -254,7 +513,10 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
 
     // --- PASO 2: Crear imagen nativa (siempre se hace primero) ---
     ImageData native_image = {0};
-    if (c01.is_float) {
+    if (expr_mode) {
+        // Modo expr: usar rango personalizado
+        native_image = create_single_gray_range(c01.fdata, invert_values, use_alpha, minmax[0], minmax[1]);
+    } else if (c01.is_float) {
         if (is_pseudocolor) {
             native_image = create_single_gray(c01.fdata, invert_values, use_alpha, cptdata);
         } else {
@@ -427,7 +689,22 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         dataf_destroy(&navlo_full);
     }
     free_cpt_data(cptdata);
-    datanc_destroy(&c01);
+    
+    // Limpiar canales cargados en modo expr
+    if (expr_mode) {
+        for (int i = 1; i <= 16; i++) {
+            if (channels[i].fdata.data_in || channels[i].bdata.data_in) {
+                datanc_destroy(&channels[i]);
+            }
+        }
+        for (int i = 0; i < num_required_channels; i++) {
+            if (required_channels[i]) free(required_channels[i]);
+        }
+        if (result_data.data_in) dataf_destroy(&result_data);
+    } else {
+        datanc_destroy(&c01);
+    }
+    
     image_destroy(&imout);
     color_array_destroy(color_array);
     if (out_filename_generated) free(out_filename_generated);

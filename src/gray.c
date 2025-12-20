@@ -77,6 +77,77 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha, const
   return imout;
 }
 
+/**
+ * @brief Crea imagen en escala de grises usando un rango personalizado.
+ * @param c01 Datos flotantes de entrada.
+ * @param invert_value Invertir valores (blanco<->negro).
+ * @param use_alpha Añadir canal alfa para NonData.
+ * @param min_val Valor mínimo del rango para normalización.
+ * @param max_val Valor máximo del rango para normalización.
+ * @return Imagen creada (debe liberarse con image_destroy).
+ */
+ImageData create_single_gray_range(DataF c01, bool invert_value, bool use_alpha,
+                                   float min_val, float max_val) {
+  unsigned int bpp = use_alpha ? 2 : 1;
+
+  ImageData imout = image_create(c01.width, c01.height, bpp);
+  if (imout.data == NULL) {
+    LOG_ERROR("No fue posible apartar memoria para la imagen en gray.");
+    return imout;
+  }
+
+  double start = omp_get_wtime();
+  LOG_INFO("Iniciando loop gray con rango [%.2f, %.2f] iw %lu ih %lu", 
+           min_val, max_val, imout.width, imout.height);
+
+  float range = max_val - min_val;
+  if (range == 0.0f) range = 1.0f; // Evitar división por cero
+
+  #pragma omp parallel for
+  for (int y = 0; y < imout.height; y++) {
+    for (int x = 0; x < imout.width; x++) {
+      int i = y * imout.width + x;
+      int po = i * imout.bpp;
+      uint8_t r = 0, a = 0;
+
+      if (c01.data_in[i] != NonData && !IS_NONDATA(c01.data_in[i])) {
+        float val = c01.data_in[i];
+        
+        // Clamp al rango especificado
+        if (val < min_val) val = min_val;
+        if (val > max_val) val = max_val;
+        
+        float normalized_val;
+        if (invert_value)
+          normalized_val = (max_val - val) / range;
+        else
+          normalized_val = (val - min_val) / range;
+        
+        r = (unsigned char)(255.0f * normalized_val);
+        a = 255;
+      } else {
+        // NonData pixel
+        if (use_alpha) {
+          r = 0;
+          a = 0;
+        } else {
+          r = 0;
+          a = 0;
+        }
+      }
+
+      imout.data[po] = r;
+      if (imout.bpp == 2) {
+        imout.data[po + 1] = a;
+      }
+    }
+  }
+
+  double end = omp_get_wtime();
+  LOG_INFO("Tiempo Single Gray con rango personalizado: %lf", end - start);
+  return imout;
+}
+
 ImageData create_single_grayb(DataB c01, bool invert_value, bool use_alpha, const CPTData* cpt) {
   unsigned int bpp = use_alpha ? 2 : 1;
 
