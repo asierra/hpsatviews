@@ -102,9 +102,21 @@ static void get_type_part(const FilenameGeneratorInfo* info, char* buffer, size_
 static void get_bands_part(const FilenameGeneratorInfo* info, char* buffer, size_t size) {
     if (strcmp(info->command, "gray") == 0 || strcmp(info->command, "pseudocolor") == 0) {
         if (info->datanc && info->datanc->band_id > 0) {
-            snprintf(buffer, size, "C%02d", info->datanc->band_id);
+            // Detectar si es modo álgebra de bandas (expr)
+            // Heurística: si band_id==0, pero estamos en gray, es expr; pero mejor: si el nombre de banda es NA y command==gray, es expr
+            // Pero aquí solo tenemos datanc, así que usamos band_id==0 como señal de expr
+            if (info->datanc->band_id == 0 && strcmp(info->command, "gray") == 0) {
+                snprintf(buffer, size, "C_expr");
+            } else {
+                snprintf(buffer, size, "C%02d", info->datanc->band_id);
+            }
         } else {
-            snprintf(buffer, size, "NA");
+            // Si no hay band_id, pero es gray y álgebra, poner _expr
+            if (strcmp(info->command, "gray") == 0) {
+                snprintf(buffer, size, "C_expr");
+            } else {
+                snprintf(buffer, size, "NA");
+            }
         }
     } else if (strcmp(info->command, "rgb") == 0) {
         if (info->rgb_mode && strcmp(info->rgb_mode, "truecolor") != 0 && strcmp(info->rgb_mode, "composite") != 0) {

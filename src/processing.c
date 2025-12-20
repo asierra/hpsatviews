@@ -116,6 +116,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     char* required_channels[17] = {NULL};  // Máximo 16 bandas + terminador NULL
     int num_required_channels = 0;
     float minmax[2] = {0.0f, 255.0f};  // Rango por defecto
+    bool minmax_provided = false;  // Track si el usuario especificó --minmax
 
     if (expr_mode) {
         // Parsear expresión
@@ -143,7 +144,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
             LOG_DEBUG("  - %s", required_channels[i]);
         }
 
-        // Parsear rango --minmax
+        // Parsear rango --minmax si está presente
         if (ap_found(parser, "minmax")) {
             const char* minmax_str = ap_get_str_value(parser, "minmax");
             if (sscanf(minmax_str, "%f,%f", &minmax[0], &minmax[1]) != 2) {
@@ -151,7 +152,10 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
                 for (int i = 0; i < num_required_channels; i++) free(required_channels[i]);
                 return -1;
             }
-            LOG_INFO("Rango de salida: [%.2f, %.2f]", minmax[0], minmax[1]);
+            minmax_provided = true;
+            LOG_INFO("Rango de salida especificado: [%.2f, %.2f]", minmax[0], minmax[1]);
+        } else {
+            LOG_INFO("Rango no especificado, se calculará automáticamente del resultado");
         }
     }
 
@@ -435,12 +439,21 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
             return -1;
         }
         
-        // 7. Usar el canal de referencia para metadatos
+        // Si no se proporcionó --minmax, calcular del resultado
+        if (!minmax_provided) {
+            minmax[0] = result_data.fmin;
+            minmax[1] = result_data.fmax;
+            LOG_INFO("Rango calculado automáticamente: [%.2f, %.2f]", minmax[0], minmax[1]);
+        }
+        
+        // 7. Copiar metadatos del canal de referencia (sin compartir punteros)
         c01 = channels[ref_channel_idx];
-        // Reemplazar fdata con el resultado de la expresión
-        dataf_destroy(&c01.fdata);
-        c01.fdata = result_data;
+        c01.fdata = result_data;  // Reemplazar datos con el resultado
+        c01.is_float = true;
         result_data.data_in = NULL;  // Transferir ownership
+        
+        // Marcar el canal de referencia como ya procesado para evitar double-free
+        channels[ref_channel_idx].fdata.data_in = NULL;
         
         channelset_destroy(cset);
         
@@ -463,9 +476,13 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     // --- Generar nombre de archivo canónico si el usuario no proveyó uno ---
     if (!user_provided_output) {
         char* satellite_name = extract_satellite_name(fnc01);
-        
+        // Si es modo expr, forzar band_id=0 para que el generador de nombres use _expr
+        DataNC c01_for_name = c01;
+        if (expr_mode) {
+            c01_for_name.band_id = 0;
+        }
         FilenameGeneratorInfo info = {
-            .datanc = &c01,
+            .datanc = &c01_for_name,
             .satellite_name = satellite_name,
             .command = is_pseudocolor ? "pseudocolor" : "gray",
             .rgb_mode = NULL,

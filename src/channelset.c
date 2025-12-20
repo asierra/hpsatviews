@@ -137,13 +137,15 @@ int find_channel_filenames(const char *directory, ChannelSet *set, bool is_l2_pr
                 
                 snprintf(full_path, path_len, "%s/%s", directory, entry->d_name);
                 
-                // Liberar el anterior si existe (no debería pasar)
+                // Solo incrementar el contador la primera vez que se encuentra este canal
                 if (set->channels[i].filename) {
                     free(set->channels[i].filename);
+                } else {
+                    found_count++;
                 }
                 
                 set->channels[i].filename = full_path;
-                found_count++;
+                //found_count++;
                 LOG_DEBUG("Encontrado %s: %s", set->channels[i].name, full_path);
                 break;
             }
