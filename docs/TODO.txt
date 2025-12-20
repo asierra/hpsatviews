@@ -102,3 +102,12 @@ Falta afinar detalles con el composite, aplicar rayleigh y algún
 realce de brillo. Es posible que haya remuestreos innecesarios, basta
 con guardar desde el principio la resolución de referencia.
 
+
+Fri Dec 19 09:59:26 PM CST 2025
+
+Documentar los nombres por defecto en el readme y el help.
+Simplificar el help
+Agregar versión y que haga algo cuando lo ponen sin ningún argumento.
+Completar el algebra de bandas, incluso rgb y documentar.
+Falta la salida de metadatos *.json
+
