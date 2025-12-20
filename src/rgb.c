@@ -532,40 +532,35 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
 }
 
 static bool generate_output_filename(RgbContext *ctx, const RgbStrategy *strategy) {
-    if (ctx->opts.output_filename) { // El usuario ya proveyó un nombre
-        // TODO: Manejar cambio de extensión si se fuerza GeoTIFF
+    if (ctx->opts.output_filename) { // Nombre provisto por el usuario (o expandido por patrón)
         return true;
     }
-    
-    const char *ext = ctx->opts.force_geotiff ? ".tif" : ".png";
-    char *base_filename = generate_default_output_filename(
-        ctx->channel_set->channels[0].filename, 
-        strategy->mode_name, ext);
 
-    if (!base_filename) {
+    // Extraer nombre del satélite del archivo de entrada
+    char* satellite_name = extract_satellite_name(ctx->opts.input_file);
+    
+    // Poblar la estructura de información para el nuevo generador de nombres canónico
+    // Usamos el primer canal cargado como referencia para metadatos
+    FilenameGeneratorInfo info = {
+        .datanc = &ctx->channels[ctx->ref_channel_idx],
+        .satellite_name = satellite_name,
+        .command = "rgb",
+        .rgb_mode = ctx->opts.mode,
+        .apply_rayleigh = ctx->opts.apply_rayleigh,
+        .apply_histogram = ctx->opts.apply_histogram,
+        .apply_clahe = ctx->opts.apply_clahe,
+        .gamma = ctx->opts.gamma,
+        .has_clip = ctx->opts.has_clip,
+        .do_reprojection = ctx->opts.do_reprojection,
+        .force_geotiff = ctx->opts.force_geotiff
+    };
+
+    ctx->opts.output_filename = generate_hpsv_filename(&info);
+    free(satellite_name);
+    
+    if (!ctx->opts.output_filename) {
         snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Fallo al generar nombre de archivo de salida.");
         return false;
-    }
-
-    if (ctx->opts.do_reprojection) {
-        char *dot = strrchr(base_filename, '.');
-        if (dot) {
-            size_t len = strlen(base_filename);
-            char *new_fn = malloc(len + 5); // "_geo\0"
-            if (!new_fn) { free(base_filename); return false; }
-            
-            size_t pre_len = dot - base_filename;
-            strncpy(new_fn, base_filename, pre_len);
-            strcpy(new_fn + pre_len, "_geo");
-            strcat(new_fn, dot);
-            
-            free(base_filename);
-            ctx->opts.output_filename = new_fn;
-        } else {
-            ctx->opts.output_filename = base_filename;
-        }
-    } else {
-        ctx->opts.output_filename = base_filename;
     }
     
     ctx->opts.output_generated = true;

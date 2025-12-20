@@ -6,7 +6,10 @@
  */
 #include "filename_utils.h"
 #include "logger.h"
+#include <stdbool.h>
 #include <string.h>
+#include <ctype.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -14,82 +17,159 @@
 #define _POSIX_C_SOURCE 200809L
 #endif
 
+// --- Nuevo mecanismo de generación de nombres de archivo ---
+
+// --- Funciones auxiliares estáticas ---
+
 /**
- * @brief Extrae la firma temporal YYYYJJJHHMM de un nombre de archivo GOES L1b.
- *        Se espera un formato como "..._sYYYYJJJHHMMSS...".
- * @param filename La ruta completa o el nombre del archivo de entrada.
- * @return Una cadena de caracteres asignada dinámicamente que contiene la firma temporal
- *         (ej. "20253231800"), o NULL si no se encuentra. El llamador debe liberarla.
+ * @brief Extrae el nombre del satélite del nombre de archivo (formato "GXX").
+ * @param filename Nombre del archivo de entrada.
+ * @return String duplicado con el nombre del satélite, o NULL si no se encuentra.
  */
-static char* extract_goes_timestamp(const char* filename) {
-    if (!filename) {
-        return NULL;
+static char* extract_satellite_from_filename(const char* filename) {
+    if (!filename) return NULL;
+    
+    const char* sat_ptr = strstr(filename, "_G");
+    if (sat_ptr && strlen(sat_ptr) >= 4 && isdigit(sat_ptr[2]) && isdigit(sat_ptr[3])) {
+        char buffer[4];
+        snprintf(buffer, sizeof(buffer), "G%c%c", sat_ptr[2], sat_ptr[3]);
+        return strdup(buffer);
     }
-
-    const char* s_prefix = "_s";
-    const char* start_ptr = strstr(filename, s_prefix);
-
-    if (!start_ptr) {
-        LOG_DEBUG("Prefijo de firma temporal '_s' no encontrado en: %s", filename);
-        return NULL;
-    }
-
-    start_ptr += strlen(s_prefix); // Mover el puntero más allá de "_s"
-
-    const int timestamp_len = 11; // YYYYJJJHHMM
-
-    if (strlen(start_ptr) < timestamp_len) {
-        LOG_DEBUG("No hay suficientes caracteres para la firma temporal en: %s", filename);
-        return NULL;
-    }
-
-    char* timestamp = (char*)malloc((timestamp_len + 1) * sizeof(char));
-    if (!timestamp) {
-        LOG_ERROR("Falla de asignación de memoria para la firma temporal.");
-        return NULL;
-    }
-
-    strncpy(timestamp, start_ptr, timestamp_len);
-    timestamp[timestamp_len] = '\0';
-
-    return timestamp;
+    return strdup("GXX"); // Fallback
 }
 
 /**
- * @brief Genera un nombre de archivo de salida por defecto.
+ * @brief Convierte fecha/hora a día juliano.
  */
-char* generate_default_output_filename(const char* input_file_path, const char* processing_mode, const char* output_extension) {
-    if (!input_file_path || !processing_mode || !output_extension) {
-        return NULL;
+static int date_to_julian(int year, int month, int day) {
+    int days_in_month[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    // Leap year check
+    if ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)) {
+        days_in_month[2] = 29;
     }
-
-    char* timestamp_str = extract_goes_timestamp(input_file_path);
-    char* final_output_filename = NULL;
     
-    // Si se extrajo la firma, usar el formato nuevo. Si no, usar uno genérico.
-    if (timestamp_str) {
-        // Longitud: "out" + timestamp + "-" + mode + extension + \0
-        size_t required_len = 3 + strlen(timestamp_str) + 1 + strlen(processing_mode) + strlen(output_extension) + 1;
-        final_output_filename = (char*)malloc(required_len);
-        if (final_output_filename) {
-            snprintf(final_output_filename, required_len, "out%s-%s%s", timestamp_str, processing_mode, output_extension);
+    int jday = day;
+    for (int m = 1; m < month; m++) {
+        jday += days_in_month[m];
+    }
+    return jday;
+}
+
+/**
+ * @brief Formatea el timestamp desde metadatos DataNC (formato: YYYYJJJ_hhmm).
+ */
+static void format_instant_from_datanc(const DataNC* datanc, char* buffer, size_t size) {
+    if (!datanc) {
+        snprintf(buffer, size, "NA");
+        return;
+    }
+    
+    int jday = date_to_julian(datanc->year, datanc->mon, datanc->day);
+    snprintf(buffer, size, "%04d%03d_%02d%02d", 
+             datanc->year, jday, datanc->hour, datanc->min);
+}
+
+/**
+ * @brief Determina la parte <TIPO> del nombre de archivo.
+ * @param info Puntero a la estructura de información.
+ * @param buffer Buffer de salida.
+ * @param size Tamaño del buffer.
+ */
+static void get_type_part(const FilenameGeneratorInfo* info, char* buffer, size_t size) {
+    if (strcmp(info->command, "gray") == 0) {
+        snprintf(buffer, size, "gray");
+    } else if (strcmp(info->command, "pseudocolor") == 0) {
+        snprintf(buffer, size, "pseudo");
+    } else if (strcmp(info->command, "rgb") == 0) {
+        if (info->rgb_mode && strcmp(info->rgb_mode, "truecolor") != 0 && strcmp(info->rgb_mode, "composite") != 0) {
+            // Producto semántico: usar el nombre del modo
+            snprintf(buffer, size, "%s", info->rgb_mode);
+        } else {
+            // RGB sin producto semántico
+            snprintf(buffer, size, "rgb");
         }
-        free(timestamp_str);
     } else {
-        // Fallback al formato antiguo si no se puede extraer la firma
-        // Longitud: "out_" + mode + extension + \0
-        size_t required_len = 4 + strlen(processing_mode) + strlen(output_extension) + 1;
-        final_output_filename = (char*)malloc(required_len);
-        if (final_output_filename) {
-            snprintf(final_output_filename, required_len, "out_%s%s", processing_mode, output_extension);
+        snprintf(buffer, size, "NA");
+    }
+}
+
+/**
+ * @brief Determina la parte <BANDAS> del nombre de archivo.
+ * @param info Puntero a la estructura de información.
+ * @param buffer Buffer de salida.
+ * @param size Tamaño del buffer.
+ */
+static void get_bands_part(const FilenameGeneratorInfo* info, char* buffer, size_t size) {
+    if (strcmp(info->command, "gray") == 0 || strcmp(info->command, "pseudocolor") == 0) {
+        if (info->datanc && info->datanc->band_id > 0) {
+            snprintf(buffer, size, "C%02d", info->datanc->band_id);
+        } else {
+            snprintf(buffer, size, "NA");
+        }
+    } else if (strcmp(info->command, "rgb") == 0) {
+        if (info->rgb_mode && strcmp(info->rgb_mode, "truecolor") != 0 && strcmp(info->rgb_mode, "composite") != 0) {
+            // Producto semántico
+            snprintf(buffer, size, "auto");
+        } else {
+            // RGB explícito
+            snprintf(buffer, size, "C02-C03-C01");
+        }
+    } else {
+        snprintf(buffer, size, "NA");
+    }
+}
+
+/**
+ * @brief Construye la cadena de operaciones <OPS>.
+ * @param info Puntero a la estructura de información.
+ * @param buffer Buffer de salida.
+ * @param size Tamaño del buffer.
+ * @return true si se añadió alguna operación, false en caso contrario.
+ */
+static bool build_ops_string(const FilenameGeneratorInfo* info, char* buffer, size_t size) {
+    buffer[0] = '\0';
+    bool has_ops = false;
+
+    const char* ops_list[6];
+    int op_count = 0;
+    char gamma_str[16];
+
+    if (info->apply_rayleigh) ops_list[op_count++] = "ray";
+    if (info->apply_histogram) ops_list[op_count++] = "histo";
+    if (info->apply_clahe) ops_list[op_count++] = "clahe";
+    if (fabsf(info->gamma - 1.0f) > 0.01f) {
+        snprintf(gamma_str, sizeof(gamma_str), "g%.1f", info->gamma);
+        for (char *p = gamma_str; *p; ++p) {
+            if (*p == '.') *p = 'p';
+        }
+        ops_list[op_count++] = gamma_str;
+    }
+    if (info->has_clip) ops_list[op_count++] = "clip";
+    if (info->do_reprojection) ops_list[op_count++] = "geo";
+
+    if (op_count == 0) {
+        return false;
+    }
+
+    // Construir la cadena final
+    size_t current_len = 0;
+    for (int i = 0; i < op_count; i++) {
+        size_t op_len = strlen(ops_list[i]);
+        // Verificar si hay espacio suficiente (incluyendo separador y terminador nulo)
+        if (current_len + op_len + (i > 0 ? 2 : 0) + 1 < size) {
+            if (i > 0) {
+                strcat(buffer, "__");
+                current_len += 2;
+            }
+            strcat(buffer, ops_list[i]);
+            current_len += op_len;
+            has_ops = true;
+        } else {
+            LOG_WARN("Buffer insuficiente para construir la cadena de operaciones completa.");
+            break;
         }
     }
-
-    if (!final_output_filename) {
-        LOG_ERROR("Falla de asignación de memoria para el nombre de archivo de salida.");
-    }
-
-    return final_output_filename;
+    return has_ops;
 }
 
 // --- Funciones para expansión de patrones ---
@@ -97,7 +177,7 @@ char* generate_default_output_filename(const char* input_file_path, const char* 
 static void julian_to_date(int year, int jday, int *month, int *day) {
     int days_in_month[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
     // Leap year check
-    if ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)) {
+    if ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)) { // LCOV_EXCL_LINE
         days_in_month[2] = 29;
     }
 
@@ -170,13 +250,13 @@ char* expand_filename_pattern(const char* pattern, const char* input_filename) {
         }
     }
 
-    // Extract satellite name (e.g., "G16" -> "goes-16", "G19" -> "goes-19")
-    char satellite[10] = "goes-00";
+    // Extract satellite name (e.g., "G16", "G19")
+    char satellite[4] = "GXX";
     const char* sat_ptr = strstr(input_filename, "_G");
     if (sat_ptr) {
         sat_ptr += 2; // Skip "_G"
         if (sat_ptr[0] >= '0' && sat_ptr[0] <= '9' && sat_ptr[1] >= '0' && sat_ptr[1] <= '9') {
-            sprintf(satellite, "goes-%c%c", sat_ptr[0], sat_ptr[1]);
+            sprintf(satellite, "G%c%c", sat_ptr[0], sat_ptr[1]);
         }
     }
 
@@ -211,8 +291,8 @@ char* expand_filename_pattern(const char* pattern, const char* input_filename) {
     julian_to_date(year, jday, &month, &day);
 
     char s_month[3], s_day[3];
-    sprintf(s_month, "%02d", month);
-    sprintf(s_day, "%02d", day);
+    snprintf(s_month, sizeof(s_month), "%02d", month);
+    snprintf(s_day, sizeof(s_day), "%02d", day);
     
     char s_yy[3];
     strncpy(s_yy, s_year + 2, 2); s_yy[2] = 0;
@@ -246,4 +326,72 @@ char* expand_filename_pattern(const char* pattern, const char* input_filename) {
     }
 
     return current;
+}
+
+/**
+ * @brief Genera un nombre de archivo estandarizado y descriptivo basado en los parámetros de procesamiento.
+ * 
+ * Usa metadatos de DataNC (fecha/hora, banda) en lugar de parsear el nombre de archivo.
+ * Formato: hpsv_<SAT>_<YYYYJJJ_hhmm>_<TIPO>_<BANDAS>[_<OPS>].<ext>
+ */
+char* generate_hpsv_filename(const FilenameGeneratorInfo* info) {
+    if (!info || !info->command) {
+        LOG_ERROR("Información insuficiente para generar nombre de archivo.");
+        return NULL;
+    }
+
+    // Satélite (de filename si está disponible, sino "GXX")
+    const char* sat = info->satellite_name ? info->satellite_name : "GXX";
+    
+    // Timestamp desde DataNC
+    char instant[20] = "NA";
+    format_instant_from_datanc(info->datanc, instant, sizeof(instant));
+    
+    // Tipo de producto
+    char type[32] = "NA";
+    get_type_part(info, type, sizeof(type));
+    
+    // Bandas
+    char bands[32] = "NA";
+    get_bands_part(info, bands, sizeof(bands));
+    
+    // Operaciones aplicadas
+    char ops[128] = "";
+    bool has_ops = build_ops_string(info, ops, sizeof(ops));
+    
+    // Extensión
+    const char* ext = info->force_geotiff ? "tif" : "png";
+
+    // Construir nombre de archivo
+    char filename_buffer[512];
+    if (has_ops) {
+        snprintf(filename_buffer, sizeof(filename_buffer), "hpsv_%s_%s_%s_%s_%s.%s",
+                 sat, instant, type, bands, ops, ext);
+    } else {
+        snprintf(filename_buffer, sizeof(filename_buffer), "hpsv_%s_%s_%s_%s.%s",
+                 sat, instant, type, bands, ext);
+    }
+
+    return strdup(filename_buffer);
+}
+
+/**
+ * @brief Extrae el nombre del satélite del nombre de archivo GOES.
+ * @param filename Nombre del archivo (puede incluir ruta).
+ * @return String duplicado con formato "goes-XX" o NULL si falla.
+ */
+char* extract_satellite_name(const char* filename) {
+    return extract_satellite_from_filename(filename);
+}
+
+/**
+ * @brief Genera un nombre de archivo de salida por defecto.
+ * @deprecated Esta función es obsoleta y será eliminada. Usar generate_hpsv_filename en su lugar.
+ */
+char* generate_default_output_filename(const char* input_file_path, const char* processing_mode, const char* output_extension) {
+    (void)input_file_path;
+    (void)processing_mode;
+    (void)output_extension;
+    LOG_WARN("Llamada a función obsoleta 'generate_default_output_filename'. Usar 'generate_hpsv_filename' en su lugar.");
+    return strdup("hpsv_output_fallback.png");
 }

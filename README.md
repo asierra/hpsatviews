@@ -253,18 +253,15 @@ Implementado en C (C11) con paralelización mediante OpenMP, HPSATVIEWS prioriza
 
 ---
 
-## 6. Instalación
-
-### Requisitos
+## 6. Requisitos
 
 * Compilador C compatible con C11
-* OpenMP
 * Bibliotecas:
-- **libnetcdf-dev** - Lectura de archivos NetCDF GOES L1b
-- **libpng-dev** - Generación de imágenes PNG
-- **libgdal-dev** - Generación de imágenes GeoTIFF
-- **libm** - Funciones matemáticas
-- **OpenMP** - Paralelismo.
+  - **libnetcdf-dev** - Lectura de archivos NetCDF GOES L1b
+  - **libpng-dev** - Generación de imágenes PNG
+  - **libgdal-dev** - Generación de imágenes GeoTIFF
+  - **libm** - Funciones matemáticas
+  - **OpenMP** - Paralelismo.
 
 ---
 
@@ -298,7 +295,7 @@ HPSATVIEWS se encuentra en desarrollo activo, con un núcleo funcional estable y
   Academic Press.
   
 
-## 9. Licencia
+## 9. Autor y licencia
 
 ```
 Copyright (c) 2025 Alejandro Aguilar Sierra (asierra@unam.mx)
@@ -311,15 +308,6 @@ the Free Software Foundation, either version 3 of the License, or
 ```
 
 Consulta el archivo [LICENSE](LICENSE) para más detalles.
-
----
-
-## 10. Autor
-
-**Alejandro Aguilar Sierra**  
-📧 asierra@unam.mx  
-🏛️ Laboratorio Nacional de Observación de la Tierra, UNAM  
-🔗 [GitHub](https://github.com/asierra)
 
 ---
 

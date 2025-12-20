@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <ctype.h>
 
 
 bool strinstr(const char *main_str, const char *sub) {
@@ -71,6 +72,21 @@ static bool process_clip_coords(ArgParser* parser, const char* clip_csv_path, fl
     return true;
 }
 
+/**
+ * @brief Extrae el nombre del canal (ej. "C13") del nombre de archivo.
+ * @param filename Nombre del archivo de entrada.
+ * @return Puntero a una cadena estática con el nombre del canal, o "NA".
+ */
+static const char* get_channel_from_filename(const char* filename) {
+    if (!filename) return "NA";
+    const char* ch_ptr = strstr(filename, "_C");
+    if (ch_ptr && strlen(ch_ptr) >= 4 && isdigit(ch_ptr[2]) && isdigit(ch_ptr[3])) {
+        static char channel_buf[4];
+        snprintf(channel_buf, sizeof(channel_buf), "C%c%c", ch_ptr[2], ch_ptr[3]);
+        return channel_buf;
+    }
+    return "NA";
+}
 
 int run_processing(ArgParser *parser, bool is_pseudocolor) {
     LogLevel log_level = ap_found(parser, "verbose") ? LOG_DEBUG : LOG_INFO;
@@ -94,7 +110,8 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     const bool invert_values = ap_found(parser, "invert");
     const bool apply_histogram = ap_found(parser, "histo");
     const bool clahe_flag = ap_found(parser, "clahe");
-    const char* clahe_params = ap_get_str_value(parser, "clahe-params");
+    const bool clahe_params_provided = ap_found(parser, "clahe-params");
+    const char* clahe_params = clahe_params_provided ? ap_get_str_value(parser, "clahe-params") : NULL;
     const bool use_alpha = ap_found(parser, "alpha");
     const float gamma = ap_get_dbl_value(parser, "gamma");
     const int scale = ap_get_int_value(parser, "scale");
@@ -102,7 +119,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     const bool force_geotiff = ap_found(parser, "geotiff");
     
     // CLAHE se activa si se da --clahe o --clahe-params
-    const bool apply_clahe = clahe_flag || (clahe_params != NULL);
+    const bool apply_clahe = clahe_flag || clahe_params_provided;
     
     // Parsear parámetros de CLAHE (defecto: 8x8 tiles, clip_limit=4.0)
     int clahe_tiles_x = 8, clahe_tiles_y = 8;
@@ -118,11 +135,19 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         LOG_DEBUG("CLAHE params: tiles=%dx%d, clip_limit=%.2f", clahe_tiles_x, clahe_tiles_y, clahe_clip_limit);
     }
 
-    // --- Nombre de archivo de salida ---
+    // Determinar si hay recorte ANTES de generar el nombre de archivo
+    float clip_coords[4] = {0};
+    const bool has_clip = process_clip_coords(parser, "/usr/local/share/lanot/docs/recortes_coordenadas.csv", clip_coords);
+
+    // --- Nombre de archivo de salida (procesamiento de patrones) ---
     char* out_filename_generated = NULL;
-    const char* outfn;
+    const char* outfn = NULL;
+    bool user_provided_output = false;
+    
     if (ap_found(parser, "out")) {
         const char* user_out = ap_get_str_value(parser, "out");
+        user_provided_output = true;
+        
         // Detectar si hay patrón (contiene llaves)
         if (strchr(user_out, '{') && strchr(user_out, '}')) {
             out_filename_generated = expand_filename_pattern(user_out, fnc01);
@@ -145,33 +170,6 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
                 }
             }
         }
-    } else {
-        const char* mode_name = is_pseudocolor ? "pseudocolor" : "gray";
-        const char* extension = force_geotiff ? ".tif" : ".png";
-        char* base_filename = generate_default_output_filename(fnc01, mode_name, extension);
-        
-        if (do_reprojection && base_filename) {
-            char* dot = strrchr(base_filename, '.');
-            if (dot) {
-                size_t prefix_len = dot - base_filename;
-                size_t total_len = strlen(base_filename) + 5; // "_geo\0"
-                out_filename_generated = (char*)malloc(total_len);
-                if (out_filename_generated) {
-                    strncpy(out_filename_generated, base_filename, prefix_len);
-                    out_filename_generated[prefix_len] = '\0';
-                    strcat(out_filename_generated, "_geo");
-                    strcat(out_filename_generated, dot);
-                    free(base_filename);
-                } else {
-                    out_filename_generated = base_filename; // Fallback
-                }
-            } else {
-                out_filename_generated = base_filename;
-            }
-        } else {
-            out_filename_generated = base_filename;
-        }
-        outfn = out_filename_generated;
     }
 
     // --- Carga de datos ---
@@ -203,6 +201,29 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         return -1;
     }
 
+    // --- Generar nombre de archivo canónico si el usuario no proveyó uno ---
+    if (!user_provided_output) {
+        char* satellite_name = extract_satellite_name(fnc01);
+        
+        FilenameGeneratorInfo info = {
+            .datanc = &c01,
+            .satellite_name = satellite_name,
+            .command = is_pseudocolor ? "pseudocolor" : "gray",
+            .rgb_mode = NULL,
+            .apply_rayleigh = false, // No aplicable
+            .apply_histogram = apply_histogram,
+            .apply_clahe = apply_clahe,
+            .gamma = gamma,
+            .has_clip = has_clip,
+            .do_reprojection = do_reprojection,
+            .force_geotiff = force_geotiff
+        };
+
+        out_filename_generated = generate_hpsv_filename(&info);
+        free(satellite_name);
+        outfn = out_filename_generated;
+    }
+
     // --- Navegación y Recorte ---
     DataF navla_full = {0}, navlo_full = {0};
     bool nav_loaded = false;
@@ -224,9 +245,6 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         }
     }
 
-    float clip_coords[4] = {0};
-    bool has_clip = process_clip_coords(parser, "/usr/local/share/lanot/docs/recortes_coordenadas.csv", clip_coords);
-    
     // Variables para metadatos de salida
     float final_lon_min = 0, final_lon_max = 0, final_lat_min = 0, final_lat_max = 0;
     unsigned crop_x_start = 0, crop_y_start = 0;

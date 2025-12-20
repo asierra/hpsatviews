@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Extender el comando `gray` para permitir la generación de imágenes basadas en **operaciones aritméticas lineales entre bandas** (por ejemplo, diferencias de temperatura o índices simples), manteniendo la filosofía de **"un solo archivo de entrada"**. Una vez funcionando en gray, se podrá extender a rgb, permitiendo simplemente tres --calc - tres --minmax (o --range)
+Extender el comando `gray` para permitir la generación de imágenes basadas en **operaciones aritméticas lineales entre bandas** (por ejemplo, diferencias de temperatura o índices simples), manteniendo la filosofía de **"un solo archivo ancla de entrada"**. Una vez funcionando en gray, se podrá extender a rgb, permitiendo simplemente tres --calc - tres --minmax (o --range)
 
 ---
 
@@ -10,10 +10,12 @@ Extender el comando `gray` para permitir la generación de imágenes basadas en 
 
 ```bash
 hpsatviews gray \
-  --calc "1.0*C13 - 1.0*C15 + 0.5" \
+  --calc "2.0*C13 - 4.0*C15 + 0.5" \
   --range "-5.0,5.0" \
   ...
 ```
+
+Discutir la conveniencia de usar --calc o buscar alguna alternativa, pues es algebra muy simple, no una calculadora complicada. Y tal vez --minmax es más intuitivo que --range.
 
 ---
 
@@ -25,16 +27,16 @@ Traducir la cadena de texto proporcionada por el usuario a una estructura maneja
 
 ### Definición de estructuras
 
-(En `types.h` o `math_ops.h`)
+(En `math_ops.h`)
 
 ```c
 typedef struct {
-    char   band_name[8];  // Ejemplo: "C13"
-    double coeff;         // Ejemplo: 1.0
+    char   band_id;  // Como en DataNC
+    double coeff;         // Ejemplo: 2.0
 } LinearTerm;
 
 typedef struct {
-    LinearTerm terms[10]; // Máximo 10 términos
+    LinearTerm terms[8]; // Máximo 8 términos
     int        num_terms;
     double     bias;      // Término independiente
 } LinearCombo;
@@ -42,7 +44,7 @@ typedef struct {
 
 ### Implementación del parser
 
-(En `utils.c`)
+(En `math_ops.c`)
 
 ```c
 int parse_calc_string(const char *input, LinearCombo *out);
@@ -65,6 +67,8 @@ int parse_calc_string(const char *input, LinearCombo *out);
 
 ## Fase 2: Lógica de archivos (inferencia)
 
+Esto ya lo solucionamos en parte con channelset.h y channelset.c y con el ancla sabemos el instante (la firma sYYYYJJJhhmm) y la ruta exacta dondé podemos encontrar los archivos.
+
 ### Objetivo
 
 Localizar y cargar las bandas necesarias basándose **únicamente** en el archivo *ancla* proporcionado por el usuario.
@@ -73,13 +77,9 @@ Localizar y cargar las bandas necesarias basándose **únicamente** en el archiv
 
 * Tras parsear la fórmula, extraer la lista de bandas únicas requeridas (por ejemplo: `C13`, `C15`).
 
-### Identificación del ancla
-
-* Detectar qué banda corresponde al archivo recibido en `argv`.
-
 ### Generación de rutas (path construction)
 
-Para cada banda faltante en la fórmula:
+Para cada banda en la fórmula: (ya resuelto)
 
 1. Extraer *timestamp* y prefijos del nombre del archivo ancla.
 2. Sustituir el identificador de canal (ejemplo: reemplazar `C13` por `C15`).
@@ -90,7 +90,7 @@ Para cada banda faltante en la fórmula:
 * Si falta un archivo, abortar con un mensaje claro:
 
 ```text
-Missing companion file for band C15
+Missing companion file for band {CH}
 ```
 
 ---
@@ -104,7 +104,7 @@ Cargar múltiples imágenes en memoria de forma eficiente.
 ### Estrategia de carga
 
 * Carga secuencial o paralela (opcional).
-* Cargar los datos de todas las bandas requeridas en arreglos de `float`.
+* Cargar los datos de todas las bandas requeridas en arreglos DataF.
 
 ### Consideración crítica
 
@@ -112,12 +112,14 @@ Cargar múltiples imágenes en memoria de forma eficiente.
 
   * Kelvin para IR.
   * Reflectancia para VIS.
-* Aplicar `scale_factor` y `add_offset` del NetCDF.
+* Aplicar `scale_factor` y `add_offset` del NetCDF. 
 * **No** operar con cuentas crudas (`uint16`).
+* Todo esto ya lo hacemos.
 
 ### Validación de dimensiones
 
 * Verificar que todas las matrices tengan exactamente el mismo `width` y `height`.
+* Si hace falta, aplicar downsampling por defecto o upsampling si --full-res como ya hacemos en rgb.c
 
 ---
 
@@ -126,6 +128,7 @@ Cargar múltiples imágenes en memoria de forma eficiente.
 ### Objetivo
 
 Ejecutar la operación matemática píxel a píxel usando **OpenMP**.
+Usar las funciones dataf_op_dataf y dataf_op_scalar en datanc.c 
 
 ### Preparación de parámetros
 
@@ -135,3 +138,7 @@ Ejecutar la operación matemática píxel a píxel usando **OpenMP**.
 ```c
 double scale = 255.0 / (max - min)
 ```
+
+Tal vez solo hace falta crear math_ops.c/h y aprovechar código en channelset.c/h, rgb.c/h y datanc.h/c.
+
+Discutir nombres apropiados.
