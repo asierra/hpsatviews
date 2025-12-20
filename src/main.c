@@ -97,13 +97,13 @@ int main(int argc, char *argv[]) {
                                  "Genera un compuesto RGB. Requiere varios canales en el mismo directorio y misma fecha y hora que el ancla.\n\n"
                                  "Opciones específicas del comando rgb:\n"
                                  "  -m, --mode <modo>       Modo de operación. Opciones disponibles:\n"
-                                 "                          'composite' (defecto), 'truecolor', 'night', 'ash', 'airmass', 'so2'.\n\n"
-                                 "  --rayleigh              Aplica corrección atmosférica de Rayleigh (solo modos truecolor/composite).\n\n"
+                                 "                          'daynite' (defecto), 'truecolor', 'night', 'ash', 'airmass', 'so2'.\n\n"
+                                 "  --rayleigh              Aplica corrección atmosférica de Rayleigh (solo modos truecolor/daynite).\n\n"
                                  "  -f, --full-res          Usa el canal de mayor resolución como referencia (más detalle, más lento).\n"
                                  "                          Por defecto, se usa el de menor resolución (más rápido).\n\n"
                                 "Para opciones comunes (out, clip, gamma, histo, scale, alpha, etc.), use 'hpsatviews --help'.");
         ap_add_flag(rgb_cmd, "citylights l");
-        ap_add_str_opt(rgb_cmd, "mode m", "composite");
+        ap_add_str_opt(rgb_cmd, "mode m", "daynite");
         add_common_opts(rgb_cmd);
         ap_add_flag(rgb_cmd, "rayleigh");
         ap_add_flag(rgb_cmd, "full-res f");

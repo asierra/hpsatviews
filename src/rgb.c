@@ -97,7 +97,7 @@ bool rgb_parse_options(ArgParser *parser, RgbContext *ctx) {
     // Parsear opciones con valores
     ctx->opts.mode = ap_get_str_value(parser, "mode");
     if (!ctx->opts.mode) {
-        ctx->opts.mode = "composite"; // Valor por defecto
+        ctx->opts.mode = "daynite"; // Valor por defecto
     }
 
     // ap_get_dbl_value y ap_get_int_value retornan 0 si no se encuentra la opción
@@ -272,7 +272,7 @@ static ImageData compose_so2(RgbContext *ctx) {
     return result;
 }
 
-static ImageData compose_composite(RgbContext *ctx) {
+static ImageData compose_daynite(RgbContext *ctx) {
     // Genera imagen diurna (truecolor)
     ImageData diurna = compose_truecolor(ctx);
     
@@ -333,7 +333,7 @@ static const RgbStrategy STRATEGIES[] = {
       "Air Mass RGB", false },
     { "so2", {"C09", "C10", "C11", "C13", NULL}, compose_so2, 
       "SO2 Detection RGB", false },
-    { "composite", {"C01", "C02", "C03", "C13", NULL}, compose_composite, 
+    { "daynite", {"C01", "C02", "C03", "C13", NULL}, compose_daynite, 
       "Day/Night Composite", true },  // needs_navigation = true
     { NULL, {NULL}, NULL, NULL, false }  // Centinela
 };
@@ -575,7 +575,7 @@ static bool apply_postprocessing(RgbContext *ctx) {
     }
     
     // 2. Histogram/CLAHE (no para composite, que lo hace internamente)
-    if (strcmp(ctx->opts.mode, "composite") != 0) {
+    if (strcmp(ctx->opts.mode, "daynite") != 0) {
         if (ctx->opts.apply_histogram) {
             LOG_INFO("Aplicando ecualización de histograma.");
             image_apply_histogram(ctx->final_image);
