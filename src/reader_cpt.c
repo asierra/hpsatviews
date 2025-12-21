@@ -83,7 +83,7 @@ ColorArray* cpt_to_color_array(CPTData* cpt) {
     if (cpt->has_nan_color) color_array->colors[palette_size - 1] = cpt->nan_color;
     if (cpt->has_foreground) color_array->colors[palette_size - 2] = cpt->foreground;
 
-    printf("colores paleta %d %d\n", palette_size, color_array->length);
+    LOG_DEBUG("colores paleta %d %d", palette_size, color_array->length);
     return color_array;
 }
 
@@ -140,7 +140,7 @@ bool parse_special_color(const char* line, CPTData* cpt) {
 CPTData* read_cpt_file(const char* filename) {
     FILE* file = fopen(filename, "r");
     if (!file) {
-        fprintf(stderr, "Error: No se pudo abrir el archivo %s\n", filename);
+        LOG_ERROR("No se pudo abrir el archivo CPT: %s", filename);
         return NULL;
     }
     
@@ -223,39 +223,38 @@ void free_cpt_data(CPTData* cpt) {
 
 // Función para imprimir información del CPT
 void print_cpt_info(const CPTData* cpt) {
-    printf("CPT: %s\n", cpt->name);
-    printf("Entradas de color: %d\n", cpt->entry_count);
-    
-    if (cpt->has_foreground) {
-        printf("Foreground: %u/%u/%u\n", 
-               cpt->foreground.r, 
-               cpt->foreground.g, 
-               cpt->foreground.b);
-    }
-    
-    if (cpt->has_background) {
-        printf("Background: %u/%u/%u\n", 
-               cpt->background.r, 
-               cpt->background.g, 
-               cpt->background.b);
-    }
-    
-    if (cpt->has_nan_color) {
-        printf("NaN Color: %u/%u/%u\n", 
-               cpt->nan_color.r, 
-               cpt->nan_color.g, 
-               cpt->nan_color.b);
-    }
-    
-    printf("\nTabla de colores:\n");
-    for (int i = 0; i < cpt->entry_count; i += 2) {
-        printf("%.6g -> %.6g: ", 
-               cpt->entries[i].value, 
-               cpt->entries[i+1].value);
-        printf("RGB(%u,%u,%u) -> RGB(%u,%u,%u)\n",
-               cpt->entries[i].color.r, cpt->entries[i].color.g, cpt->entries[i].color.b,
-               cpt->entries[i+1].color.r, cpt->entries[i+1].color.g, cpt->entries[i+1].color.b);
-    }
+        LOG_INFO("CPT: %s", cpt->name);
+        LOG_INFO("Entradas de color: %d", cpt->entry_count);
+
+        if (cpt->has_foreground) {
+         LOG_INFO("Foreground: %u/%u/%u", 
+             cpt->foreground.r, 
+             cpt->foreground.g, 
+             cpt->foreground.b);
+        }
+
+        if (cpt->has_background) {
+         LOG_INFO("Background: %u/%u/%u", 
+             cpt->background.r, 
+             cpt->background.g, 
+             cpt->background.b);
+        }
+
+        if (cpt->has_nan_color) {
+         LOG_INFO("NaN Color: %u/%u/%u", 
+             cpt->nan_color.r, 
+             cpt->nan_color.g, 
+             cpt->nan_color.b);
+        }
+
+        LOG_INFO("Tabla de colores:");
+        for (int i = 0; i < cpt->entry_count; i += 2) {
+         LOG_INFO("%.6g -> %.6g: RGB(%u,%u,%u) -> RGB(%u,%u,%u)",
+             cpt->entries[i].value, 
+             cpt->entries[i+1].value,
+             cpt->entries[i].color.r, cpt->entries[i].color.g, cpt->entries[i].color.b,
+             cpt->entries[i+1].color.r, cpt->entries[i+1].color.g, cpt->entries[i+1].color.b);
+        }
 }
 
 // Función para obtener el color interpolado para un valor dado

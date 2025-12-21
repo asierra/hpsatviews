@@ -93,9 +93,20 @@ static const char* get_channel_from_filename(const char* filename) {
 }
 
 int run_processing(ArgParser *parser, bool is_pseudocolor) {
-    LogLevel log_level = ap_found(parser, "verbose") ? LOG_DEBUG : LOG_INFO;
+    LogLevel log_level;
+#ifdef DEBUG_MODE
+    log_level = LOG_DEBUG;
+#else
+    log_level = ap_found(parser, "verbose") ? LOG_DEBUG : LOG_INFO;
+#endif
     logger_init(log_level);
-    LOG_DEBUG("Modo verboso activado para el comando de procesamiento.");
+    LOG_DEBUG("Modo de log: %s", 
+#ifdef DEBUG_MODE
+        "debug (compilación)"
+#else
+        ap_found(parser, "verbose") ? "verboso" : "normal"
+#endif
+    );
 
     char *fnc01;
     if (ap_has_args(parser)) {
@@ -409,7 +420,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
                     dataf_destroy(&channels[cn].fdata);
                     channels[cn].fdata = resampled;
                 } else {
-                    LOG_ERROR("Fallo al resamplear el canal C%02d", cn);
+                    LOG_ERROR("Falla al resamplear el canal C%02d", cn);
                     channelset_destroy(cset);
                     for (int j = 1; j <= 16; j++) {
                         if (channels[j].fdata.data_in) datanc_destroy(&channels[j]);
@@ -427,7 +438,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         LOG_INFO("Evaluando expresión algebraica...");
         result_data = evaluate_linear_combo(&combo, channels);
         if (!result_data.data_in) {
-            LOG_ERROR("Fallo al evaluar la expresión.");
+            LOG_ERROR("Falla al evaluar la expresión.");
             channelset_destroy(cset);
             for (int j = 1; j <= 16; j++) {
                 if (channels[j].fdata.data_in) datanc_destroy(&channels[j]);
@@ -543,7 +554,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         native_image = create_single_grayb(c01.bdata, invert_values, use_alpha, cptdata);
     }
     if (!native_image.data) {
-        LOG_ERROR("Fallo al crear la imagen nativa.");
+        LOG_ERROR("Falla al crear la imagen nativa.");
         // ... (cleanup)
         return -1;
     }
@@ -565,7 +576,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         image_destroy(&native_image); // Liberar imagen nativa
 
         if (final_image.data == NULL) {
-            LOG_ERROR("Fallo durante la reproyección de la imagen.");
+            LOG_ERROR("Falla durante la reproyección de la imagen.");
             // ... (cleanup)
             return -1;
         }

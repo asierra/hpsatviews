@@ -18,13 +18,13 @@ ChannelSet* channelset_create(const char **channel_names, int count) {
     
     ChannelSet *set = malloc(sizeof(ChannelSet));
     if (!set) {
-        LOG_ERROR("Fallo al asignar memoria para ChannelSet");
+        LOG_ERROR("Falla al asignar memoria para ChannelSet");
         return NULL;
     }
     
     set->channels = calloc(count, sizeof(ChannelInfo));
     if (!set->channels) {
-        LOG_ERROR("Fallo al asignar memoria para array de canales");
+        LOG_ERROR("Falla al asignar memoria para array de canales");
         free(set);
         return NULL;
     }
@@ -130,7 +130,7 @@ int find_channel_filenames(const char *directory, ChannelSet *set, bool is_l2_pr
                 size_t path_len = strlen(directory) + strlen(entry->d_name) + 2;
                 char *full_path = malloc(path_len);
                 if (!full_path) {
-                    LOG_ERROR("Fallo al asignar memoria para ruta");
+                    LOG_ERROR("Falla al asignar memoria para ruta");
                     closedir(dir);
                     return -1;
                 }

@@ -10,7 +10,7 @@
 #include <ogr_srs_api.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h> // Necesario para sprintf
+#include <stdio.h>
 
 // --- Funciones Auxiliares Privadas ---
 

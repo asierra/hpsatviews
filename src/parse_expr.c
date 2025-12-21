@@ -1,9 +1,8 @@
-#include "parse_expr.h"
 
-// Función auxiliar para imprimir errores con contexto
-static void report_error(const char *msg, const char *ptr) {
-    fprintf(stderr, "Error de sintaxis: %s en -> \"%s\"\n", msg, ptr);
-}
+#include "parse_expr.h"
+#include "logger.h"
+
+
 
 static void skip_spaces(const char **ptr) {
     while (isspace(**ptr)) (*ptr)++;
@@ -18,6 +17,7 @@ int parse_expr_string(const char *input, LinearCombo *out) {
     const char *ptr = input;
     bool expect_operator = false;
 
+
     while (*ptr != '\0') {
         skip_spaces(&ptr);
         if (*ptr == '\0') break;
@@ -31,7 +31,7 @@ int parse_expr_string(const char *input, LinearCombo *out) {
             skip_spaces(&ptr);
             expect_operator = false;
         } else if (expect_operator) {
-            report_error("Se esperaba un operador (+ o -)", ptr); // Caso "C13 C15"
+            LOG_ERROR("Se esperaba un operador (+ o -) en -> '%s'", ptr); // Caso "C13 C15"
             return -1;
         }
 
@@ -40,10 +40,10 @@ int parse_expr_string(const char *input, LinearCombo *out) {
         if (isdigit(*ptr) || *ptr == '.') {
             double val = strtod(ptr, &next_ptr);
             if (ptr == next_ptr) {
-                report_error("Número mal formado", ptr); // Caso "2.0.3*C13"
+                LOG_ERROR("Número mal formado en -> '%s'", ptr); // Caso "2.0.3*C13"
                 return -1;
             }
-            
+
             ptr = next_ptr;
             skip_spaces(&ptr);
 
@@ -51,17 +51,17 @@ int parse_expr_string(const char *input, LinearCombo *out) {
                 ptr++;
                 skip_spaces(&ptr);
                 if (*ptr != 'C') {
-                    report_error("Se esperaba 'C' después de '*'", ptr);
+                    LOG_ERROR("Se esperaba 'C' después de '*' en -> '%s'", ptr);
                     return -1;
                 }
                 ptr++;
-                
+
                 int bid = (int)strtol(ptr, &next_ptr, 10);
                 if (ptr == next_ptr || bid < 1 || bid > 16) {
-                    fprintf(stderr, "Error: Banda C%02d inválida (rango permitido: C01-C16)\n", bid); // Caso "C99"
+                    LOG_ERROR("Banda C%02d inválida (rango permitido: C01-C16) en -> '%s'", bid, ptr); // Caso "C99"
                     return -1;
                 }
-                
+
                 if (out->num_terms >= 10) return -1;
                 out->terms[out->num_terms].coeff = val * current_sign;
                 out->terms[out->num_terms].band_id = (uint8_t)bid;
@@ -70,16 +70,16 @@ int parse_expr_string(const char *input, LinearCombo *out) {
             } else {
                 out->bias += val * current_sign;
             }
-        } 
+        }
         // 3. Banda con coeficiente implícito
         else if (*ptr == 'C') {
             ptr++;
             int bid = (int)strtol(ptr, &next_ptr, 10);
             if (ptr == next_ptr || bid < 1 || bid > 16) {
-                fprintf(stderr, "Error: Banda C%02d inválida (rango permitido: C01-C16)\n", bid);
+                LOG_ERROR("Banda C%02d inválida (rango permitido: C01-C16) en -> '%s'", bid, ptr);
                 return -1;
             }
-            
+
             if (out->num_terms >= 10) return -1;
             out->terms[out->num_terms].coeff = 1.0 * current_sign;
             out->terms[out->num_terms].band_id = (uint8_t)bid;
@@ -87,7 +87,7 @@ int parse_expr_string(const char *input, LinearCombo *out) {
             ptr = next_ptr;
         } else {
             // Caso de caracteres prohibidos como / , ( , ^
-            fprintf(stderr, "Error: Carácter o símbolo no soportado '%c'\n", *ptr); // Caso "C13/C15"
+            LOG_ERROR("Carácter o símbolo no soportado '%c' en -> '%s'", *ptr, ptr); // Caso "C13/C15"
             return -1;
         }
 
@@ -96,7 +96,7 @@ int parse_expr_string(const char *input, LinearCombo *out) {
     }
 
     if (out->num_terms == 0) {
-        fprintf(stderr, "Error: La expresión debe contener al menos una banda (C01-C16)\n");
+        LOG_ERROR("La expresión debe contener al menos una banda (C01-C16)");
         return -1;
     }
 
@@ -239,7 +239,7 @@ int main(int argc, char **argv) {
             printf("  Término %d: Coeff=%.2f, Band=C%02d\n", i, combo.terms[i].coeff, combo.terms[i].band_id);
         }
         printf("  Bias: %.2f\n", combo.bias);
-        
+
         // Probar extracción de bandas únicas
         char* required_channels[10];
         int n = extract_required_channels(&combo, required_channels);

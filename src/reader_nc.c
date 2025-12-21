@@ -131,7 +131,6 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
   } else {
     LOG_WARN("No se encontró la variable 'band_id' en el archivo NetCDF.");
   }
-  printf("banda detectada %d\n", datanc->band_id);
   
   // Only L1b
   float planck_fk1, planck_fk2, planck_bc1, planck_bc2, kappa0;

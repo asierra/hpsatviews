@@ -148,14 +148,28 @@ int main(int argc, char *argv[]) {
     }
     
     ArgParser* active_cmd = ap_get_cmd_parser(parser);
-    if (active_cmd) {
+        if (active_cmd) {
+    #ifdef DEBUG_MODE
+        LogLevel log_level = LOG_DEBUG;
+    #else
         LogLevel log_level = ap_found(active_cmd, "verbose") ? LOG_DEBUG : LOG_INFO;
+    #endif
         logger_init(log_level);
-        LOG_DEBUG("Logger inicializado en modo verboso.");
-    } else {
+        LOG_DEBUG("Logger inicializado en modo %s.",
+    #ifdef DEBUG_MODE
+            "debug (compilación)"
+    #else
+            ap_found(active_cmd, "verbose") ? "verboso" : "normal"
+    #endif
+        );
+        } else {
         // No command was run, maybe just 'help' or 'version'
+    #ifdef DEBUG_MODE
+        logger_init(LOG_DEBUG);
+    #else
         logger_init(LOG_INFO);
-    }
+    #endif
+        }
 
     ap_free(parser);
     return 0;

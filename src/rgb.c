@@ -415,7 +415,7 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
     // 2. Extraer ID signature del input_file
     char *input_dup_id = strdup(ctx->opts.input_file);
     if (!input_dup_id) {
-        snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Fallo de memoria al duplicar nombre de archivo.");
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falla de memoria al duplicar nombre de archivo.");
         return false;
     }
     const char *basename_input = basename(input_dup_id);
@@ -430,7 +430,7 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
     // 3. Buscar archivos de canales
     char *input_dup_dir = strdup(ctx->opts.input_file);
     if (!input_dup_dir) {
-        snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Fallo de memoria al duplicar nombre de archivo.");
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falla de memoria al duplicar nombre de archivo.");
         return false;
     }
     const char *dirnm = dirname(input_dup_dir);
@@ -453,7 +453,7 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
             const char *var = ctx->opts.is_l2_product ? "CMI" : "Rad";
             LOG_DEBUG("Cargando canal C%02d desde %s", cn, ctx->channel_set->channels[i].filename);
             if (load_nc_sf(ctx->channel_set->channels[i].filename, var, &ctx->channels[cn]) != 0) {
-                snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Fallo al cargar NetCDF: %s", ctx->channel_set->channels[i].filename);
+                snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falla al cargar NetCDF: %s", ctx->channel_set->channels[i].filename);
                 return false;
             }
             
@@ -511,7 +511,7 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
                 dataf_destroy(&ctx->channels[cn].fdata);
                 ctx->channels[cn].fdata = resampled;
             } else {
-                snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Fallo al remuestrear el canal C%02d", cn);
+                snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falla al remuestrear el canal C%02d", cn);
                 for (int j = 0; j < i; j++) { // Limpiar los ya remuestreados en esta vuelta
                     dataf_destroy(&ctx->channels[atoi(ctx->channel_set->channels[j].name + 1)].fdata);
                 }
@@ -558,7 +558,7 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
                     ctx->nav_lat = nav_lat_resampled;
                     ctx->nav_lon = nav_lon_resampled;
                 } else {
-                    LOG_ERROR("Fallo al remuestrear la navegación");
+                    LOG_ERROR("Falla al remuestrear la navegación");
                     return false;
                 }
             } else {
@@ -574,7 +574,7 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
                     ctx->nav_lat = nav_lat_resampled;
                     ctx->nav_lon = nav_lon_resampled;
                 } else {
-                    LOG_ERROR("Fallo al remuestrear la navegación");
+                    LOG_ERROR("Falla al remuestrear la navegación");
                     return false;
                 }
             }
@@ -613,7 +613,7 @@ static bool generate_output_filename(RgbContext *ctx, const RgbStrategy *strateg
     free(satellite_name);
     
     if (!ctx->opts.output_filename) {
-        snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Fallo al generar nombre de archivo de salida.");
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falla al generar nombre de archivo de salida.");
         return false;
     }
     
@@ -760,7 +760,7 @@ int run_rgb(ArgParser *parser) {
     LOG_INFO("Generando imagen '%s'...", strategy->mode_name);
     ctx.final_image = strategy->composer_func(&ctx);
     if (ctx.final_image.data == NULL) {
-        LOG_ERROR("Fallo al generar la imagen RGB para el modo '%s'.", strategy->mode_name);
+        LOG_ERROR("Falla al generar la imagen RGB para el modo '%s'.", strategy->mode_name);
         goto cleanup;
     }
 
@@ -779,7 +779,7 @@ int run_rgb(ArgParser *parser) {
         );
         
         if (reprojected.data == NULL) {
-            LOG_ERROR("Fallo durante la reproyección de la imagen RGB.");
+            LOG_ERROR("Falla durante la reproyección de la imagen RGB.");
             goto cleanup;
         }
         
@@ -802,13 +802,13 @@ int run_rgb(ArgParser *parser) {
 
     // Paso 7: Post-procesamiento (gamma, histogram, CLAHE, scale, alpha)
     if (!apply_postprocessing(&ctx)) {
-        LOG_ERROR("Fallo en la etapa de post-procesamiento.");
+        LOG_ERROR("Falla en la etapa de post-procesamiento.");
         goto cleanup;
     }
 
     // Paso 8: Escritura
     if (!write_output(&ctx)) {
-        LOG_ERROR("Fallo al guardar la imagen de salida.");
+        LOG_ERROR("Falla al guardar la imagen de salida.");
         goto cleanup;
     }
 

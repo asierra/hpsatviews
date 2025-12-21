@@ -1,7 +1,9 @@
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "clip_loader.h"
+#include "logger.h"
 
 #define MAX_LINE_LENGTH 256
 
@@ -11,7 +13,7 @@ GeoClip buscar_clip_por_clave(const char *ruta_archivo, const char *clave_buscad
 
     FILE *fp = fopen(ruta_archivo, "r");
     if (fp == NULL) {
-        fprintf(stderr, "Error: No se pudo abrir el archivo de recortes: %s\n", ruta_archivo);
+        LOG_ERROR("No se pudo abrir el archivo de recortes: %s", ruta_archivo);
         return resultado;
     }
 
@@ -57,7 +59,7 @@ GeoClip buscar_clip_por_clave(const char *ruta_archivo, const char *clave_buscad
 void listar_clips_disponibles(const char *ruta_archivo) {
     FILE *fp = fopen(ruta_archivo, "r");
     if (fp == NULL) {
-        fprintf(stderr, "Advertencia: No se puede leer el archivo en %s\n", ruta_archivo);
+        LOG_WARN("No se puede leer el archivo en %s", ruta_archivo);
         return;
     }
 
