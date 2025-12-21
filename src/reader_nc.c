@@ -29,6 +29,8 @@
 int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
   int retval;
   int ncid;
+  bool is_l1b = (strcmp(variable, "Rad") == 0);
+  
   if ((retval = nc_open(filename, NC_NOWRITE, &ncid)))
     ERR(retval);
 
@@ -116,17 +118,24 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
   datanc->min = ts.tm_min;
   datanc->sec = ts.tm_sec;
 
-  // Only if L1b
+  // Identificamos la banda, si existe
+  int band_varid;
+  if (nc_inq_varid(ncid, "band_id", &band_varid) == NC_NOERR) {
+    int bid_val;
+    size_t index = 0;
+    // Leemos el primer (y usualmente único) elemento de la variable
+    if (nc_get_var1_int(ncid, band_varid, &index, &bid_val) == NC_NOERR) {
+      datanc->band_id = (uint8_t)bid_val;
+      LOG_DEBUG("ID de banda detectado en metadatos: C%02d", datanc->band_id);
+    }
+  } else {
+    LOG_WARN("No se encontró la variable 'band_id' en el archivo NetCDF.");
+  }
+  printf("banda detectada %d\n", datanc->band_id);
+  
+  // Only L1b
   float planck_fk1, planck_fk2, planck_bc1, planck_bc2, kappa0;
-  if (strcmp(variable, "Rad") == 0) {
-
-    int band_id_varid;
-    if ((retval = nc_inq_varid(ncid, "band_id", &band_id_varid)))
-      ERR(retval);
-    if ((retval = nc_get_var_ubyte(ncid, band_id_varid, &datanc->band_id)))
-      ERR(retval);
-    LOG_DEBUG("NetCDF band ID: %d", datanc->band_id);
-
+  if (is_l1b) {
     // Obtiene los parámetros de Planck o Kappa0
     if (datanc->band_id > 6) {
       int fk1_varid, fk2_varid, bc1_varid, bc2_varid;
@@ -153,8 +162,6 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
       if ((retval = nc_get_var_float(ncid, kappa0_varid, &kappa0)))
         ERR(retval);
     }
-  } else {
-    datanc->band_id = 0;
   }
 
   // =========================================================================
@@ -187,11 +194,9 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
       nc_inq_varid(ncid, "x", &x_varid_coord) == NC_NOERR &&
       nc_inq_varid(ncid, "y", &y_varid_coord) == NC_NOERR) {
 
-    // Leer scale_factor y add_offset de las coordenadas [cite: 3, 4]
     // Aunque el NetCDF define scale_factor como float, al multiplicarlo
     // por la altura del satélite (~35 millones de metros), la falta de
-    // precisión del float introduce un error de desplazamiento de ~200m (0.2
-    // px).
+    // precisión del float introduce un error de desplazamiento de ~200m
     double x_scale, x_offset, y_scale, y_offset;
     nc_get_att_double(ncid, x_varid_coord, "scale_factor", &x_scale);
     nc_get_att_double(ncid, x_varid_coord, "add_offset", &x_offset);
@@ -282,11 +287,12 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
     }
     short *src_buffer = (short *)datatmp;
 
+    #pragma omp parallel for reduction(min:fmin) reduction(max:fmax) reduction(+:nondatas)    
     for (size_t i = 0; i < total_size; i++) {
       if (src_buffer[i] != fillvalue) {
         float f;
         float rad = scale_factor * src_buffer[i] + add_offset;
-        if (datanc->band_id > 0) {
+        if (is_l1b && datanc->band_id > 0) {
           if (datanc->band_id > 6 && datanc->band_id < 17) { // Bandas térmicas
             f = (planck_fk2 / (log((planck_fk1 / rad) + 1)) - planck_bc1) /
                 planck_bc2;
@@ -310,6 +316,32 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
     datanc->fdata.fmax = fmax;
     LOG_INFO("Data range: min=%g, max=%g, NonData=%g, invalid_count=%u", fmin,
              fmax, NonData, nondatas);
+    for (size_t i = 0; i < total_size; i++) {
+      if (src_buffer[i] != fillvalue) {
+        float f;
+        float rad = scale_factor * src_buffer[i] + add_offset;
+        if (is_l1b && datanc->band_id > 0) {
+          if (datanc->band_id > 6 && datanc->band_id < 17) { // Bandas térmicas
+            f = (planck_fk2 / (log((planck_fk1 / rad) + 1)) - planck_bc1) /
+                planck_bc2;
+          } else { // Bandas visibles/NIR
+            f = kappa0 * rad;
+          }
+        } else { // Variables L2 que no son de radiancia (ej. LST)
+          f = rad;
+        }
+        if (f > fmax) fmax = f;
+        if (f < fmin) fmin = f;
+        datanc->fdata.data_in[i] = f;
+      } else {
+        datanc->fdata.data_in[i] = NonData;
+        nondatas++;
+      }
+    }
+    datanc->fdata.fmin = fmin;
+    datanc->fdata.fmax = fmax;
+    LOG_INFO("Data range: min=%g, max=%g, NonData=%g, invalid_count=%u", fmin,
+             fmax, NonData, nondatas);
   }
   free(datatmp);
 
@@ -318,9 +350,9 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
 }
 
 double rad2deg = 180.0 / M_PI;
-float hsat, sm_maj, sm_min, lambda_0, H;
+double hsat, sm_maj, sm_min, lambda_0, H;
 
-void compute_lalo(float x, float y, float *la, float *lo) {
+void compute_lalo(double x, double y, double *la, double *lo) {
   double snx, sny, csx, csy, sx, sy, sz, rs, a, b, c;
   double sm_maj2 = sm_maj * sm_maj;
   double sm_min2 = sm_min * sm_min;
@@ -337,7 +369,7 @@ void compute_lalo(float x, float y, float *la, float *lo) {
   sy = -rs * snx;
   sz = rs * csx * sny;
 
-  *la = (float)(atan2(sm_maj2 * sz,
+  *la = (double)(atan2(sm_maj2 * sz,
                       sm_min2 * sqrt(((H - sx) * (H - sx)) + (sy * sy))) *
                 rad2deg);
   double lon_rad = lambda_0 - atan2(sy, H - sx);
@@ -346,7 +378,7 @@ void compute_lalo(float x, float y, float *la, float *lo) {
   lon_rad = fmod(lon_rad + M_PI, 2.0 * M_PI);
   if (lon_rad < 0)
     lon_rad += 2.0 * M_PI;
-  *lo = (float)((lon_rad - M_PI) * rad2deg);
+  *lo = (double)((lon_rad - M_PI) * rad2deg);
 }
 
 int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
@@ -376,38 +408,30 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
 
   if ((retval = nc_inq_varid(ncid, "goes_imager_projection", &varid)))
     ERR(retval);
-  if ((retval =
-           nc_get_att_float(ncid, varid, "perspective_point_height", &hsat)))
-    WRN(retval);
-  if ((retval = nc_get_att_float(ncid, varid, "semi_major_axis", &sm_maj)))
-    WRN(retval);
-  if ((retval = nc_get_att_float(ncid, varid, "semi_minor_axis", &sm_min)))
-    WRN(retval);
-  float lo_proj_orig;
-  if ((retval = nc_get_att_float(ncid, varid, "longitude_of_projection_origin",
+  nc_get_att_double(ncid, varid, "perspective_point_height", &hsat);
+  nc_get_att_double(ncid, varid, "semi_major_axis", &sm_maj);
+  nc_get_att_double(ncid, varid, "semi_minor_axis", &sm_min);
+
+  double lo_proj_orig;
+  if ((retval = nc_get_att_double(ncid, varid, "longitude_of_projection_origin",
                                  &lo_proj_orig)))
     WRN(retval);
   H = sm_maj + hsat;
   lambda_0 = lo_proj_orig / rad2deg;
 
   // Obtiene el factor de escala y offset de las VARIABLES (no dimensiones)
-  float x_sf, y_sf, x_ao, y_ao;
-  int x_varid, y_varid;
+  double x_sf, y_sf, x_ao, y_ao;
 
   // Buscar las variables x e y (no las dimensiones)
-  if ((retval = nc_inq_varid(ncid, "x", &x_varid)))
+  if ((retval = nc_inq_varid(ncid, "x", &xid)))
     ERR(retval);
-  if ((retval = nc_inq_varid(ncid, "y", &y_varid)))
+  if ((retval = nc_inq_varid(ncid, "y", &yid)))
     ERR(retval);
 
-  if ((retval = nc_get_att_float(ncid, x_varid, "scale_factor", &x_sf)))
-    WRN(retval);
-  if ((retval = nc_get_att_float(ncid, x_varid, "add_offset", &x_ao)))
-    WRN(retval);
-  if ((retval = nc_get_att_float(ncid, y_varid, "scale_factor", &y_sf)))
-    WRN(retval);
-  if ((retval = nc_get_att_float(ncid, y_varid, "add_offset", &y_ao)))
-    WRN(retval);
+  nc_get_att_double(ncid, xid, "scale_factor", &x_sf);
+  nc_get_att_double(ncid, xid, "add_offset", &x_ao);
+  nc_get_att_double(ncid, yid, "scale_factor", &y_sf);
+  nc_get_att_double(ncid, yid, "add_offset", &y_ao);
 
   // Leer los arreglos x[] e y[] del NetCDF
   short *x_vals_raw = malloc(width * sizeof(short));
@@ -421,13 +445,13 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
     return -1;
   }
 
-  if ((retval = nc_get_var_short(ncid, x_varid, x_vals_raw))) {
+  if ((retval = nc_get_var_short(ncid, xid, x_vals_raw))) {
     free(x_vals_raw);
     free(y_vals_raw);
     nc_close(ncid);
     ERR(retval);
   }
-  if ((retval = nc_get_var_short(ncid, y_varid, y_vals_raw))) {
+  if ((retval = nc_get_var_short(ncid, yid, y_vals_raw))) {
     free(x_vals_raw);
     free(y_vals_raw);
     nc_close(ncid);
@@ -437,15 +461,15 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
   // Apartamos memoria para los datos
   *navlo = dataf_create(width, height);
 
-  int k = 0;
-  float lomin = 1e10, lamin = 1e10, lomax = -lomin, lamax = -lamin;
-  int valid_count = 0;
+  size_t k = 0;
+  double lomin = 1e10, lamin = 1e10, lomax = -lomin, lamax = -lamin;
+  size_t valid_count = 0;
 
-  for (int j = 0; j < navla->height; j++) {
-    float y = (float)y_vals_raw[j] * y_sf + y_ao;
-    for (int i = 0; i < navla->width; i++) {
-      float la, lo;
-      float x = (float)x_vals_raw[i] * x_sf + x_ao;
+  for (size_t j = 0; j < navla->height; j++) {
+    double y = (double)y_vals_raw[j] * y_sf + y_ao;
+    for (size_t i = 0; i < navla->width; i++) {
+      double la, lo;
+      double x = (double)x_vals_raw[i] * x_sf + x_ao;
       compute_lalo(x, y, &la, &lo);
       if (isnan(la) || isnan(lo)) {
         navla->data_in[k] = NonData;
@@ -459,8 +483,8 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
           lomin = lo;
         if (lo > lomax)
           lomax = lo;
-        navla->data_in[k] = la;
-        navlo->data_in[k] = lo;
+        navla->data_in[k] = (float)la;
+        navlo->data_in[k] = (float)lo;
         valid_count++;
       }
       k++;
@@ -469,10 +493,10 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
 
   // Solo actualizar los límites si encontramos al menos un píxel válido
   if (valid_count > 0) {
-    navla->fmin = lamin;
-    navla->fmax = lamax;
-    navlo->fmin = lomin;
-    navlo->fmax = lomax;
+    navla->fmin = (float)lamin;
+    navla->fmax = (float)lamax;
+    navlo->fmin = (float)lomin;
+    navlo->fmax = (float)lomax;
   } else {
     // Si no hay píxeles válidos, establecer límites por defecto para evitar
     // valores centinela
@@ -487,8 +511,6 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
   free(x_vals_raw);
   free(y_vals_raw);
 
-  printf("corners %g %g  %g %g (valid: %d/%lu)\n", lomin, lamin, lomax, lamax,
-         valid_count, navla->size);
   if ((retval = nc_close(ncid)))
     ERR(retval);
 

@@ -103,6 +103,18 @@ realce de brillo. Es posible que haya remuestreos innecesarios, basta
 con guardar desde el principio la resolución de referencia.
 
 
+Thu Dec 18 12:59:19 PM CST 2025
+
+Falta generar imágenes mascaradas con umbral, por ejemplo BT.
+Falta hacer grises con operaciones entre imágenes, como ya hacemos con rgb
+Un paso más de lo anterior y podemos crear modos rgb por parámetros
+Falta poder leer cualquier L2 para las pseudocolor 
+Terminar las pruebas locales y las públicas
+Locales no traen datos, usan los que ya están en /data
+Las públicas los traen a sample_data
+Y para la publicación, tener versión con todo en inglés. 
+
+
 Fri Dec 19 09:59:26 PM CST 2025
 
 Documentar los nombres por defecto en el readme y el help.
