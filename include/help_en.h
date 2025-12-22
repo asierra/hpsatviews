@@ -5,81 +5,81 @@
  * General help
  * ========================= */
 static const char *HPSATVIEWS_HELP =
-"Usage: hpsatviews <command> [options]\n"
+"Usage: hpsatviews <command> <anchor> [options]\n"
 "\n"
 "Commands:\n"
-"  rgb          Generate an RGB image (e.g., true color or day/night composites).\n"
-"  pseudo		Generate a color-mapped image from a single channel.\n"
-"  gray         Generate a grayscale image from a single channel.\n"
+"  rgb                Multichannel composites (True Color, AirMass, etc.).\n"
+"  pseudocolor, pseudo  Single channel image with color palette (CPT).\n"
+"  gray               Grayscale image.\n"
 "\n"
-"Global options:\n"
-"  --list-clips            List available predefined geographic clips.\n"
+"Common Output and Geometry Options:\n"
+"  -o, --out <f>       Output file. Accepts patterns (see below).\n"
+"  -t, --geotiff       GeoTIFF output (default: PNG).\n"
+"  -c, --clip <val>    Crop by key name or coordinates.\n"
+"  -r, --geographics   Reprojection to Lat/Lon.\n"
+"  -s, --scale <n>     Scale factor.\n"
 "\n"
-"Common options (available for all commands):\n"
-"  -o, --out <file>        Output file. If not specified, it is generated\n"
-"                          automatically from the view content.\n"
-"  -t, --geotiff           Generate GeoTIFF output (instead of PNG).\n"
-"  -c, --clip <value>      Geographic clipping (key or coordinates).\n"
-"  -g, --gamma <value>     Gamma correction (default: 1.0).\n"
-"  -h, --histo             Apply global histogram equalization.\n"
-"  --clahe                 Apply CLAHE (adaptive histogram equalization).\n"
-"  --clahe-params <params> CLAHE parameters: \"tiles_x,tiles_y,clip_limit\".\n"
-"  -s, --scale <factor>    Scale factor (default: 1).\n"
-"  -a, --alpha             Add alpha channel.\n"
-"  -r, --geographics       Reproject to geographic coordinates (lat/lon).\n"
-"  -v, --verbose           Verbose mode.\n"
+"Patterns for --out and Automatic Naming:\n"
+"  If -o is omitted, the name follows: hpsv_{SAT}_{TS}_{CH}[_{OPS}].{EXT}\n"
+"  Available patterns:\n"
+"    {SAT}  Satellite (G16, G19)     {CH} channel or band (C01, C02, etc.)\n"
+"    {TS}   Instant (YYYYJJJhhmm)    {YYYY} year {MM} month {DD} day ...\n"
+"    {OPS}  Operations performed (-h, --clahe, -r, s)\n"
 "\n"
-"Automatic naming:\n"
-"  If -o/--out is not specified, the output filename is generated automatically\n"
-"  from the view content.\n"
+"Example:\n"
+"  hpsatviews pseudo file.nc -o \"{SAT}_{CLIP}.png\" -c mexico\n"
+"  -> G16_mexico.png\n"
 "\n"
-"  Form:\n"
-"    hpsv_<SAT>_<INST>_<TYPE>_<BANDS>[_<OPS>].<ext>\n"
-"\n"
-"  Example:\n"
-"    hpsatviews rgb anchor.nc --clahe --geographics\n"
-"      -> hpsv_G16_2024223_183012_rgb_auto_clahe__geo.png\n"
+"Band Algebra Options:\n"
+"  --expr <f>      Formula to calculate pixel value.\n"
+"                  Supports: +, -, *, numeric constants, and bands (C01-C16).\n"
+"                  Ex: \"C13-C14\" (Ash detection).\n"
+"  --minmax <m>    Range [min,max] to adjust the palette.\n"
+"                  If omitted, defaults to 0,255.\n"
 "\n"
 "Use 'hpsatviews help <command>' for command-specific help.\n";
+
 
 /* =========================
  * Command help: rgb
  * ========================= */
 static const char *HPSATVIEWS_HELP_RGB =
-"Usage:\n"
-"  hpsatviews rgb <anchor> [options]\n"
+"Usage: hpsatviews rgb <anchor> [options]\n"
 "\n"
-"Description:\n"
-"  Generates an RGB view from multiple channels, either as an explicit\n"
-"  composition or as a predefined semantic RGB product.\n"
+"Modes (--mode):\n"
+"  daynite (def), truecolor, night, airmass, ash, so2, custom.\n"
 "\n"
-"Command-specific options:\n"
-"  --product <name>        RGB product (truecolor, airmass, ash, etc.).\n"
-"\n";
+"General RGB Options:\n"
+"  --rayleigh      Atmospheric correction (for truecolor/daynite).\n"
+"  -f, --full-res  Use native resolution of the finest channel.\n"
+"\n"
+"Custom mode uses band algebra for each channel. The options --expr and\n"
+"minmax are required but components must be separated by semicolons (;).\n"
+"Ex: \"C13-C14; C13; -1.0*C15 + 300\".\n";
+
 
 /* =========================
  * Command help: pseudocolor
  * ========================= */
 static const char *HPSATVIEWS_HELP_PSEUDOCOLOR =
-"Usage:\n"
-"  hpsatviews pseudocolor <anchor> [options]\n"
+"Usage: hpsatviews pseudocolor <anchor> [options]\n"
 "\n"
-"Description:\n"
-"  Generates a pseudocolor view from a single channel using a color palette.\n"
+"Generates an image applying a color palette (CPT).\n"
 "\n"
-"Command-specific options:\n"
-"  --palette <name>        Color palette to use.\n"
-"\n";
+"Options:\n"
+"  -p, --cpt <f>   Palette file .cpt (or internal name).\n"
+"  -i, --invert    Invert palette order.\n";
+
 
 /* =========================
  * Command help: gray
  * ========================= */
 static const char *HPSATVIEWS_HELP_GRAY =
-"Usage:\n"
-"  hpsatviews gray <anchor> [options]\n"
+"Usage: hpsatviews gray <anchor> [options]\n"
 "\n"
-"Description:\n"
-"  Generates a grayscale view from a single channel.\n"
-"\n";
+"Generates a grayscale image.\n"
+"\n"
+"Options:\n"
+"  -i, --invert    Invert scale (White <-> Black).\n";
 
 #endif /* HPSATVIEWS_HELP_EN_H */
