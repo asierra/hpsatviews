@@ -170,7 +170,7 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
   datanc->proj_info.valid = false;
   int proj_varid;
 
-  // 1. Leer parámetros de la proyección (Elipsoide y Altura) [cite: 19, 20]
+  // 1. Leer parámetros de la proyección (Elipsoide y Altura)
   if (nc_inq_varid(ncid, "goes_imager_projection", &proj_varid) == NC_NOERR) {
     datanc->proj_code = PROJ_GEOS;
     nc_get_att_double(ncid, proj_varid, "perspective_point_height",
@@ -202,7 +202,7 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
     nc_get_att_double(ncid, y_varid_coord, "scale_factor", &y_scale);
     nc_get_att_double(ncid, y_varid_coord, "add_offset", &y_offset);
 
-    // Leer el valor crudo del primer píxel (índice 0) de X e Y
+    // Leer el valor del primer píxel (índice 0) de X e Y
     // NetCDF GOES almacena las coordenadas en variables 1D 'x' y 'y'
     short x0_raw, y0_raw;
     size_t index[] = {0};
@@ -227,7 +227,7 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
     datanc->geotransform[2] = 0.0;
 
     // GT[3]: Top Left Y
-    // Nota: En GOES 'y_scale' suele ser negativo (-2.8e-05)[cite: 2].
+    // Nota: En GOES 'y_scale' suele ser negativo (-2.8e-05)
     // Si y0_rad es el centro del primer píxel (Norte), la esquina está "arriba"
     // (hacia valores más positivos si es radianes N>S, pero cuidado con el
     // signo). Matemáticamente: Centro + (Tamaño / 2) * (-SignoEscala) ...
@@ -293,44 +293,18 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
         float rad = scale_factor * src_buffer[i] + add_offset;
         if (is_l1b && datanc->band_id > 0) {
           if (datanc->band_id > 6 && datanc->band_id < 17) { // Bandas térmicas
-            f = (planck_fk2 / (log((planck_fk1 / rad) + 1)) - planck_bc1) /
-                planck_bc2;
+            f = (rad > 0.0f) ? (planck_fk2 / (log((planck_fk1 / rad) + 1)) - planck_bc1) /
+                planck_bc2: 0;
           } else { // Bandas visibles/NIR
             f = kappa0 * rad;
           }
-        } else { // Variables L2 que no son de radiancia (ej. LST)
+        } else { // Variables L2 ya calibradas que no son de radiancia
           f = rad;
         }
         if (f > fmax)
           fmax = f;
         if (f < fmin)
           fmin = f;
-        datanc->fdata.data_in[i] = f;
-      } else {
-        datanc->fdata.data_in[i] = NonData;
-        nondatas++;
-      }
-    }
-    datanc->fdata.fmin = fmin;
-    datanc->fdata.fmax = fmax;
-    LOG_INFO("Data range: min=%g, max=%g, NonData=%g, invalid_count=%u", fmin,
-             fmax, NonData, nondatas);
-    for (size_t i = 0; i < total_size; i++) {
-      if (src_buffer[i] != fillvalue) {
-        float f;
-        float rad = scale_factor * src_buffer[i] + add_offset;
-        if (is_l1b && datanc->band_id > 0) {
-          if (datanc->band_id > 6 && datanc->band_id < 17) { // Bandas térmicas
-            f = (planck_fk2 / (log((planck_fk1 / rad) + 1)) - planck_bc1) /
-                planck_bc2;
-          } else { // Bandas visibles/NIR
-            f = kappa0 * rad;
-          }
-        } else { // Variables L2 que no son de radiancia (ej. LST)
-          f = rad;
-        }
-        if (f > fmax) fmax = f;
-        if (f < fmin) fmin = f;
         datanc->fdata.data_in[i] = f;
       } else {
         datanc->fdata.data_in[i] = NonData;

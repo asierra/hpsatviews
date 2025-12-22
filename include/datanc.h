@@ -25,7 +25,7 @@ typedef enum {
 
 // A 2D grid structure for floating-point data.
 typedef struct {
-  size_t width, height;
+  unsigned int width, height;
   size_t size;
   float *data_in;
   float fmin, fmax;
@@ -33,7 +33,7 @@ typedef struct {
 
 // A 2D grid structure for 8-bit signed integer data.
 typedef struct {
-  size_t width, height;
+  unsigned int width, height;
   size_t size;
   int8_t *data_in;
   int8_t min, max;
@@ -69,14 +69,9 @@ typedef struct {
   } proj_info;
 } DataNC;
 
-//inline float dataf_value(DataF data, unsigned i, unsigned j) {
- // unsigned ii = j * data.width + i;
- // return data.data_in[ii];
-//}
-
 // Constructor: creates a new DataF structure with allocated memory
 // Returns initialized DataF on success, or DataF with NULL data_in on failure
-DataF dataf_create(size_t width, size_t height);
+DataF dataf_create(unsigned int width, unsigned int height);
 
 // Destructor: safely frees memory allocated for DataF
 // Safe to call with NULL data_in pointer
@@ -100,7 +95,7 @@ DataF downsample_boxfilter(DataF datanc_big, int factor);
 DataF upsample_bilinear(DataF datanc_big, int factor);
 
 // --- Funciones para DataB ---
-DataB datab_create(size_t width, size_t height);
+DataB datab_create(unsigned int width, unsigned int height);
 void datab_destroy(DataB *data);
 
 // --- Funciones de operaciones aritméticas para DataF ---

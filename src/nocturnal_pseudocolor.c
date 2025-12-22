@@ -46,8 +46,8 @@ ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* 
   const float max_ir_temp = 263.15f; // Límite de temperatura para nubes altas (aprox -10°C)
 
 #pragma omp parallel for
-  for (int y = 0; y < imout.height; y++) {
-    for (int x = 0; x < imout.width; x++) {
+  for (unsigned int y = 0; y < imout.height; y++) {
+    for (unsigned int x = 0; x < imout.width; x++) {
       size_t i = (size_t)y * imout.width + x;
       size_t po = i * imout.bpp;
       unsigned char r, g, b;
@@ -56,7 +56,7 @@ ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* 
       float f = temp_data->data_in[i];
 
       if (!IS_NONDATA(f)) {
-        int t;
+        unsigned int t;
         for (t = 0; t < 255; t++)
           if (f >= paleta[t].d && f < paleta[t + 1].d)
             break;

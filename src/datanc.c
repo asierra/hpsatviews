@@ -16,7 +16,7 @@ float NonData=1.0e+32;
 
 
 // Constructor for DataF structure
-DataF dataf_create(size_t width, size_t height) {
+DataF dataf_create(unsigned int width, unsigned int height) {
     DataF data;
     
     // Initialize all fields
@@ -193,8 +193,8 @@ DataF downsample_simple(DataF datanc_big, int factor)
   double start = omp_get_wtime();
 
   #pragma omp parallel for
-  for (int j=0; j < datanc_big.height; j += factor)
-    for (int i=0; i < datanc_big.width; i += factor) {
+  for (unsigned int j=0; j < datanc_big.height; j += factor)
+    for (unsigned int i=0; i < datanc_big.width; i += factor) {
       int is = (j*datanc.width + i)/factor;
       datanc.data_in[is] = datanc_big.data_in[j*datanc_big.width + i];
     }
@@ -219,21 +219,21 @@ DataF downsample_boxfilter(DataF datanc_big, int factor)
   double start = omp_get_wtime();
 
   #pragma omp parallel for
-  for (int j=0; j < datanc.height; j++) {
-    int ny = factor;
-    int jj = j*factor;
+  for (unsigned int j=0; j < datanc.height; j++) {
+    unsigned int ny = factor;
+    unsigned int jj = j*factor;
     if (jj+ny > datanc_big.height)
       ny -= datanc_big.height - (jj + ny);
-    for (int i=0; i < datanc.width; i++) {
-      int nx = factor;
-      int ii = i*factor;
+    for (unsigned int i=0; i < datanc.width; i++) {
+      unsigned int nx = factor;
+      unsigned int ii = i*factor;
       if (ii+nx > datanc_big.width)
         nx -= datanc_big.width - (ii + nx);
-      int acum = 0;
+      unsigned int acum = 0;
       double f = 0;
-      for (int l=0; l < ny; l++) {
+      for (unsigned int l=0; l < ny; l++) {
         int jx = (jj+l)*datanc_big.width;
-        for (int k=0; k < nx; k++) {
+        for (unsigned int k=0; k < nx; k++) {
           f += datanc_big.data_in[jx + ii + k];
           acum++;
         }
@@ -266,8 +266,8 @@ DataF upsample_bilinear(DataF datanc_small, int factor)
   double start = omp_get_wtime();
 
   #pragma omp parallel for
-  for (int j=0; j < datanc.height; j++) {
-    for (int i=0; i < datanc.width; i++) {
+  for (unsigned int j=0; j < datanc.height; j++) {
+    for (unsigned int i=0; i < datanc.width; i++) {
       float x = xrat * i;
       float y = yrat * j;
       int xl = (int)floor(x);
@@ -290,7 +290,7 @@ DataF upsample_bilinear(DataF datanc_small, int factor)
   return datanc;
 }
 
-DataB datab_create(size_t width, size_t height) {
+DataB datab_create(unsigned int width, unsigned int height) {
     DataB data;
     data.width = width;
     data.height = height;

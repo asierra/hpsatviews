@@ -137,42 +137,40 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo,
   
   // Check if allocation was successful
   if (imout.data == NULL) {
-    return imout; // Return empty image on allocation failure
+    return imout; 
   }
 
-  unsigned int day, nite;
+  unsigned long day, nite;
   day = nite = 0;
 
   double start = omp_get_wtime();
-  // Since we refactored DataF to always use float*, we no longer need casts.
   float *navla_data = navla.data_in;
   float *navlo_data = navlo.data_in;
-  float *temp_data = datanc.fdata.data_in; // Corrected from .base to .fdata
+  float *temp_data = datanc.fdata.data_in; 
   unsigned char *imout_data = imout.data;
 
 #pragma omp parallel for shared(datanc, navla_data, navlo_data, temp_data, imout_data) reduction(+:day,nite)
-  for (int y = 0; y < navla.height; y++) {
-    for (int x = 0; x < navla.width; x++) {
+  for (unsigned y = 0; y < navla.height; y++) {
+    for (unsigned x = 0; x < navla.width; x++) {
       int i = y * navla.width + x;
       int po = i * imout.bpp;
 
-      // Para la penumbra, usa geometría solar
       float w = 0;
       float la = navla_data[i];
       float lo = navlo_data[i];
       float temp = temp_data[i];
       double zenith_out, azimuth_out;
       double sza = sun_zenith_angle(la, lo, datanc, &zenith_out, &azimuth_out) * 180 / M_PI;
-      if (sza > 88.0) {
+      if (sza > 88.0) { // Nite
         w = 1;
         nite++;
-      } else if (78.0 < sza && sza < 88.0) {
+      } else if (78.0 < sza && sza < 88.0) { // Twilight
         w = (sza - 78.0) / 10.0;
         if (w >= 0.5)
           nite++;
         else
           day++;
-      } else {
+      } else { // Day
         w = 0;
         day++;
       }
@@ -184,7 +182,6 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo,
     }
   }
   *dnratio = (nite==0) ? 100: 100.0*day/navla.size;
-  //printf("day/night ratio %d %d %g\n", day, nite, *dnratio);
   double end = omp_get_wtime();
   printf("Tiempo mask %lf\n", end - start);
 

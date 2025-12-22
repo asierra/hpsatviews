@@ -209,15 +209,15 @@ static void calculate_cdf_mapping(unsigned int* hist, unsigned char* map_lut, in
 
 void image_apply_histogram(ImageData im) {
   size_t size = im.width * im.height;
-  unsigned int histogram[255];
+  unsigned int histogram[256];
 
-  for (int i = 0; i < 255; i++)
+  for (unsigned int i = 0; i < 256; i++)
     histogram[i] = 0;
 
-  for (int y = 0; y < im.height; y++) {
-    for (int x = 0; x < im.width; x++) {
-      int i = y * im.width + x;
-      int po = i * im.bpp;
+  for (unsigned int y = 0; y < im.height; y++) {
+    for (unsigned int x = 0; x < im.width; x++) {
+      unsigned int i = y * im.width + x;
+      unsigned int po = i * im.bpp;
       unsigned int q;
       if (im.bpp >= 3) 
         // Average luminosity
@@ -230,13 +230,13 @@ void image_apply_histogram(ImageData im) {
   }
 
   unsigned int cum = 0;
-  unsigned char transfer[255]; // Función de transferencia
-  for (int i = 0; i < 256; i++) {
+  unsigned char transfer[256]; // Función de transferencia
+  for (unsigned int i = 0; i < 256; i++) {
     cum += histogram[i];
     transfer[i] = (unsigned char)(255.0 * cum / size);
   }
-  for (int i = 0; i < size; i++) {
-      int p = i*im.bpp;
+  for (size_t i = 0; i < size; i++) {
+      unsigned int p = i*im.bpp;
       im.data[p] = transfer[im.data[p]];
       if (im.bpp >= 3) {
         im.data[p + 1] = transfer[im.data[p + 1]];
@@ -249,12 +249,12 @@ void image_apply_gamma(ImageData im, float gamma) {
   size_t size = im.width * im.height;
   unsigned char nvalues[256];
 
-  for (int i = 0; i < 256; i++)
+  for (unsigned int i = 0; i < 256; i++)
     nvalues[i] = (unsigned char)(255 * pow(i / 255.0, gamma));
 
-  for (int i = 0; i < size; i++) {
-    int p = i * im.bpp;
-    int j = im.data[p];
+  for (size_t i = 0; i < size; i++) {
+    unsigned int p = i * im.bpp;
+    unsigned int j = im.data[p];
     im.data[p] = nvalues[j];
     if (im.bpp >= 3) {
         im.data[p + 1] = nvalues[im.data[p + 1]];
@@ -309,15 +309,15 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
                 unsigned int hist[CLAHE_NUM_BINS] = {0};
                 
                 // Definir límites del tile
-                int x_start = tx * tile_width;
-                int y_start = ty * tile_height;
-                int x_end = (tx == tiles_x - 1) ? im.width : x_start + tile_width;
-                int y_end = (ty == tiles_y - 1) ? im.height : y_start + tile_height;
+                unsigned int x_start = tx * tile_width;
+                unsigned int y_start = ty * tile_height;
+                unsigned int x_end = (tx == tiles_x - 1) ? im.width : x_start + tile_width;
+                unsigned int y_end = (ty == tiles_y - 1) ? im.height : y_start + tile_height;
                 
                 // Calcular histograma local
-                for (int y = y_start; y < y_end; y++) {
-                    for (int x = x_start; x < x_end; x++) {
-                        int idx = (y * im.width + x) * im.bpp + channel;
+                for (unsigned int y = y_start; y < y_end; y++) {
+                    for (unsigned int x = x_start; x < x_end; x++) {
+                        unsigned int idx = (y * im.width + x) * im.bpp + channel;
                         hist[im.data[idx]]++;
                     }
                 }
@@ -333,9 +333,9 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
         
         // Paso 2: Aplicar interpolación bilinear pixel por pixel
         #pragma omp parallel for
-        for (int y = 0; y < im.height; y++) {
-            for (int x = 0; x < im.width; x++) {
-                int idx = (y * im.width + x) * im.bpp + channel;
+        for (unsigned int y = 0; y < im.height; y++) {
+            for (unsigned int x = 0; x < im.width; x++) {
+                unsigned int idx = (y * im.width + x) * im.bpp + channel;
                 unsigned char pixel_val = im.data[idx];
                 
                 // Calcular posición en el espacio de tiles (en coordenadas continuas)
@@ -402,8 +402,8 @@ ImageData image_upsample_bilinear(const ImageData* src, int factor) {
     double start = omp_get_wtime();
     
     #pragma omp parallel for
-    for (int j = 0; j < new_height; j++) {
-        for (int i = 0; i < new_width; i++) {
+    for (unsigned int j = 0; j < new_height; j++) {
+        for (unsigned int i = 0; i < new_width; i++) {
             float x = xrat * i;
             float y = yrat * j;
             int xl = (int)floor(x);
@@ -415,7 +415,7 @@ ImageData image_upsample_bilinear(const ImageData* src, int factor) {
             
             int dst_idx = (j * new_width + i) * src->bpp;
             
-            for (int ch = 0; ch < src->bpp; ch++) {
+            for (unsigned int ch = 0; ch < src->bpp; ch++) {
                 int idx_ll = (yl * src->width + xl) * src->bpp + ch;
                 int idx_lh = (yl * src->width + xh) * src->bpp + ch;
                 int idx_hl = (yh * src->width + xl) * src->bpp + ch;
@@ -460,21 +460,21 @@ ImageData image_downsample_boxfilter(const ImageData* src, int factor) {
     double start = omp_get_wtime();
     
     #pragma omp parallel for
-    for (int j = 0; j < new_height; j++) {
-        for (int i = 0; i < new_width; i++) {
-            int dst_idx = (j * new_width + i) * src->bpp;
+    for (unsigned int j = 0; j < new_height; j++) {
+        for (unsigned int i = 0; i < new_width; i++) {
+            unsigned int dst_idx = (j * new_width + i) * src->bpp;
             
-            for (int ch = 0; ch < src->bpp; ch++) {
+            for (unsigned int ch = 0; ch < src->bpp; ch++) {
                 double sum = 0.0;
                 int count = 0;
                 
                 for (int dy = 0; dy < factor; dy++) {
                     for (int dx = 0; dx < factor; dx++) {
-                        int src_x = i * factor + dx;
-                        int src_y = j * factor + dy;
+                        unsigned int src_x = i * factor + dx;
+                        unsigned int src_y = j * factor + dy;
                         
                         if (src_x < src->width && src_y < src->height) {
-                            int src_idx = (src_y * src->width + src_x) * src->bpp + ch;
+                            unsigned int src_idx = (src_y * src->width + src_x) * src->bpp + ch;
                             sum += src->data[src_idx];
                             count++;
                         }

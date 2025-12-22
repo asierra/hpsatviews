@@ -19,8 +19,8 @@ typedef struct {
     Color background;
     Color nan_color;
     // Must be 2, 4, 16, or 256
-    int num_colors;
-    int entry_count;
+    unsigned int num_colors;
+    unsigned int entry_count;
     ColorEntry entries[MAX_COLOR_ENTRIES];
     bool has_foreground;
     bool has_background;

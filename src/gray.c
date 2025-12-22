@@ -27,8 +27,8 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha, const
 
   uint8_t last_color = (cpt && cpt->has_nan_color) ? cpt->num_colors-1: 255;
   #pragma omp parallel for
-  for (int y = 0; y < imout.height; y++) {
-    for (int x = 0; x < imout.width; x++) {
+  for (unsigned int y = 0; y < imout.height; y++) {
+    for (unsigned int x = 0; x < imout.width; x++) {
       int i = y * imout.width + x;
       int po = i * imout.bpp;
       uint8_t r = 0, a = 0;
@@ -104,8 +104,8 @@ ImageData create_single_gray_range(DataF c01, bool invert_value, bool use_alpha,
   if (range == 0.0f) range = 1.0f; // Evitar división por cero
 
   #pragma omp parallel for
-  for (int y = 0; y < imout.height; y++) {
-    for (int x = 0; x < imout.width; x++) {
+  for (unsigned int y = 0; y < imout.height; y++) {
+    for (unsigned int x = 0; x < imout.width; x++) {
       int i = y * imout.width + x;
       int po = i * imout.bpp;
       uint8_t r = 0, a = 0;
@@ -162,8 +162,8 @@ ImageData create_single_grayb(DataB c01, bool invert_value, bool use_alpha, cons
 
   uint8_t last_color = (cpt && cpt->has_nan_color) ? cpt->num_colors-1: 0;
   #pragma omp parallel for
-  for (int y = 0; y < imout.height; y++) {
-    for (int x = 0; x < imout.width; x++) {
+  for (unsigned int y = 0; y < imout.height; y++) {
+    for (unsigned int x = 0; x < imout.width; x++) {
       int i = y * imout.width + x;
       int po = i * imout.bpp;
       uint8_t r = 0, a = 0;

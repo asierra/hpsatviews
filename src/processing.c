@@ -76,21 +76,6 @@ static bool process_clip_coords(ArgParser* parser, const char* clip_csv_path, fl
     return true;
 }
 
-/**
- * @brief Extrae el nombre del canal (ej. "C13") del nombre de archivo.
- * @param filename Nombre del archivo de entrada.
- * @return Puntero a una cadena estática con el nombre del canal, o "NA".
- */
-static const char* get_channel_from_filename(const char* filename) {
-    if (!filename) return "NA";
-    const char* ch_ptr = strstr(filename, "_C");
-    if (ch_ptr && strlen(ch_ptr) >= 4 && isdigit(ch_ptr[2]) && isdigit(ch_ptr[3])) {
-        static char channel_buf[4];
-        snprintf(channel_buf, sizeof(channel_buf), "C%c%c", ch_ptr[2], ch_ptr[3]);
-        return channel_buf;
-    }
-    return "NA";
-}
 
 int run_processing(ArgParser *parser, bool is_pseudocolor) {
     LogLevel log_level;

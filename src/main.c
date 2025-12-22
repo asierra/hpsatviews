@@ -27,14 +27,17 @@
 
 // --- Callbacks para los comandos ---
 int cmd_rgb(char* cmd_name, ArgParser* cmd_parser) {
+	(void)cmd_name;
     return run_rgb(cmd_parser);
 }
 
 int cmd_pseudocolor(char* cmd_name, ArgParser* cmd_parser) {
+	(void)cmd_name;
     return run_processing(cmd_parser, true); // true = is_pseudocolor
 }
 
 int cmd_gray(char* cmd_name, ArgParser* cmd_parser) {
+	(void)cmd_name;
     return run_processing(cmd_parser, false); // false = is_pseudocolor
 }
 

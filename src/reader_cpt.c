@@ -248,7 +248,7 @@ void print_cpt_info(const CPTData* cpt) {
         }
 
         LOG_INFO("Tabla de colores:");
-        for (int i = 0; i < cpt->entry_count; i += 2) {
+        for (unsigned int i = 0; i < cpt->entry_count; i += 2) {
          LOG_INFO("%.6g -> %.6g: RGB(%u,%u,%u) -> RGB(%u,%u,%u)",
              cpt->entries[i].value, 
              cpt->entries[i+1].value,
@@ -277,7 +277,7 @@ Color get_color_for_value(const CPTData* cpt, double value) {
     }
     
     // Buscar el intervalo correcto
-    for (int i = 0; i < cpt->entry_count - 1; i += 2) {
+    for (unsigned int i = 0; i < cpt->entry_count - 1; i += 2) {
         if (value >= cpt->entries[i].value && value < cpt->entries[i + 1].value) {
             // Interpolar linealmente entre los dos colores
             double t = (value - cpt->entries[i].value) / 
