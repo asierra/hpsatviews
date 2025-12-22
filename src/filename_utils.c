@@ -284,11 +284,12 @@ char* expand_filename_pattern(const char* pattern, const char* input_filename) {
     // Parse YYYYJJJHHMMSS (at least 11 chars for YYYYJJJHHMM)
     if (strlen(start_ptr) < 11) return strdup(pattern);
 
-    char s_year[5], s_jday[4], s_hour[3], s_min[3], s_sec[3];
+    char s_year[5], s_jday[4], s_hour[3], s_min[3], s_sec[3], s_timestamp[12];
     strncpy(s_year, start_ptr, 4); s_year[4] = 0;
     strncpy(s_jday, start_ptr + 4, 3); s_jday[3] = 0;
     strncpy(s_hour, start_ptr + 7, 2); s_hour[2] = 0;
     strncpy(s_min, start_ptr + 9, 2); s_min[2] = 0;
+    strncpy(s_timestamp, start_ptr, 11); s_timestamp[11] = 0;
     
     // Seconds might be present
     if (strlen(start_ptr) >= 13 && start_ptr[11] >= '0' && start_ptr[11] <= '9') {
@@ -324,6 +325,7 @@ char* expand_filename_pattern(const char* pattern, const char* input_filename) {
         {"{hh}", s_hour},
         {"{mm}", s_min},
         {"{ss}", s_sec},
+        {"{TS}", s_timestamp},
         {"{JJJ}", s_jday},
         {"{CH}", channel},
         {"{SAT}", satellite},

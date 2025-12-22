@@ -141,6 +141,7 @@ Genera una vista en escala de grises del canal C13.
   * `{mm}` minuto
   * `{ss}` segundo
   * `{JJJ}` día juliano
+  * `{TS}` Instante (timestamp) YYYYJJJhhmm
   * `{CH}` canal o banda (C01, C02, etc.)
   * `{SAT}` satélite (por ejemplo: `goes-16`, `goes-19`)
 
@@ -229,7 +230,41 @@ Rayleigh y realce de contraste.
 
 ### 4.7 Convenciones de salida
 
-Los nombres de salida se construyen de forma determinística a partir del archivo ancla que identifica la escena y su instante, codificando satélite, tiempo, tipo de vista/producto y bandas involucradas, garantizando trazabilidad e integración en flujos automatizados.
+Si no se especifica la opción `-o` o `--out`, la herramienta genera un nombre determinista basado en los metadatos del archivo "ancla" y las operaciones aplicadas:
+
+**Formato:** `hpsv_<SAT>_<YYYYJJJ>_<hhmm>_<MODO>[_<OPS>].<ext>`
+
+* **Ejemplo:** `hpsv_G16_2025122_183000_truecolor_clahe.png`
+
+### 4.88️Álgebra de Bandas y Composiciones Personalizadas
+
+`hpsatviews` permite definir combinaciones lineales de bandas al vuelo para generar composiciones RGB o imágenes monocanal complejas sin necesidad de generar archivos intermedios.
+
+**Sintaxis Soportada:**
+* **Coeficientes numéricos por banda:** (ej. `2.0*C13`).
+* **Operadores:** `+`, `-` entre los coeficientes.
+* **Separadores:** Usa punto y coma `;` para separar las componentes R, G y B (solo en modo RGB).
+
+#### Ejemplos de Uso
+
+**1. Composición RGB Personalizada** (ej. Detección de Ceniza):
+Define fórmulas independientes para los canales Rojo, Verde y Azul usando el modo `custom`. Nota el uso de comillas para proteger los espacios y el punto y coma.
+
+```bash
+hpsatviews rgb archivo_ancla.nc \
+  --mode custom \
+  --expr "C13-C14; C13-C11; C13" \
+  --minmax "-2,2; -4,2; 240,300" \
+  --out "ceniza_volcanica.png"
+```
+  
+**2. Álgebra Monocanal, aplica directamente en los comandos gray o pseudocolor.
+
+```bash
+hpsatviews gray archivo_ancla.nc \
+  --expr "C13-C15" \
+  --minmax "0,100"
+```
 
 ---
 
