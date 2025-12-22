@@ -15,6 +15,12 @@
 #include "processing.h"
 #include "clip_loader.h"
 
+#ifdef HPSV_LANG_ES
+  #include "help_es.h"
+#else
+  #include "help_en.h"
+#endif
+
 // Ruta por defecto (se puede definir en un header global o pasar como macro -D)
 #define RUTA_CLIPS "/usr/local/share/lanot/docs/recortes_coordenadas.csv"
 
@@ -61,47 +67,13 @@ int main(int argc, char *argv[]) {
     }
     
     ArgParser *parser = ap_new_parser();
-    ap_set_helptext(parser, "Usanza: hpsatviews <comando> [opciones]\n\n"
-                            "Comandos:\n"
-                            "  rgb          Genera una imagen RGB (ej. color verdadero con composición día/noche).\n"
-                            "  pseudocolor  Genera una imagen con paleta de colores a partir de un canal.\n"
-                            "  gray   Genera una imagen en escala de grises de un solo canal.\n\n"
-                            "Opciones globales:\n"
-                            "  --list-clips            Muestra los recortes geográficos predefinidos disponibles.\n\n"
-                            "Opciones comunes (disponibles en todos los comandos):\n"
-                            "  -o, --out <archivo>     Archivo de salida (defecto: autogenerado).\n"
-                            "                          Soporta patrones con marcadores entre llaves:\n"
-                            "                          {YYYY}=año, {MM}=mes, {DD}=día, {hh}=hora, {mm}=minuto,\n"
-                            "                          {ss}=segundo, {JJJ}=día juliano, {YY}=año de 2 dígitos,\n"
-                            "                          {CH}=número de banda (C01, C02, etc.), {SAT}=satélite (goes-16, goes-19).\n"
-                            "                          Ejemplo: \"imagen_{SAT}_{CH}_{YYYY}{MM}{DD}_{hh}{mm}.tif\"\n"
-                            "  -t, --geotiff           Generar salida en formato GeoTIFF (en vez de PNG).\n"
-                            "  -c, --clip <valor>      Recortar imagen. Puede ser una clave (ej. 'mexico') o\n"
-                            "                          coordenadas entre comillas: \"lon_min lat_max lon_max lat_min\".\n"
-                            "  -g, --gamma <valor>     Corrección gamma (defecto: 1.0).\n"
-                            "  -h, --histo             Aplica ecualización de histograma global.\n"
-                            "  --clahe                 Aplica CLAHE (ecualización adaptativa) con parámetros por defecto.\n"
-                            "  --clahe-params <params> Parámetros CLAHE: \"tiles_x,tiles_y,clip_limit\" (defecto: \"8,8,4.0\").\n"
-                            "                          Ejemplo: --clahe --clahe-params \"16,16,5.0\" para más detalle.\n"
-                            "  -s, --scale <factor>    Factor de escala. >1 para ampliar, <0 para reducir (defecto: 1).\n"
-                            "  -a, --alpha             Añade canal alfa (transparencia en zonas NonData).\n"
-                            "  -r, --geographics       Reproyecta la salida a coordenadas geográficas.\n"
-                            "  -v, --verbose           Modo verboso (muestra información detallada).\n\n"
-                            "Use 'hpsatviews help <comando>' para más información sobre un comando específico.");
+    ap_set_helptext(parser, HPSATVIEWS_HELP);
     ap_set_version(parser, "3.0");
 
     // --- Comando 'rgb' ---
     ArgParser *rgb_cmd = ap_new_cmd(parser, "rgb");
     if (rgb_cmd) {
-        ap_set_helptext(rgb_cmd, "Usanza: hpsatviews rgb [opciones] <Archivo ancla NetCDF>\n\n"
-                                 "Genera un compuesto RGB. Requiere varios canales en el mismo directorio y misma fecha y hora que el ancla.\n\n"
-                                 "Opciones específicas del comando rgb:\n"
-                                 "  -m, --mode <modo>       Modo de operación. Opciones disponibles:\n"
-                                 "                          'daynite' (defecto), 'truecolor', 'night', 'ash', 'airmass', 'so2'.\n\n"
-                                 "  --rayleigh              Aplica corrección atmosférica de Rayleigh (solo modos truecolor/daynite).\n\n"
-                                 "  -f, --full-res          Usa el canal de mayor resolución como referencia (más detalle, más lento).\n"
-                                 "                          Por defecto, se usa el de menor resolución (más rápido).\n\n"
-                                "Para opciones comunes (out, clip, gamma, histo, scale, alpha, etc.), use 'hpsatviews --help'.");
+        ap_set_helptext(rgb_cmd, HPSATVIEWS_HELP_RGB);
         ap_add_flag(rgb_cmd, "citylights l");
         ap_add_str_opt(rgb_cmd, "mode m", "daynite");
         add_common_opts(rgb_cmd);
@@ -113,12 +85,7 @@ int main(int argc, char *argv[]) {
     // --- Comando 'pseudocolor' ---
     ArgParser *pc_cmd = ap_new_cmd(parser, "pseudocolor");
     if (pc_cmd) {
-        ap_set_helptext(pc_cmd, "Usanza: hpsatviews pseudocolor -p <paleta.cpt> [opciones] <Archivo NetCDF>\n\n"
-                                "Genera una imagen con paleta de colores a partir de un canal NetCDF.\n\n"
-                                "Opciones específicas del comando pseudocolor:\n"
-                                "  -p, --cpt <archivo>     Aplica una paleta de colores (archivo .cpt). Requerido.\n"
-                                "  -i, --invert            Invierte los valores (blanco y negro).\n\n"
-                                "Para opciones comunes (out, clip, gamma, histo, scale, alpha, etc.), use 'hpsatviews --help'.");
+        ap_set_helptext(pc_cmd, HPSATVIEWS_HELP_PSEUDOCOLOR);
         add_common_opts(pc_cmd);
         ap_add_str_opt(pc_cmd, "cpt p", NULL);
         ap_add_flag(pc_cmd, "invert i");
@@ -128,13 +95,7 @@ int main(int argc, char *argv[]) {
     // --- Comando 'gray' ---
     ArgParser *sg_cmd = ap_new_cmd(parser, "gray");
     if (sg_cmd) {
-        ap_set_helptext(sg_cmd, "Usanza: hpsatviews gray [opciones] <Archivo NetCDF>\n\n"
-                                "Genera una imagen en escala de grises a partir de una variable NetCDF.\n\n"
-                                "Opciones específicas del comando gray:\n"
-                                "  -i, --invert            Invierte los valores (blanco y negro).\n"
-                                "  -e, --expr <expresión>  Álgebra de bandas: combinación lineal (ej. \"2.0*C13 - 4.0*C15 + 0.5\").\n"
-                                "  --minmax <min,max>      Rango para escalar el resultado con --expr (defecto: \"0.0,255.0\").\n\n"
-                                "Para opciones comunes (out, clip, gamma, histo, scale, alpha, etc.), use 'hpsatviews --help'.");
+        ap_set_helptext(sg_cmd, HPSATVIEWS_HELP_GRAY);
         add_common_opts(sg_cmd);
         ap_add_flag(sg_cmd, "invert i");
         ap_set_cmd_callback(sg_cmd, cmd_gray);

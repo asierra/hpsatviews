@@ -5,19 +5,29 @@
 # --- Configuración del Compilador ---
 CC = gcc
 
+# --- Idioma (en por defecto | es opcional) ---
+HPSV_LANG ?= en
+
 # Banderas base: C11 estándar, advertencias, OpenMP
 # Nota: -march=native optimiza para la CPU donde se compila (ideal para HPC local)
 CFLAGS_COMMON = -Wall -Wextra -std=c11 -fopenmp -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE $(shell gdal-config --cflags)
 LDFLAGS = -lm -lnetcdf -lpng -fopenmp $(shell gdal-config --libs)
 
+# --- Flags de idioma ---
+CFLAGS_LANG =
+
+ifeq ($(HPSV_LANG),es)
+    CFLAGS_LANG += -DHPSV_LANG_ES
+endif
+
 # --- Modos de Compilación ---
 # Uso: make (Release por defecto) | make debug (para desarrollo con gdb)
 ifdef DEBUG
-    CFLAGS = $(CFLAGS_COMMON) -g -O0 -DDEBUG_MODE
+    CFLAGS = $(CFLAGS_COMMON) $(CFLAGS_LANG) -g -O0 -DDEBUG_MODE
     TARGET_NAME = hpsatviews_debug
 else
     # Release: Optimización máxima (-O3) y nativa de la arquitectura
-    CFLAGS = $(CFLAGS_COMMON) -O3 -march=native -funroll-loops
+    CFLAGS = $(CFLAGS_COMMON) $(CFLAGS_LANG) -O3 -march=native -funroll-loops
     TARGET_NAME = hpsatviews
 endif
 
@@ -87,3 +97,6 @@ uninstall:
 info:
 	@echo "Source files found: $(SRCS)"
 	@echo "Object files target: $(OBJS)"
+	@echo "Build mode: $(if $(DEBUG),debug,release)"
+	@echo "Language: $(HPSV_LANG)"
+	@echo "CFLAGS: $(CFLAGS)"
