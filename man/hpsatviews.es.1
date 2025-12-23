@@ -1,0 +1,240 @@
+.TH HPSATVIEWS 1 "2025" "HPSATVIEWS" "Comandos de Usuario"
+.SH NOMBRE
+hpsatviews \- Generación de alto rendimiento de productos visuales de satélite a partir de imágenes GOES
+
+.SH SINOPSIS
+.B hpsatviews
+.RI <comando> " " <archivo_ancla> " " [opciones]
+
+.SH DESCRIPCIÓN
+.B hpsatviews
+es una herramienta de línea de comandos de alto rendimiento para generar
+productos visuales (vistas) a partir de datos satelitales ambientales calibrados,
+con énfasis en la familia de satélites GOES-R.
+
+El programa establece una distinción explícita entre:
+
+.TP
+.B Imagen
+Representación numérica de datos satelitales calibrados (L1b/L2),
+que contiene magnitudes físicas como radiancia, temperatura de brillo
+o reflectancia.
+
+.TP
+.B Vista
+Representación visual derivada de una imagen, normalizada y cuantizada
+para su interpretación por el ojo humano.
+
+.TP
+.B Producto
+Vista (o conjunto de vistas) asociada a un significado meteorológico
+reconocido, como color verdadero, masa de aire, detección de ceniza
+o composiciones día/noche.
+
+La herramienta está optimizada para velocidad, rigor geométrico
+y reproducibilidad, y no pretende reemplazar plataformas GIS
+ni sistemas completos de análisis físico.
+
+.SH MODELO TEMPORAL
+En HPSATVIEWS se utiliza el término
+.B instante
+en lugar del anglicismo “timestamp”.
+
+Un instante representa el tiempo efectivo de observación de una escena
+satelital y se define mediante componentes temporales discretos
+(año, día juliano, hora, minuto y segundo),
+enfatizando su significado físico-observacional.
+
+.SH USO BÁSICO
+La forma general de invocación es:
+
+.EX
+hpsatviews <comando> <archivo_ancla> [opciones]
+.EE
+
+El
+.B archivo_ancla
+identifica la escena, su instante, el satélite y el modo de adquisición.
+Las bandas auxiliares necesarias se infieren automáticamente.
+
+.SH COMANDOS
+.TP
+.B gray
+Genera una vista en escala de grises a partir de un solo canal
+o una combinación lineal de canales.
+
+.TP
+.B pseudocolor
+Genera una vista con paleta de colores a partir de un canal
+o combinación lineal.
+
+.TP
+.B rgb
+Genera una composición RGB a partir de múltiples canales
+o expresiones algebraicas.
+
+.SH OPCIONES GLOBALES
+.TP
+.B --help
+Muestra un mensaje de ayuda conciso.
+
+.TP
+.B --list-clips
+Lista los recortes geográficos predefinidos disponibles.
+
+.SH OPCIONES COMUNES
+Las siguientes opciones están disponibles para todos los comandos.
+
+.TP
+.BI "-o, --out " archivo
+Nombre del archivo de salida. Si se omite, se genera un nombre
+determinístico automáticamente a partir de la metadata de la escena
+y las operaciones aplicadas.
+Se soportan marcadores como
+{YYYY}, {JJJ}, {hh}, {mm}, {TS}, {CH}, {SAT}.
+
+.TP
+.B "-t, --geotiff"
+Genera la salida en formato GeoTIFF en lugar de PNG.
+
+.TP
+.BI "-c, --clip " valor
+Recorte geográfico. Puede ser una clave predefinida o coordenadas explícitas
+entre comillas (lon_min lat_max lon_max lat_min).
+
+.TP
+.BI "-g, --gamma " valor
+Aplica corrección gamma (defecto: 1.0, deshabilitada).
+
+.TP
+.B "-h, --histo"
+Aplica ecualización global de histograma.
+
+.TP
+.B "--clahe"
+Aplica ecualización adaptativa con control de contraste (CLAHE)
+con parámetros por defecto.
+
+.TP
+.BI "--clahe-params " params
+Aplica CLAHE con los siguientes parámetros entre comillas
+tiles_x,tiles_y,clip_limit.
+
+.TP
+.BI "-s, --scale " factor
+Factor de escala espacial. Valores >1 amplían; valores negativos reducen.
+
+.TP
+.B "-a, --alpha"
+Añade un canal alfa para transparencia en regiones NoData.
+
+.TP
+.B "-r, --geographics"
+Reproyecta la salida a coordenadas geográficas (WGS84).
+
+.TP
+.B "-v, --verbose"
+Activa el modo verboso.
+
+.SH OPCIONES ESPECÍFICAS POR COMANDO
+.SS gray
+.TP
+.B "-i, --invert"
+Invierte los valores de la escala de grises.
+
+.SS pseudocolor
+.TP
+.BI "-p, --cpt " archivo
+Aplica una paleta de colores (.cpt).
+
+.TP
+.B "-i, --invert"
+Invierte el mapeo de valores.
+
+.SS rgb
+.TP
+.BI "-m, --mode " modo
+Modo de composición. Modos soportados incluyen:
+daynite (defecto), truecolor, night, ash, airmass, so2, custom.
+
+.TP
+.B "--rayleigh"
+Aplica corrección atmosférica de Rayleigh
+(solo para composiciones visibles).
+
+.TP
+.B "-f, --full-res"
+Usa el canal de mayor resolución como referencia, en lugar de la menor (defecto).
+
+.SH ÁLGEBRA DE BANDAS
+HPSATVIEWS soporta combinaciones lineales de bandas en tiempo de ejecución
+mediante expresiones algebraicas simples.
+
+Las expresiones pueden incluir coeficientes, sumas y restas.
+Obligatorio para el comando RGB modo custom, en el que las expresiones para R, G y B se separan con punto y coma.
+
+.EX
+--expr "2.0*C13-4.0*C14; C13-C11; 1.5*C13"
+.EE
+
+Opcionalmente se pueden indicar los máximos y mínimos correspondientes.
+
+.EX
+--minmax "-5,5;-3,3;200,300"
+.EE
+
+.SH NOMBRADO DE SALIDA
+Si no se especifica un nombre de salida, HPSATVIEWS genera uno determinista
+basado en el instante de la escena, el satélite, el modo de procesamiento
+y las operaciones aplicadas.
+
+Formato:
+.EX
+hpsv_<SAT>_<YYYYJJJ>_<hhmm>_<MODO>[_<OPS>].<ext>
+.EE
+
+Ejemplo:
+.EX
+hpsv_G16_2025122_183000_truecolor_clahe.png
+.EE
+
+.SH GEOMETRÍA Y GEOLOCALIZACIÓN
+Las vistas se generan mediante formulaciones geométricas rigurosas.
+Se emplea una reproyección directa píxel a píxel desde la proyección
+geoestacionaria hacia una malla uniforme latitud/longitud (WGS84).
+El recorte geográfico se optimiza aplicándolo, cuando es posible,
+antes de la reproyección.
+
+.SH RENDIMIENTO
+HPSATVIEWS está implementado en C (C11) y paralelizado mediante OpenMP.
+El diseño prioriza velocidad, eficiencia de memoria y escalabilidad
+en sistemas multi–núcleo.
+
+.SH REQUISITOS
+.TP
+Compilador compatible con C11
+.TP
+Bibliotecas NetCDF
+.TP
+GDAL (para salida GeoTIFF)
+.TP
+libpng
+.TP
+OpenMP
+
+.SH REFERENCIAS
+Miller et al. (2012), Bulletin of the American Meteorological Society.
+.br
+Pizer et al. (1987), Computer Vision, Graphics, and Image Processing.
+.br
+Zuiderveld (1994), Graphics Gems IV.
+.br
+Bodhaine et al. (1999), Journal of Atmospheric and Oceanic Technology.
+
+.SH AUTOR
+Alejandro Aguilar Sierra
+.br
+Laboratorio Nacional de Observación de la Tierra, UNAM
+
+.SH LICENCIA
+Licencia Pública General GNU, versión 3 o posterior.

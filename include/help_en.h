@@ -9,7 +9,7 @@ static const char *HPSATVIEWS_HELP =
 "\n"
 "Commands:\n"
 "  rgb                Multichannel composites (True Color, AirMass, etc.).\n"
-"  pseudocolor, pseudo  Single channel image with color palette (CPT).\n"
+"  pseudocolor        Single channel image with color palette (CPT).\n"
 "  gray               Grayscale image.\n"
 "\n"
 "Common Output and Geometry Options:\n"

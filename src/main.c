@@ -71,7 +71,7 @@ int main(int argc, char *argv[]) {
     
     ArgParser *parser = ap_new_parser();
     ap_set_helptext(parser, HPSATVIEWS_HELP);
-    ap_set_version(parser, "3.0");
+    ap_set_version(parser, "1.0");
 
     // --- Comando 'rgb' ---
     ArgParser *rgb_cmd = ap_new_cmd(parser, "rgb");

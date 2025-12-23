@@ -18,6 +18,9 @@ CFLAGS_LANG =
 
 ifeq ($(HPSV_LANG),es)
     CFLAGS_LANG += -DHPSV_LANG_ES
+    MANPAGE = man/hpsatviews.es.1
+else
+	MANPAGE = man/hpsatviews.1
 endif
 
 # --- Modos de Compilación ---
@@ -38,6 +41,7 @@ OBJ_DIR = obj
 BIN_DIR = bin
 # Prefijo de instalación estándar (Linux)
 PREFIX = /usr/local
+MANDIR ?= $(PREFIX)/share/man
 
 # --- Archivos ---
 # Busca automáticamente todos los .c en src/ (Cero mantenimiento)
@@ -87,10 +91,13 @@ install: all
 	@echo "Installing into $(PREFIX)/bin..."
 	@install -d $(PREFIX)/bin
 	@install -m 755 $(TARGET) $(PREFIX)/bin/hpsatviews
+	@install -d $(MANDIR)/man1
+	@install -m 644 $(MANPAGE) $(MANDIR)/man1/hpsatviews.1
 	@echo "Installation successful."
 
 uninstall:
 	@rm -f $(PREFIX)/bin/hpsatviews
+	@rm -f $(MANDIR)/man1/hpsatviews.1
 	@echo "Uninstalled hpsatviews."
 
 # Ayuda para debuggear el Makefile
@@ -100,3 +107,4 @@ info:
 	@echo "Build mode: $(if $(DEBUG),debug,release)"
 	@echo "Language: $(HPSV_LANG)"
 	@echo "CFLAGS: $(CFLAGS)"
+	@echo "Man Page: $(MANPAGE)"

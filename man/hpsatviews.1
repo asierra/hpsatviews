@@ -1,0 +1,226 @@
+.TH HPSATVIEWS 1 "2025" "HPSATVIEWS" "User Commands"
+.SH NAME
+hpsatviews \- High-performance generation of satellite visual products from GOES imagery
+
+.SH SYNOPSIS
+.B hpsatviews
+.RI <command> " " <anchor_file> " " [options]
+
+.SH DESCRIPTION
+.B hpsatviews
+is a high-performance command-line tool for generating
+visual products (views) from calibrated environmental satellite data,
+with a primary focus on the GOES-R family.
+
+The program makes an explicit distinction between:
+
+.TP
+.B Image
+A numerical representation of calibrated satellite data (L1b/L2),
+containing physical quantities such as radiance, brightness temperature,
+or reflectance.
+
+.TP
+.B View
+A visual representation derived from an image, normalized and quantized
+for human interpretation.
+
+.TP
+.B Product
+A view (or set of views) associated with a recognized meteorological
+semantic, such as true color, air mass, ash detection, or day/night composites.
+
+The tool is optimized for speed, geometric rigor, and reproducibility,
+and is not intended to replace full GIS or physical analysis platforms.
+
+.SH TEMPORAL MODEL
+In HPSATVIEWS, the term
+.B instant
+is used instead of “timestamp”.
+
+An instant represents the effective observation time of a satellite scene
+and is defined by discrete temporal components
+(year, Julian day, hour, minute, second).
+This emphasizes its physical observational meaning rather than a generic
+time marker.
+
+.SH BASIC USAGE
+The general invocation syntax is:
+
+.EX
+hpsatviews <command> <anchor_file> [options]
+.EE
+
+The
+.B anchor_file
+identifies the scene, its instant, satellite, and acquisition mode.
+All required auxiliary bands are inferred automatically.
+
+.SH COMMANDS
+.TP
+.B gray
+Generate a grayscale view from a single channel or linear combination of channels.
+
+.TP
+.B pseudocolor
+Generate a color-mapped view from a single channel or linear combination.
+
+.TP
+.B rgb
+Generate an RGB composite from multiple channels or expressions.
+
+.SH GLOBAL OPTIONS
+.TP
+.B --help
+Display a concise help message.
+
+.TP
+.B --list-clips
+List predefined geographic clips available to the system.
+
+.SH COMMON OPTIONS
+The following options are available for all commands.
+
+.TP
+.BI "-o, --out " file
+Output filename. If omitted, a deterministic name is generated automatically
+from scene metadata and applied operations.
+Supports template markers such as
+{YYYY}, {JJJ}, {hh}, {mm}, {CH}, {SAT}.
+
+.TP
+.B "-t, --geotiff"
+Write output as GeoTIFF instead of PNG.
+
+.TP
+.BI "-c, --clip " value
+Geographic clipping. May be a predefined key or explicit coordinates
+(lon_min lat_max lon_max lat_min).
+
+.TP
+.BI "-g, --gamma " value
+Apply gamma correction (default: 1.0, disabled).
+
+.TP
+.B "-h, --histo"
+Apply global histogram equalization.
+
+.TP
+.B "--clahe"
+Apply Contrast Limited Adaptive Histogram Equalization (CLAHE)
+with default parameters.
+
+.TP
+.BI "--clahe-params " params
+Specify CLAHE parameters as tiles_x,tiles_y,clip_limit.
+
+.TP
+.BI "-s, --scale " factor
+Spatial scaling factor (integer). Values >1 upscale; negative values downscale.
+
+.TP
+.B "-a, --alpha"
+Add an alpha channel for transparency in NoData regions.
+
+.TP
+.B "-r, --geographics"
+Reproject output to geographic coordinates (WGS84).
+
+.TP
+.B "-v, --verbose"
+Enable verbose logging.
+
+.SH COMMAND-SPECIFIC OPTIONS
+.SS gray
+.TP
+.B "-i, --invert"
+Invert grayscale values.
+
+.SS pseudocolor
+.TP
+.BI "-p, --cpt " file
+Apply a color palette (.cpt file).
+
+.TP
+.B "-i, --invert"
+Invert value mapping.
+
+.SS rgb
+.TP
+.BI "-m, --mode " mode
+Composite mode. Supported values include:
+daynite (default), truecolor, night, ash, airmass, so2.
+
+.TP
+.B "--rayleigh"
+Apply Rayleigh atmospheric correction (visible composites only).
+
+.TP
+.B "-f, --full-res"
+Use the highest-resolution channel as reference.
+
+.SH BAND ALGEBRA
+HPSATVIEWS supports on-the-fly linear combinations of channels using
+simple algebraic expressions.
+
+Expressions may include coefficients, addition, and subtraction.
+For RGB mode, expressions for R, G, and B are separated by semicolons.
+
+.EX
+--expr "C13-C14; C13-C11; C13"
+.EE
+
+.SH OUTPUT NAMING
+If no output filename is specified, HPSATVIEWS generates a deterministic
+name based on the scene instant, satellite, processing mode, and operations.
+
+Format:
+.EX
+hpsv_<SAT>_<YYYYJJJ>_<hhmm>_<MODE>[_<OPS>].<ext>
+.EE
+
+Example:
+.EX
+hpsv_G16_2025122_183000_truecolor_clahe.png
+.EE
+
+.SH GEOMETRY AND GEOLOCATION
+Views are generated using rigorous geometric formulations.
+Direct pixel-to-pixel reprojection from geostationary projection
+to a uniform latitude/longitude grid (WGS84) is employed.
+Geographic clipping is optimized when possible by applying it
+prior to reprojection.
+
+.SH PERFORMANCE
+HPSATVIEWS is implemented in C (C11) and parallelized using OpenMP.
+The design prioritizes speed, memory efficiency, and scalability
+on multi-core systems.
+
+.SH REQUIREMENTS
+.TP
+A C11-compatible compiler
+.TP
+NetCDF libraries
+.TP
+GDAL (for GeoTIFF output)
+.TP
+libpng
+.TP
+OpenMP
+
+.SH REFERENCES
+Miller et al. (2012), Bulletin of the American Meteorological Society.
+.br
+Pizer et al. (1987), Computer Vision, Graphics, and Image Processing.
+.br
+Zuiderveld (1994), Graphics Gems IV.
+.br
+Bodhaine et al. (1999), Journal of Atmospheric and Oceanic Technology.
+
+.SH AUTHOR
+Alejandro Aguilar Sierra
+.br
+Laboratorio Nacional de Observación de la Tierra, UNAM
+
+.SH LICENSE
+GNU General Public License v3 or later.
