@@ -109,10 +109,9 @@ bool rgb_parse_options(ArgParser *parser, RgbContext *ctx) {
     if (ap_found(parser, "scale")) ctx->opts.scale = scale_val;
     
     // Parsear CLAHE
-    bool clahe_flag = ap_found(parser, "clahe");
-    const char* clahe_params = ap_get_str_value(parser, "clahe-params");
-    ctx->opts.apply_clahe = clahe_flag || (clahe_params != NULL);
-    if (ctx->opts.apply_clahe && clahe_params) {
+    ctx->opts.apply_clahe = ap_found(parser, "clahe") || ap_found(parser, "clahe-params");
+    if (ctx->opts.apply_clahe) {
+		const char* clahe_params = ap_get_str_value(parser, "clahe-params");
         sscanf(clahe_params, "%d,%d,%f", 
                &ctx->opts.clahe_tiles_x, 
                &ctx->opts.clahe_tiles_y, 

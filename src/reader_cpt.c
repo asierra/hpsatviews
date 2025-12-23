@@ -200,6 +200,7 @@ CPTData* read_cpt_file(const char* filename) {
         else if (in_header) {
             // Asumir que es el nombre o metadata
             strncpy(cpt->name, line, sizeof(cpt->name) - 1);
+            cpt->name[sizeof(cpt->name) - 1] = '\0';
         }
     }
     

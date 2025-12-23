@@ -9,8 +9,8 @@ CC = gcc
 HPSV_LANG ?= en
 
 # Banderas base: C11 estándar, advertencias, OpenMP
-# Nota: -march=native optimiza para la CPU donde se compila (ideal para HPC local)
-CFLAGS_COMMON = -Wall -Wextra -std=c11 -fopenmp -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE $(shell gdal-config --cflags)
+CFLAGS_COMMON = -Wall -Wextra -std=c11 -fopenmp -D_POSIX_C_SOURCE=200809L \
+                -D_DEFAULT_SOURCE -MMD -MP $(shell gdal-config --cflags)
 LDFLAGS = -lm -lnetcdf -lpng -fopenmp $(shell gdal-config --libs)
 
 # --- Flags de idioma ---
@@ -22,7 +22,7 @@ ifeq ($(HPSV_LANG),es)
 else
 	MANPAGE = man/hpsatviews.1
 endif
-
+                
 # --- Modos de Compilación ---
 # Uso: make (Release por defecto) | make debug (para desarrollo con gdb)
 ifdef DEBUG
@@ -53,6 +53,7 @@ TARGET = $(BIN_DIR)/$(TARGET_NAME)
 
 # Inclusión de cabeceras
 CFLAGS += -I$(INC_DIR)
+DEPS = $(OBJS:.o=.d)
 
 # ==========================================
 #  Reglas de Construcción
@@ -75,6 +76,8 @@ $(TARGET): $(OBJS)
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 	@echo "Compiling $<..."
 	@$(CC) $(CFLAGS) -c $< -o $@
+
+-include $(DEPS)
 
 # Crear directorios si no existen
 directories:

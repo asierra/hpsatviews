@@ -303,7 +303,7 @@ char* expand_filename_pattern(const char* pattern, const char* input_filename) {
     int month = 1, day = 1;
     julian_to_date(year, jday, &month, &day);
 
-    char s_month[3], s_day[3];
+    char s_month[12], s_day[12];
     snprintf(s_month, sizeof(s_month), "%02d", month);
     snprintf(s_day, sizeof(s_day), "%02d", day);
     

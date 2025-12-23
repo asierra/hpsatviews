@@ -137,7 +137,7 @@ void logger_log(LogLevel level, const char *file, int line, const char *format, 
     }
     
     va_list args;
-    char timestamp[32] = {0};
+    char timestamp[64] = {0};
     char message[1024];
     char final_message[1200];
     
