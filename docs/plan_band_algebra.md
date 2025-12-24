@@ -84,7 +84,7 @@ int parse_expr_string(const char *input, LinearCombo *out);
 #### Estrategia
 
 * Usar `strtod` para leer números flotantes.
-* Recorrer la cadena mediante punteros.
+* Recorrer la cadena mediante apuntadores.
 * Retornar 0 en éxito, -1 en error.
 
 #### Algoritmo detallado

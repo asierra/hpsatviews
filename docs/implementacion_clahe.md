@@ -44,7 +44,7 @@ Esta es la diferencia clave con la ecualización normal.
 ```c
 /**
  * @brief Recorta el histograma y redistribuye el exceso.
- * @param hist Puntero al histograma (array de 256 enteros).
+ * @param hist Apuntador al histograma (array de 256 enteros).
  * @param limit Límite máximo de pixeles permitidos por bin.
  */
 static void clip_histogram(unsigned int* hist, unsigned int limit) {

@@ -224,7 +224,7 @@ El objetivo es aislar la lógica de cada producto RGB eliminando los 11 `strcmp(
     typedef struct {
         const char *mode_name;           // "ash", "truecolor", etc
         const char *req_channels[6];     // {"C11", "C13", "C14", "C15", NULL}
-        RgbComposer composer_func;       // Puntero a función
+        RgbComposer composer_func;       // Apuntador a función
         const char *description;         // Para help/documentación
         bool needs_navigation;           // Si requiere navla/navlo
     } RgbStrategy;
@@ -994,10 +994,10 @@ Una vez validada la arquitectura, optimizar rendimiento y usabilidad.
 ## 📝 Notas para el Desarrollador
 
 ### **Memory Management**
-* **Critical:** Cualquier puntero añadido a `RgbContext` DEBE liberarse en `rgb_context_destroy()`
+* **Critical:** Cualquier apuntador añadido a `RgbContext` DEBE liberarse en `rgb_context_destroy()`
 * Usar `goto cleanup` consistentemente para TODOS los errores
 * No hacer `return` directo sin pasar por cleanup
-* Validar punteros antes de `free()` (los helpers ya lo hacen, pero verificar)
+* Validar apuntadores antes de `free()` (los helpers ya lo hacen, pero verificar)
 
 ### **Error Handling**
 * Usar `ctx->error_msg` para mensajes descriptivos
