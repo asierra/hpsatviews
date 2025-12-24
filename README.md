@@ -170,7 +170,7 @@ Genera una vista en escala de grises del canal C13.
   Ejemplos:
   ```bash
 	# Opción explícita
-	hpsatviews rgb -m truecolor -t -o salida.tif archivo.nc
+	hpsatviews gray -t archivo.nc
 
 	# Detección automática por extensión
 	hpsatviews rgb -m truecolor -o salida.tif archivo.nc
@@ -234,17 +234,21 @@ Para modo `custom` ver **Álgebra de bandas**.
 
 Si no se especifica la opción `-o` o `--out`, se genera un nombre determinista basado en los metadatos del archivo "ancla", las bandas y las operaciones aplicadas:
 
-**Formato:** `hpsv_<SAT>_<YYYYJJJ>_<hhmm>_<MODO>[_<OPS>].<ext>`
+**Formato:** `hpsv_<SAT>_<YYYYJJJ>_<hhmm>_<COMMAND>_<CH>[_<OPS>].<ext>`
 
-* **Ejemplo:** `hpsv_G16_2025122_183000_truecolor_clahe.png`
-
+Ejemplo:
+  ```bash
+  hpsatviews gray OR_ABI-L1b-RadF-M6C13_G16_s20242190300217.nc
+	# → hpsv_G16_2024219_0300_gray_C13.png
+  ```
+  
 ### 4.8 Álgebra de bandas y composiciones personalizadas
 
 `hpsatviews` permite definir combinaciones lineales de bandas al vuelo para generar composiciones RGB o imágenes monocanal complejas sin necesidad de generar archivos intermedios.
 
 **Sintaxis Soportada:**
-* **Coeficientes numéricos por banda:** (ej. `2.0*C13`).
-* **Operadores:** `+`, `-` entre los coeficientes.
+* **Términos con coeficientes por banda:** (ej. `2.0*C13`).
+* **Operadores:** `+`, `-` entre los términos.
 * **Rangos:** Opcionalmente, mínimos y máximos separados por comas. Por omisión se calculan.
 * **Separadores:** Usa punto y coma `;` para separar las componentes R, G y B (solo con comando `rgb`).
 
@@ -286,7 +290,7 @@ El sistema incluye ecualización adaptativa de histograma con control de contras
 
 ### 5.4 Rendimiento
 
-Implementado en C (ISO/IEC 9899:2011) con paralelización mediante OpenMP, HPSATVIEWS prioriza el alto rendimiento, el uso eficiente de memoria y la escalabilidad en sistemas multi-núcleo.
+Implementado en C11 (ISO/IEC 9899:2011) con paralelización mediante OpenMP, HPSATVIEWS prioriza el alto rendimiento, el uso eficiente de memoria y la escalabilidad en sistemas multi-núcleo.
 
 ---
 
