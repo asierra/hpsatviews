@@ -122,7 +122,7 @@ Genera una vista en escala de grises del canal C13.
   ```
  
 * `-g, --gamma <valor>`
-  Aplica corrección gamma (defecto: `1.0` y no se aplica).
+  Aplica corrección gamma (por omisión `1.0` y no se aplica).
 
 
 * `-h, --histo`
@@ -158,7 +158,7 @@ Genera una vista en escala de grises del canal C13.
 
 * `-s, --scale <factor>`
   Factor entero de escala espacial. Valores mayores que 1 amplían la 
-  imagen; valores menores que 1 la reducen (defecto: `1` y no se 
+  imagen; valores menores que 1 la reducen (por omisión `1` y no se 
   aplica). Un valor -2 implica una escala de 0.5. Obligatorio usar 
   solo enteros.
 
@@ -190,7 +190,7 @@ Genera una vista en escala de grises.
 
 Asocia un mapa de color a una vista en grises.
 
-* `-p, --cpt <archivo>`     Aplica una paleta de colores (archivo .cpt) (defecto: arcoiris predefinido).
+* `-p, --cpt <archivo>`     Aplica una paleta de colores (archivo .cpt) (omisión: arcoiris predefinido).
 * `-i, --invert`            Invierte los valores (mínimo a máximo).
   
   Ejemplo:
