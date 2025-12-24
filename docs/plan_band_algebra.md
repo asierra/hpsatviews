@@ -358,7 +358,7 @@ if (ap_found(parser, "expr")) {
 
 ---
 
-## Extensión futura: RGB Custom
+## Extensión RGB modo Custom
 
 ### Objetivo
 
@@ -386,6 +386,9 @@ hpsatviews rgb --mode custom \
 ✅ --expr "C13; C14; C15" --minmax "200,300; 200,300; 200,300"
 ✅ --expr "2.0*C13-273.15; C14; 0.5*C15" --minmax "-80,50; 200,300; 100,200"
 ✅ --expr " C13 - C15 ; C14 - C11 ; C13 " --minmax " -5 , 5 ; -3 , 3 ; 200 , 300 "
+✅ --expr "C15-C13;C14-C11;C13" --minmax "-6.7,2.6;-6.0,6.3;243.6,302.4" # ash
+✅ --expr "C09-C10;C13-C11;C13" --minmax "-4.0,2.0;-4.0,5.0;233.0,300.0" # so2
+✅ --expr "C08-C10;C12-C13;C08-275.15" --minmax "-26.2,0.6;-43.2, 6.7;29.25,64.65" # airmass
 ```
 
 **Deben fallar con error claro:**

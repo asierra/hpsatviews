@@ -153,6 +153,7 @@ bool rgb_parse_options(ArgParser *parser, RgbContext *ctx) {
 
     // Custom
     ctx->opts.expr = ap_get_str_value(parser, "expr");
+    ctx->opts.minmax = ap_get_str_value(parser, "minmax");
 
     // Detectar producto L2
     // Es necesario duplicar el string porque basename puede modificarlo
@@ -199,7 +200,7 @@ static bool compose_truecolor(RgbContext *ctx) {
 
     // 2. CORRECCIÓN RAYLEIGH (Analítica)
     if (ctx->opts.apply_rayleigh) {
-        // Encontrar el archivo correcto para navegación 
+        // Encontrar el archivo correcto para navegación
         const char *nav_file = NULL;
         for (int i = 0; i < ctx->channel_set->count; i++) {
             if (strcmp(ctx->channel_set->channels[i].name, "C01") == 0) {
@@ -298,7 +299,6 @@ static bool compose_so2(RgbContext *ctx) {
 
 static bool compose_daynite(RgbContext *ctx) {
     // Genera imagen diurna
-    // Forzamos rayleigh y gamma 2.2
     ctx->opts.apply_rayleigh = true;
     ctx->opts.gamma = 2.2f;
     if (!compose_truecolor(ctx)) {
@@ -308,58 +308,76 @@ static bool compose_daynite(RgbContext *ctx) {
     ctx->opts.use_citylights = true;
     if (!compose_night(ctx)) {
         return false;
-	}
-	ctx->alpha_mask = ctx->final_image;
-	
-	return true;
+    }
+    ctx->alpha_mask = ctx->final_image;
+
+    return true;
 }
 
 static bool compose_custom(RgbContext *ctx) {
-    LOG_INFO("Armando custom RGB con expresión: %s", ctx->opts.expr);
-    /*
-       LinearCombo combo[3];
-       float ranges[3][2] = {{0, 255}, {0, 255}, {0, 255}}; // Default [min, max]
-       para R, G, B
+    LOG_INFO("Armando RGB custom con expresión: %s", ctx->opts.expr);
+    LinearCombo combo[3];
+    memset(combo, 0, sizeof(combo));
+    float ranges[3][2] = {{0, 255}, {0, 255}, {0, 255}}; // [min, max]
 
-       // 1. Parsear expresiones (R;G;B)
-       // Usamos una copia de la cadena porque strtok modifica el original
-       char *expr_copy = strdup(ctx->opts.expr);
-       char *token = strtok(expr_copy, ";");
-       for (int i = 0; i < 3 && token != NULL; i++) {
-           if (parse_expr_string(token, &combo[i]) != 0) {
-               LOG_ERROR("Error parseando expresión componente %d", i);
-           }
-           token = strtok(NULL, ";");
-       }
-       free(expr_copy);
+    // 1. Parsear expresiones (R;G;B)
+    // Usamos una copia de la cadena porque strtok modifica el original
+    char *expr_copy = strdup(ctx->opts.expr);
+    if (!expr_copy) {
+        LOG_ERROR("Falla de memoria al duplicar expresión.");
+        return false;
+    }
+    char *token = strtok(expr_copy, ";");
+    bool parse_error = false;
+    for (int i = 0; i < 3 && token != NULL; i++) {
+        if (parse_expr_string(token, &combo[i]) != 0) {
+            LOG_ERROR("Error parseando expresión componente %d", i);
+            parse_error = true;
+        }
+        token = strtok(NULL, ";");
+    }
+    free(expr_copy);
+    if (parse_error) return false;
 
-       // 2. Parsear rangos minmax (min,max; min,max; min,max) si los hay
-       if (ctx->opts.minmax) {
-           char *minmax_copy = strdup(ctx->opts.minmax);
-           char *m_token = strtok(minmax_copy, ";");
-           for (int i = 0; i < 3 && m_token != NULL; i++) {
-               sscanf(m_token, "%f,%f", &ranges[i][0], &ranges[i][1]);
-               m_token = strtok(NULL, ";");
-           }
-           free(minmax_copy);
-       }
+    // 2. Parsear rangos minmax (min,max; min,max; min,max) si los hay
+    if (ctx->opts.minmax) {
+        char *minmax_copy = strdup(ctx->opts.minmax);
+        if (!minmax_copy) {
+            LOG_ERROR("Falla de memoria al duplicar minmax.");
+            return false;
+        }
+        char *m_token = strtok(minmax_copy, ";");
+        for (int i = 0; i < 3 && m_token != NULL; i++) {
+            if (sscanf(m_token, "%f,%f", &ranges[i][0], &ranges[i][1]) != 2) {
+                LOG_WARN("No se pudieron leer los rangos para el componente %d: %s", i, m_token);
+            }
+            m_token = strtok(NULL, ";");
+        }
+        free(minmax_copy);
+    }
+    LOG_INFO("Rangos custom RGB: %s: %f,%f  %f,%f %f,%f", ctx->opts.minmax,
+		ranges[0][0], ranges[0][1], 
+		ranges[1][0], ranges[1][1],
+		ranges[2][0], ranges[2][1]);
+    
+    // 3. Evaluar las combinaciones lineales
+    ctx->comp_r = evaluate_linear_combo(&combo[0], ctx->channels);
+    ctx->comp_g = evaluate_linear_combo(&combo[1], ctx->channels);
+    ctx->comp_b = evaluate_linear_combo(&combo[2], ctx->channels);
+    
+    if (!ctx->comp_r.data_in || !ctx->comp_g.data_in || !ctx->comp_b.data_in) {
+        LOG_ERROR("Falla al evaluar las fórmulas matemáticas del modo custom.");
+        return false;
+    }
 
-       // 5. Evaluar las combinaciones lineales
-       DataF r_f = evaluate_linear_combo(&combo[0], ctx->channels);
-       DataF g_f = evaluate_linear_combo(&combo[1], ctx->channels);
-       DataF b_f = evaluate_linear_combo(&combo[2], ctx->channels);
+    // 4. Asignar rangos
+    ctx->min_r = ranges[0][0];
+    ctx->max_r = ranges[0][1];
+    ctx->min_g = ranges[1][0];
+    ctx->max_g = ranges[1][1];
+    ctx->min_b = ranges[2][0];
+    ctx->max_b = ranges[2][1];
 
-       // 6. Crear la imagen RGB final usando los rangos parseados
-       ImageData result = create_multiband_rgb(&r_f, &g_f, &b_f,
-                                              ranges[0][0], ranges[0][1],
-                                              ranges[1][0], ranges[1][1],
-                                              ranges[2][0], ranges[2][1]);
-
-       // 7. Limpieza de memoria temporal
-       dataf_destroy(&r_f);
-       dataf_destroy(&g_f);
-       dataf_destroy(&b_f);
-   */
     return true;
 }
 
@@ -373,8 +391,7 @@ static const RgbStrategy STRATEGIES[] = {
     {"ash", {"C11", "C13", "C14", "C15", NULL}, compose_ash, "Volcanic Ash RGB", false},
     {"airmass", {"C08", "C10", "C12", "C13", NULL}, compose_airmass, "Air Mass RGB", false},
     {"so2", {"C09", "C10", "C11", "C13", NULL}, compose_so2, "SO2 Detection RGB", false},
-    {"daynite", {"C01", "C02", "C03", "C13", NULL}, compose_daynite,
-     "Day/Night Composite", true}, 
+    {"daynite", {"C01", "C02", "C03", "C13", NULL}, compose_daynite, "Day/Night Composite", true},
     {"custom", {NULL}, compose_custom, "Custom mode", false},
     {NULL, {NULL}, NULL, NULL, false} // Centinela
 };
@@ -468,7 +485,6 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
                     ctx->ref_channel_idx = cn;
                 }
             }
-            printf("load referencia %d %d\n", ctx->ref_channel_idx, ctx->opts.use_full_res);
         }
     }
 
@@ -636,7 +652,7 @@ static bool generate_output_filename(RgbContext *ctx, const RgbStrategy *strateg
 }
 
 static bool apply_postprocessing(RgbContext *ctx) {
-	// daynite es un caso exclusivo especial
+    // daynite es un caso exclusivo especial
     if (strcmp(ctx->opts.mode, "daynite") == 0) {
         // La navegación ya está remuestreada al tamaño de referencia en
         // process_geospatial, así que podemos usarla directamente
@@ -662,10 +678,6 @@ static bool apply_postprocessing(RgbContext *ctx) {
         image_destroy(&mask);
     }
     // 1. Gamma solo se aplica a DataF
-    /*   if (ctx->opts.gamma != 1.0f) {
-           LOG_INFO("Aplicando corrección gamma: %.2f", ctx->opts.gamma);
-           image_apply_gamma(ctx->final_image, ctx->opts.gamma);
-       }*/
 
     // 2. Histogram/CLAHE (no para daynite)
     if (strcmp(ctx->opts.mode, "daynite") != 0) {

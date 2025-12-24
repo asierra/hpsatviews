@@ -66,57 +66,6 @@ DataF create_truecolor_synthetic_green(const DataF *c_blue, const DataF *c_red, 
 }
 
 
-ImageData create_truecolor_rgb(DataF c01_blue, DataF c02_red, DataF c03_nir) {
-  double start = omp_get_wtime();
-
-  // Crear el canal verde sintético
-  DataF green_ch = dataf_create(c02_red.width, c02_red.height);
-  if (green_ch.data_in == NULL) {
-    LOG_ERROR("Falla de memoria al crear el canal verde sintético.");
-    return image_create(0, 0, 0);
-  }
-
-  float g_min = 1e20f, g_max = -1e20f;
-  #pragma omp parallel for reduction(min:g_min) reduction(max:g_max)
-  for (size_t i = 0; i < green_ch.size; i++) {
-      float r = c02_red.data_in[i];
-      float b = c01_blue.data_in[i];
-      float n = c03_nir.data_in[i];
-      
-      // Verificar píxeles inválidos (NonData es 1e+32)
-      if (r > 1e20f || b > 1e20f || n > 1e20f || 
-          r < 0.0f || b < 0.0f || n < 0.0f ||
-          isnan(r) || isnan(b) || isnan(n) ||
-          isinf(r) || isinf(b) || isinf(n)) {
-          green_ch.data_in[i] = NonData;
-      } else {
-          // Fórmula EDC (Earth Data Collaborative): C01=0.45706946, C02=0.48358168, C03=0.06038137
-          float g = 0.45706946f * b + 0.48358168f * r + 0.06038137f * n;
-          // Verificación de seguridad post-cálculo
-          if (g > 100.0f || g < 0.0f || isnan(g) || isinf(g)) {
-              green_ch.data_in[i] = NonData;
-          } else {
-              green_ch.data_in[i] = g;
-              if (g < g_min) g_min = g;
-              if (g > g_max) g_max = g;
-          }
-      }
-  }
-  green_ch.fmin = g_min;
-  green_ch.fmax = g_max;
-
-  // Usar la función genérica de creación de RGB, pero pasando los rangos dinámicos
-  // reales de cada canal. Esto asegura que la normalización inicial sea correcta
-  // y que los píxeles NonData (valor 0) permanezcan negros después de la
-  // ecualización del histograma.
-  ImageData imout = create_multiband_rgb(&c02_red, &green_ch, &c01_blue, c02_red.fmin, c02_red.fmax, green_ch.fmin, green_ch.fmax, c01_blue.fmin, c01_blue.fmax);
-  dataf_destroy(&green_ch);
-
-  double end = omp_get_wtime();
-  LOG_INFO("Tiempo RGB %lf\n", end - start);
-  return imout;
-}
-
 /**
  * @brief Crea imagen true color RGB con corrección atmosférica de Rayleigh opcional.
  * 

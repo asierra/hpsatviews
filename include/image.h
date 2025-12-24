@@ -57,9 +57,6 @@ ImageData blend_images(ImageData bg, ImageData fg, ImageData mask);
 // Apply histogram enhacement to image
 void image_apply_histogram(ImageData im);
 
-// Apply gamma correction to image
-void image_apply_gamma(ImageData im, float gamma);
-
 // Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
 // tiles_x, tiles_y: number of tiles (typically 8x8)
 // clip_limit: contrast limit factor (typically 2.0-4.0, higher = more contrast)

@@ -11,6 +11,7 @@
 #include <float.h>
 
 #include "datanc.h"
+#include "logger.h"
 
 float NonData=1.0e+32;
 
@@ -99,6 +100,7 @@ DataF dataf_copy(const DataF *data) {
  */
 void dataf_fill(DataF *data, float value) {
     if (data == NULL || data->data_in == NULL || data->size == 0) {
+		LOG_DEBUG("Trying to fill a NULL DataF.");
         return; // Nothing to fill
     }
 
@@ -353,7 +355,7 @@ DataF datanc_get_float_base(DataNC *datanc) {
  */
 DataF dataf_op_dataf(const DataF* a, const DataF* b, Operation op) {
     if (a->width != b->width || a->height != b->height) {
-        // LOG_ERROR is missing here, but should be added in a real scenario
+		LOG_ERROR("Dimensions of DataF operators must be the same.");
         return dataf_create(0, 0);
     }
 
@@ -477,7 +479,7 @@ void dataf_invert(DataF* a) {
 /**
  * @brief Aplica corrección gamma a nivel de datos flotantes.
  * Formula: pixel = pixel^(1/gamma)
- * @param data Puntero a la estructura DataF.
+ * @param data apuntador a la estructura DataF.
  * @param gamma Valor de gamma (ej. 2.0 para raíz cuadrada).
  */
 void dataf_apply_gamma(DataF *data, float gamma) {

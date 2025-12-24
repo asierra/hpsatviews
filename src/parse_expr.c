@@ -3,7 +3,6 @@
 #include "logger.h"
 
 
-
 static void skip_spaces(const char **ptr) {
     while (isspace(**ptr)) (*ptr)++;
 }
@@ -144,12 +143,12 @@ DataF evaluate_linear_combo(const LinearCombo* combo, const DataNC* channels) {
     // 2. Crear resultado inicializado con bias
     DataF result = dataf_create(width, height);
     dataf_fill(&result, (float)combo->bias);
-    
+
     // 3. Acumular cada término: result += coeff * channel
     for (int i = 0; i < combo->num_terms; i++) {
         uint8_t band_id = combo->terms[i].band_id;
         double coeff = combo->terms[i].coeff;
-        
+
         // Multiplicar canal por coeficiente: scaled = channel * coeff
         DataF scaled = dataf_op_scalar(&channels[band_id].fdata, (float)coeff, OP_MUL, false);
         
