@@ -52,7 +52,7 @@ hpsatviews <comando> <archivo_ancla> [opciones]
 
 El **archivo ancla** en formato NetCDF permite identificar la escena, su instante y su ruta. El sistema infiere automáticamente los archivos de las bandas necesarias.
 
-### Ejemplos mínimos
+### Ejemplo
 
 ```bash
 hpsatviews gray OR_ABI-L1b-RadF-M6C13_G16.nc
@@ -149,8 +149,8 @@ Genera una vista en escala de grises del canal C13.
 
   ```bash
   hpsatviews gray -o "ir_{SAT}_{CH}_{YYYY}{MM}{DD}.png" \
-  OR_ABI-L1b-RadF-M6C13_G16_s20242190300217_e20242190309525_c20242190310008.nc
-	# → ir_goes-16_C13_20240807.png
+        OR_ABI-L1b-RadF-M6C13_G19_s20253551801183.nc
+  # → ir_G19_C15_20251221.png
   ``` 
 
 * `-r, --geographics`
@@ -159,8 +159,8 @@ Genera una vista en escala de grises del canal C13.
 * `-s, --scale <factor>`
   Factor entero de escala espacial. Valores mayores que 1 amplían la 
   imagen; valores menores que 1 la reducen (por omisión `1` y no se 
-  aplica). Un valor -2 implica una escala de 0.5. Obligatorio usar 
-  solo enteros.
+  aplica). Un valor -2 implica una escala de 0.5. Obligatorio **usar 
+  solo enteros**.
 
 * `-t, --geotiff`
   Genera la salida en formato **GeoTIFF** georreferenciado, con 
@@ -173,7 +173,7 @@ Genera una vista en escala de grises del canal C13.
 	hpsatviews gray -t archivo.nc
 
 	# Detección automática por extensión
-	hpsatviews rgb -m truecolor -o salida.tif archivo.nc
+	hpsatviews gray -o salida.tif archivo.nc
   ```
 
 * `-v, --verbose`
@@ -185,7 +185,7 @@ Genera una vista en escala de grises.
 
 * `-i, --invert`
   Invierte los valores (blanco a negro).
-  
+
 ### 4.5 Opciones comando *pseudocolor*
 
 Asocia un mapa de color a una vista en grises.
@@ -239,7 +239,7 @@ Si no se especifica la opción `-o` o `--out`, se genera un nombre determinista 
 Ejemplo:
   ```bash
   hpsatviews gray OR_ABI-L1b-RadF-M6C13_G16_s20242190300217.nc
-	# → hpsv_G16_2024219_0300_gray_C13.png
+  # → hpsv_G16_2024219_0300_gray_C13.png
   ```
   
 ### 4.8 Álgebra de bandas y composiciones personalizadas
@@ -271,7 +271,7 @@ hpsatviews rgb archivo_ancla.nc \
   --minmax "-2,2; -4,2; 240,300" \
   --out "ceniza_volcanica.png"
 ```
-  
+
 ---
 
 ## 5. Detalles técnicos
