@@ -50,7 +50,7 @@ HPSATVIEWS se utiliza desde la línea de comandos con una sintaxis simple:
 hpsatviews <comando> <archivo_ancla> [opciones]
 ```
 
-El **archivo ancla** identifica la escena, su instante y su ruta. El sistema infiere automáticamente los archivos de las bandas necesarias a usar.
+El **archivo ancla** en formato NetCDF permite identificar la escena, su instante y su ruta. El sistema infiere automáticamente los archivos de las bandas necesarias.
 
 ### Ejemplos mínimos
 
@@ -143,7 +143,7 @@ Genera una vista en escala de grises del canal C13.
   * `{JJJ}` día juliano
   * `{TS}` Instante (timestamp) YYYYJJJhhmm
   * `{CH}` canal o banda (C01, C02, etc.)
-  * `{SAT}` satélite (por ejemplo: `goes-16`, `goes-19`)
+  * `{SAT}` satélite (por ejemplo: `G16`, `G19`)
 
   Ejemplo:
 
@@ -203,24 +203,24 @@ Asocia un mapa de color a una vista en grises.
 Genera un compuesto RGB a partir de combinaciones lineales de varias bandas.
 
 * `-m, --mode <modo>`       Modo de operación. Opciones disponibles: 
-							'daynite' (defecto), 'truecolor', 'night', 'ash', 'airmass', 'so2'. 
+							`daynite` (predeterminado), `truecolor`, `night`, `ash`, `airmass`, `so2`, `custom`. 
 
-* `--rayleigh`              Aplica corrección atmosférica de Rayleigh (solo modos truecolor/composite).
+* `--rayleigh`              Aplica corrección atmosférica de Rayleigh (solo modos visibles diurnos).
 
 * `-f, --full-res`          Usa el canal de mayor resolución como referencia (más detalle, más lento).
-							Por defecto, se usa el de menor resolución (más rápido, vistas menos grandes).
+							Por omisión, se usa el de menor resolución (más rápido, vistas menos grandes).
 
 
   Ejemplos:
   ```bash
+  # Compuesto día/noche predeterminado, con Rayleigh y realce de contraste implícitos
+  hpsatviews rgb -o dianoche.png archivo.nc
+  
   # True color con corrección atmosférica de Rayleigh y CLAHE para mejorar contraste local
   hpsatviews rgb -m truecolor --rayleigh --clahe archivo.nc
 
   # Detección de ceniza volcánica
   hpsatviews rgb -m ash -o ceniza.png archivo.nc
-
-  # Compuesto día/noche com Rayleigh y realce de contraste implícitos
-  hpsatviews rgb -o dianoche.png archivo.nc
   ```
   
 El modo `daynite` hace una mezcla inteligente de los modos `truecolor` 
@@ -228,27 +228,37 @@ y `night` con luces de ciudad de fondo, usando una máscara precisa con
 base en la geometría solar, y aplica automáticamente corrección 
 Rayleigh y realce de contraste.
 
+Para modo `custom` ver **Álgebra de bandas**.
+
 ### 4.7 Convenciones de salida
 
-Si no se especifica la opción `-o` o `--out`, la herramienta genera un nombre determinista basado en los metadatos del archivo "ancla" y las operaciones aplicadas:
+Si no se especifica la opción `-o` o `--out`, se genera un nombre determinista basado en los metadatos del archivo "ancla", las bandas y las operaciones aplicadas:
 
 **Formato:** `hpsv_<SAT>_<YYYYJJJ>_<hhmm>_<MODO>[_<OPS>].<ext>`
 
 * **Ejemplo:** `hpsv_G16_2025122_183000_truecolor_clahe.png`
 
-### 4.88️Álgebra de Bandas y Composiciones Personalizadas
+### 4.8 Álgebra de bandas y composiciones personalizadas
 
 `hpsatviews` permite definir combinaciones lineales de bandas al vuelo para generar composiciones RGB o imágenes monocanal complejas sin necesidad de generar archivos intermedios.
 
 **Sintaxis Soportada:**
 * **Coeficientes numéricos por banda:** (ej. `2.0*C13`).
 * **Operadores:** `+`, `-` entre los coeficientes.
-* **Separadores:** Usa punto y coma `;` para separar las componentes R, G y B (solo en modo RGB).
+* **Rangos:** Opcionalmente, mínimos y máximos separados por comas. Por omisión se calculan.
+* **Separadores:** Usa punto y coma `;` para separar las componentes R, G y B (solo con comando `rgb`).
 
 #### Ejemplos de Uso
 
-**1. Composición RGB Personalizada** (ej. Detección de Ceniza):
-Define fórmulas independientes para los canales Rojo, Verde y Azul usando el modo `custom`. Nota el uso de comillas para proteger los espacios y el punto y coma.
+**1. Álgebra Monocanal** en los comandos gray o pseudocolor.
+
+```bash
+hpsatviews gray archivo_ancla.nc \
+  --expr "C13-C15" \
+  --minmax "0.0,100.0"
+```
+
+**2. Composición RGB Personalizada** Define fórmulas independientes para los canales Rojo, Verde y Azul usando el modo `custom`. Nota el uso de comillas para proteger los espacios y el punto y coma.
 
 ```bash
 hpsatviews rgb archivo_ancla.nc \
@@ -258,14 +268,6 @@ hpsatviews rgb archivo_ancla.nc \
   --out "ceniza_volcanica.png"
 ```
   
-**2. Álgebra Monocanal, aplica directamente en los comandos gray o pseudocolor.
-
-```bash
-hpsatviews gray archivo_ancla.nc \
-  --expr "C13-C15" \
-  --minmax "0,100"
-```
-
 ---
 
 ## 5. Detalles técnicos
@@ -284,7 +286,7 @@ El sistema incluye ecualización adaptativa de histograma con control de contras
 
 ### 5.4 Rendimiento
 
-Implementado en C (C11) con paralelización mediante OpenMP, HPSATVIEWS prioriza el rendimiento, el uso eficiente de memoria y la escalabilidad en sistemas multi-núcleo.
+Implementado en C (ISO/IEC 9899:2011) con paralelización mediante OpenMP, HPSATVIEWS prioriza el alto rendimiento, el uso eficiente de memoria y la escalabilidad en sistemas multi-núcleo.
 
 ---
 
@@ -302,15 +304,21 @@ Implementado en C (C11) con paralelización mediante OpenMP, HPSATVIEWS prioriza
 
 ## 7. Estado del proyecto
 
-HPSATVIEWS se encuentra en desarrollo activo, con un núcleo funcional estable y ampliación progresiva de capacidades y documentación.
+HPSATVIEWS se encuentra en desarrollo activo, funcional estable y ampliación progresiva de capacidades y documentación.
 
 ---
 
 ## 8. Referencias
-
+- Bah, K., Schmit, T. J., Gerth, J., Cronce, M., otkin, J., & Li, J. (2018).
+  GOES-16 Advanced Baseline Imager (ABI) True Color Imagery for Legacy and 
+  Non-Traditional Applications. NOAA/CIMSS.
 - Bodhaine, B. A., et al. (1999). "On Rayleigh optical depth 
   calculations." *Journal of Atmospheric and Oceanic Technology*, 16(11), 
   1854-1861.
+- Bucholtz, A. (1995). Rayleigh-scattering calculations for the terrestrial 
+  atmosphere. Applied Optics, 34(15), 2765-2773.
+- Hansen, J. E., & Travis, L. D. (1974). Light scattering in planetary 
+  atmospheres. Space Science Reviews, 16(4), 527-610.
 - Lira Chávez, J. (2010). Tratamiento digital de imágenes 
   multiespectrales (2a ed.). México, D. F.: Instituto de Geofísica, 
   Universidad Nacional Autónoma de México

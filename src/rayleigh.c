@@ -194,8 +194,72 @@ static inline float get_rayleigh_value(const RayleighLUT *lut, float s, float v,
     return result / 100.0f;
 }
 
+/*
+ * ANALYTICAL RAYLEIGH ATMOSPHERIC CORRECTION
+ * ==========================================
+ *
+ * Scientific Methodology and References:
+ *
+ * 1. Physical Model: Single-Scattering Approximation
+ * --------------------------------------------------
+ * The implementation assumes a plane-parallel atmosphere where the path radiance
+ * is primarily due to a single scattering event of solar radiation towards the
+ * sensor. This is efficient for visible bands in clear-sky conditions.
+ *
+ * Formula:
+ * Ref_corr = Ref_obs - (Tau * P(Theta)) / (4 * mu * mu0)
+ *
+ * Where:
+ * - P(Theta): Rayleigh phase function = 0.75 * (1 + cos^2(Theta))
+ * - Theta:    Scattering angle calculated from SZA, VZA, and Relative Azimuth.
+ * - mu, mu0:  Cosine of View Zenith and Solar Zenith angles, respectively.
+ *
+ * Reference:
+ * Hansen, J. E., & Travis, L. D. (1974). Light scattering in planetary
+ * atmospheres. Space Science Reviews, 16(4), 527-610.
+ *
+ *
+ * 2. Rayleigh Optical Depth Coefficients (Tau)
+ * --------------------------------------------
+ * The optical depth (Tau) values are derived for the central wavelengths of
+ * the GOES-R ABI sensor using the US Standard Atmosphere (1976).
+ *
+ * - Band 1 (Blue, 0.47 um): Tau ~ 0.188
+ * - Band 2 (Red, 0.64 um):  Tau ~ 0.055
+ *
+ * Reference:
+ * Bucholtz, A. (1995). Rayleigh-scattering calculations for the terrestrial
+ * atmosphere. Applied Optics, 34(15), 2765-2773.
+ *
+ *
+ * 3. Terminator Correction (SZA Fading)
+ * -------------------------------------
+ * The plane-parallel approximation diverges as the Solar Zenith Angle (SZA)
+ * approaches 90 degrees (horizon). To prevent artifacts (e.g., yellowing clouds,
+ * noise amplification) at the terminator, a linear fading factor is applied.
+ *
+ * - SZA < 65.0 deg: Full correction (Factor = 1.0)
+ * - SZA > 80.0 deg: No correction   (Factor = 0.0)
+ * - 65.0 < SZA < 80.0: Linear interpolation.
+ *
+ * This heuristic is standard in processing packages like SatPy/Geo2Grid (NOAA/CIMSS).
+ *
+ *
+ * 4. Hybrid Green Generation (True Color)
+ * ---------------------------------------
+ * Since ABI lacks a native Green band, it is synthesized using a weighted
+ * combination of Red, Blue, and NIR to simulate vegetation properly.
+ *
+ * Formula: G = 0.48*Red + 0.46*Blue + 0.06*NIR
+ *
+ * Reference:
+ * Bah, K., Schmit, T. J., et al. (2018). GOES-16 Advanced Baseline Imager (ABI)
+ * True Color Imagery for Legacy and Non-Traditional Applications.
+ * NOAA/CIMSS.
+ */
+ 
 /**
- * Aplica corrección Rayleigh modificando 'img' in-place.
+ * Aplica corrección Rayleigh analítica.
  * img: DataF con reflectancia TOA (input/output)
  * sza: Solar Zenith Angle
  * vza: View Zenith Angle (Satellite Zenith)
