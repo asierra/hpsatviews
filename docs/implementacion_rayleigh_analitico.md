@@ -50,7 +50,7 @@ Referencia: Hansen, J. E., & Travis, L. D. (1974). Light scattering in planetary
 
 ### 2. Coeficientes de Profundidad Óptica (τ)
 
-Los valores de profundidad óptica se calculan para las longitudes de onda centrales del sensor GOES-R ABI utilizando el modelo de Atmósfera Estándar de EE.UU. (1976). La fuerte dependencia de $\lambda^−4$ explica la necesidad de una corrección agresiva en el canal azul.
+Los valores de profundidad óptica se calculan para las longitudes de onda centrales del sensor GOES-R ABI utilizando el modelo de Atmósfera Estándar de EE.UU. (1976). La fuerte dependencia de $\lambda^{−4}$ explica la necesidad de una corrección agresiva en el canal azul.
 
 - Banda 1 (Azul, 0.47 µm): τ≈0.188
 
