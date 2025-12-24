@@ -521,6 +521,15 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     float final_lon_min = 0, final_lon_max = 0, final_lat_min = 0, final_lat_max = 0;
     unsigned crop_x_start = 0, crop_y_start = 0;
 
+	if (gamma != 1.0f) {
+        if (c01.is_float && c01.fdata.data_in) {
+            LOG_INFO("Aplicando corrección gamma %.2f a los datos flotantes...", gamma);
+            dataf_apply_gamma(&c01.fdata, gamma);
+        } else {
+            LOG_WARN("La corrección gamma requiere datos flotantes (DataF). Se omitirá.");
+        }
+    }
+    
     // --- PASO 1: Crear imagen en proyección nativa ---
     ImageData final_image = {0};
 
@@ -602,7 +611,6 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     // --- PASO 4: Post-procesamiento ---
     ImageData imout = final_image; // Usamos imout como puntero de trabajo
 
-    if (gamma != 1.0) image_apply_gamma(imout, gamma);
     // La ecualización de histograma y CLAHE no tienen sentido para pseudocolor,
     // ya que la paleta de colores es la que define el "realce".
     if (!is_pseudocolor) {
