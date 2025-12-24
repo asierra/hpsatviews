@@ -10,13 +10,12 @@
 
 ### 1.1 Resumen
 
-**HPSATVIEWS** es un sistema de generación de **vistas y productos visuales** de alto rendimiento a partir de datos satelitales ambientales. El proyecto establece una distinción explícita entre la **imagen satelital** como representación numérica de datos físicos calibrados (L1b/L2) y la **vista** como representación visual optimizada para la interpretación humana.
-
-El sistema está optimizado para satélites geoestacionarios de la familia **GOES-R** y permite generar vistas en escala de grises, pseudocolor y compuestos RGB en tiempos del orden de segundos, manteniendo rigor geométrico y reproducibilidad.
+**HPSATVIEWS** es un sistema de generación de **vistas y productos visuales** de alto rendimiento a partir de datos satelitales ambientales. 
+Permite generar vistas en escala de grises, pseudocolor y compuestos RGB en tiempos del orden de segundos, manteniendo rigor geométrico y reproducibilidad. Está optimizado para satélites geoestacionarios de la familia **GOES-R**. 
 
 ### 1.2 Filosofía de diseño
 
-HPSATVIEWS está diseñado exclusivamente para operar en el dominio de las **vistas** y **productos visuales**. No sustituye plataformas de análisis físico ni herramientas GIS generalistas. Su objetivo es ofrecer un flujo de trabajo simple, muy rápido y conceptualmente claro para la interpretación visual de escenas atmosféricas.
+HPSATVIEWS está diseñado exclusivamente para operar en el dominio de las **vistas** y **productos visuales**. No sustituye plataformas de análisis físico ni herramientas GIS generalistas. Su objetivo es ofrecer un flujo de trabajo simple, muy rápido y conceptualmente claro para la interpretación visual de escenas satelitales.
 
 ---
 
@@ -32,13 +31,11 @@ Representación visual derivada de una imagen, normalizada y cuantizada para su 
 
 ### Producto
 
-Vista, o conjunto de vistas, asociada a una semántica meteorológica reconocible por la comunidad (por ejemplo: *true color*, *air mass*, *ash*).
+Vista asociada a una semántica meteorológica reconocible por la comunidad (por ejemplo: *true color*, *air mass*, *ash*).
 
 ### Instante (timestamp)
 
 Se denomina **instante** al momento temporal asociado a una escena satelital, definido por la hora efectiva de observación del sensor y representado mediante un conjunto discreto de componentes temporales (año, día juliano, hora, minuto, segundo).
-
-En este proyecto, el término *instante* se utiliza en lugar de *timestamp* para resaltar su carácter físico–observacional, y no como una marca temporal genérica.
 
 ---
 
