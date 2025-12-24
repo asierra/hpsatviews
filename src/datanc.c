@@ -472,3 +472,48 @@ void dataf_invert(DataF* a) {
     a->fmin = -a->fmax;
     a->fmax = -old_fmin;
 }
+
+
+/**
+ * @brief Aplica corrección gamma a nivel de datos flotantes.
+ * Formula: pixel = pixel^(1/gamma)
+ * @param data Puntero a la estructura DataF.
+ * @param gamma Valor de gamma (ej. 2.0 para raíz cuadrada).
+ */
+void dataf_apply_gamma(DataF *data, float gamma) {
+    if (data == NULL || data->data_in == NULL || gamma <= 0.0f) {
+        return;
+    }
+
+    // Un gamma de 1.0 no hace nada
+    if (fabsf(gamma - 1.0f) < 1e-6) return;
+
+    float inv_gamma = 1.0f / gamma;
+
+    #pragma omp parallel for
+    for (size_t i = 0; i < data->size; i++) {
+        float val = data->data_in[i];
+        
+        // Ignorar NonData
+        if (val == NonData) continue;
+
+        // Protección contra valores negativos (común en correcciones atmosféricas agresivas)
+        if (val < 0.0f) {
+            data->data_in[i] = 0.0f;
+        } else {
+            // powf es la versión float de pow (más rápida)
+            data->data_in[i] = powf(val, inv_gamma);
+        }
+    }
+
+    // Actualizar min/max después de la transformación
+    // Nota: Como la función es monotónica creciente, fmin y fmax 
+    // simplemente se transforman igual, asumiendo que son positivos.
+    if (data->fmin != NonData && data->fmin > 0) 
+        data->fmin = powf(data->fmin, inv_gamma);
+    else 
+        data->fmin = 0.0f;
+        
+    if (data->fmax != NonData && data->fmax > 0) 
+        data->fmax = powf(data->fmax, inv_gamma);
+}

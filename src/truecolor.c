@@ -13,6 +13,59 @@
 #include "reader_nc.h"
 #include "rgb.h"
 
+
+/**
+ * @brief Genera SOLO el canal verde sintético.
+ * Formula CIMSS: Green = 0.45*Red + 0.10*NIR + 0.45*Blue
+ */
+DataF create_truecolor_synthetic_green(const DataF *c_blue, const DataF *c_red, const DataF *c_nir) {
+    // Validar dimensiones
+    if (c_blue->width != c_red->width || c_blue->height != c_red->height) {
+        LOG_ERROR("Dimension mismatch in TrueColor generation");
+        return dataf_create(0, 0);
+    }
+
+    DataF green = dataf_create(c_red->width, c_red->height);
+    if (green.data_in == NULL) return green;
+
+    // Inicializar min/max invertidos para búsqueda
+    green.fmin = NonData; 
+    green.fmax = -NonData;
+
+    float local_min = 1e30f;
+    float local_max = -1e30f;
+
+    #pragma omp parallel for reduction(min:local_min) reduction(max:local_max)
+    for (size_t i = 0; i < green.size; i++) {
+        float B = c_blue->data_in[i];
+        float R = c_red->data_in[i];
+        float N = c_nir->data_in[i];
+
+        // Si alguno es NonData, el resultado es NonData
+        if (IS_NONDATA(B) || IS_NONDATA(R) || IS_NONDATA(N)) {
+            green.data_in[i] = NonData;
+        } else {
+            // Cálculo lineal físico (sin gamma ni clips aún)
+            //float G_val = //(0.45f * R) + (0.10f * N) + (0.45f * B);
+			//	0.45706946f * B + 0.48358168f * R + 0.06038137f * N;
+			float G_val = (0.48358168f * R) + (0.45706946f * B) + (0.05934885f * N);
+            green.data_in[i] = G_val;
+
+            if (G_val < local_min) local_min = G_val;
+            if (G_val > local_max) local_max = G_val;
+        }
+    }
+    
+    // Si no encontramos datos válidos, dejar min/max por defecto
+    if (local_min < 1e29f) {
+        green.fmin = local_min;
+        green.fmax = local_max;
+    }
+    
+    return green;
+}
+
+
 ImageData create_truecolor_rgb(DataF c01_blue, DataF c02_red, DataF c03_nir) {
   double start = omp_get_wtime();
 
@@ -74,15 +127,10 @@ ImageData create_truecolor_rgb(DataF c01_blue, DataF c02_red, DataF c03_nir) {
  * @param apply_rayleigh Si true, aplica corrección Rayleigh
  * @return ImageData estructura con la imagen RGB generada
  */
+ /*
 ImageData create_truecolor_rgb_rayleigh(DataF c01_blue, DataF c02_red, DataF c03_nir,
-                                        const char *filename_ref, bool apply_rayleigh) {
+                                        const char *filename_ref) {
   double start_total = omp_get_wtime();
-  
-  // Si no se solicita Rayleigh, usar versión original
-  if (!apply_rayleigh || filename_ref == NULL) {
-    LOG_INFO("Generando true color sin corrección Rayleigh.");
-    return create_truecolor_rgb(c01_blue, c02_red, c03_nir);
-  }
   
   LOG_INFO("Generando true color CON corrección atmosférica de Rayleigh...");
   LOG_INFO("Dimensiones de entrada:");
@@ -267,7 +315,7 @@ ImageData create_truecolor_rgb_rayleigh(DataF c01_blue, DataF c02_red, DataF c03
   
   return imout;
 }
-
+*/
 
 ImageData create_multiband_rgb(const DataF* r_ch, const DataF* g_ch, const DataF* b_ch,
                                float r_min, float r_max, float g_min, float g_max,

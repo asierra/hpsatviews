@@ -7,6 +7,111 @@
 #include "logger.h"
 #include "rayleigh.h"
 #include "rayleigh_lut_embedded.h"
+#include "reader_nc.h" 
+
+
+// Función auxiliar para reducir la resolución si es mayor a la objetivo
+static void enforce_resolution(DataF *data, unsigned int target_w, unsigned int target_h) {
+    if (data == NULL || data->data_in == NULL) return;
+
+    // Caso 1: Ya coinciden
+    if (data->width == target_w && data->height == target_h) return;
+
+    // Caso 2: La navegación es más grande (5000) y queremos pequeña (2500) -> Downsampling
+    if (data->width > target_w) {
+        int factor = data->width / target_w;
+        // Validación básica de factor entero
+        if (factor < 1) factor = 1;
+
+        LOG_DEBUG("Ajustando navegación Rayleigh: %dx%d -> %dx%d (factor %d)", 
+                 data->width, data->height, target_w, target_h, factor);
+        
+        // Usamos boxfilter para promediar los ángulos suavemente
+        DataF resized = downsample_boxfilter(*data, factor);
+        
+        // Reemplazamos la matriz original con la redimensionada
+        dataf_destroy(data);
+        *data = resized;
+    }
+    // Caso 3: Upsampling (no implementado aquí, raramente necesario para Nav)
+}
+
+void rayleigh_free_navigation(RayleighNav *nav) {
+    if (nav) {
+        dataf_destroy(&nav->sza);
+        dataf_destroy(&nav->vza);
+        dataf_destroy(&nav->raa);
+    }
+}
+
+bool rayleigh_load_navigation(const char *filename, RayleighNav *nav, 
+				unsigned int target_width, unsigned int target_height) {
+    // Inicializar estructura
+    nav->sza.data_in = NULL;
+    nav->vza.data_in = NULL;
+    nav->raa.data_in = NULL;
+
+    LOG_INFO("Generando navegación para Rayleigh (SZA, VZA, RAA)...");
+
+    // 1. Calcular Latitud/Longitud (Necesario para los ángulos)
+    DataF navla = {0}, navlo = {0};
+    if (compute_navigation_nc(filename, &navla, &navlo) != 0) {
+        LOG_ERROR("Fallo al computar navegación base (lat/lon).");
+        return false;
+    }
+
+    // 2. Calcular Ángulos Solares (SZA y SAA)
+    DataF saa = {0}; // Solar Azimuth (Temporal)
+    if (compute_solar_angles_nc(filename, &navla, &navlo, &nav->sza, &saa) != 0) {
+        LOG_ERROR("Fallo al computar ángulos solares.");
+        dataf_destroy(&navla); dataf_destroy(&navlo);
+        return false;
+    }
+
+    // 3. Calcular Ángulos del Satélite (VZA y VAA)
+    DataF vaa = {0}; // View Azimuth (Temporal)
+    if (compute_satellite_angles_nc(filename, &navla, &navlo, &nav->vza, &vaa) != 0) {
+        LOG_ERROR("Fallo al computar ángulos del satélite.");
+        dataf_destroy(&navla); dataf_destroy(&navlo);
+        dataf_destroy(&saa);   dataf_destroy(&nav->sza);
+        return false;
+    }
+
+    // Ya no necesitamos Lat/Lon, liberamos memoria
+    dataf_destroy(&navla);
+    dataf_destroy(&navlo);
+
+    // 4. Calcular Azimut Relativo (RAA)
+    // Usamos tu función existente en reader_nc
+    compute_relative_azimuth(&saa, &vaa, &nav->raa);
+
+    // Liberar los azimuts individuales (ya solo necesitamos el relativo)
+    dataf_destroy(&saa);
+    dataf_destroy(&vaa);
+
+    // Verificación final
+    if (!nav->sza.data_in || !nav->vza.data_in || !nav->raa.data_in) {
+        rayleigh_free_navigation(nav);
+        return false;
+    }
+    
+	if (target_width > 0 && target_height > 0) {
+        enforce_resolution(&nav->sza, target_width, target_height);
+        enforce_resolution(&nav->vza, target_width, target_height);
+        enforce_resolution(&nav->raa, target_width, target_height);
+
+        // Verificar si falló el redimensionado
+        if (nav->sza.width != target_width) {
+            LOG_ERROR("Falla redimensionando navegación Rayleigh: %dx%d != %dx%d",
+                      nav->sza.width, nav->sza.height, target_width, target_height);
+            rayleigh_free_navigation(nav);
+            return false;
+        }
+    }
+    
+    return true;
+}
+
 
 /**
  * Realiza una interpolación trilineal rápida sobre la LUT.
@@ -395,4 +500,89 @@ void rayleigh_lut_destroy(RayleighLUT *lut) {
         lut->n_sz = lut->n_vz = lut->n_az = 0;
         LOG_DEBUG("LUT de Rayleigh liberada.");
     }
+}
+
+
+void rayleigh_correct_analytic(DataF *img, const RayleighNav *nav, float tau) {
+    if (!img || !nav || !img->data_in) return;
+    
+    // Validar dimensiones
+    if (img->width != nav->sza.width || img->height != nav->sza.height) {
+        LOG_ERROR("Mismatch dimensiones en Rayleigh Analytic: Img %dx%d vs Nav %dx%d",
+                  img->width, img->height, nav->sza.width, nav->sza.height);
+        return;
+    }
+
+    double start_time = omp_get_wtime();
+    float deg2rad = (float)(M_PI / 180.0);
+    
+    size_t count_corrected = 0;
+    float max_corr = 0.0f;
+    float sum_corr = 0.0f;
+
+    #pragma omp parallel for reduction(+:count_corrected, sum_corr) reduction(max:max_corr)
+    for (size_t i = 0; i < img->size; i++) {
+        float val = img->data_in[i];
+        float sza = nav->sza.data_in[i];
+        float vza = nav->vza.data_in[i];
+        float raa = nav->raa.data_in[i]; // Grados
+
+        if (IS_NONDATA(val) || IS_NONDATA(sza) || IS_NONDATA(vza) || IS_NONDATA(raa)) continue;
+
+        // 1. Límite estricto de seguridad
+        if (sza > 80.0f || vza > 80.0f) continue;
+
+		// 2. CÁLCULO DEL FACTOR DE DESVANECIMIENTO (SZA Fading)
+        // Esto evita que las nubes se vuelvan amarillas en el norte/bordes
+        float factor = 1.0f;
+        if (sza > 65.0f) {
+            // Cae linealmente de 1.0 (a los 65°) hasta 0.0 (a los 80°)
+            factor = (80.0f - sza) / (80.0f - 65.0f);
+        }        
+	
+        // Convertir a radianes
+        float theta_s = sza * deg2rad;
+        float theta_v = vza * deg2rad;
+        float phi     = raa * deg2rad;
+
+        float cos_s = cosf(theta_s);
+        float cos_v = cosf(theta_v);
+
+        // Calcular ángulo de dispersión (Scattering Angle) Theta
+        // Cos(Theta) = -Cos(S)*Cos(V) + Sin(S)*Sin(V)*Cos(Phi)
+        // Nota: El signo del primer término depende de la convención de vectores. 
+        // Para satélite mirando abajo y sol arriba, el ángulo es obtuso, 
+        // pero la función de fase es simétrica (cuadrática), así que cos^2 nos salva.
+        // Usamos la forma estándar:
+        float sin_s = sinf(theta_s);
+        float sin_v = sinf(theta_v);
+        
+        float cos_scat = -cos_s * cos_v + sin_s * sin_v * cosf(phi);
+        
+        // Función de fase de Rayleigh: P(Theta) = 0.75 * (1 + cos^2(Theta))
+        float phase = 0.75f * (1.0f + cos_scat * cos_scat);
+
+        // Reflectancia de Rayleigh: R = (Tau * P) / (4 * cos_s * cos_v)
+        // Factor 4.0 viene de la definición de reflectancia bidireccional
+        float ray_refl = (tau * phase) / (4.0f * cos_s * cos_v);
+
+        // 3. Aplicar la corrección moderada por el factor
+        float result = val - (ray_refl * factor);
+
+        // Clipping suave
+        if (result < 0.0f) result = 0.0f;
+
+        img->data_in[i] = result;
+
+        // Estadísticas
+        count_corrected++;
+        if (ray_refl > max_corr) max_corr = ray_refl;
+        sum_corr += ray_refl;
+    }
+
+    double elapsed = omp_get_wtime() - start_time;
+    LOG_INFO("Rayleigh Analítico (Tau=%.3f): %.2fms. Media Corr: %.4f, Max Corr: %.4f", 
+             tau, elapsed*1000.0, 
+             (count_corrected > 0) ? sum_corr/count_corrected : 0.0f,
+             max_corr);
 }

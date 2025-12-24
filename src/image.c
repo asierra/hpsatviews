@@ -246,21 +246,33 @@ void image_apply_histogram(ImageData im) {
 }
 
 void image_apply_gamma(ImageData im, float gamma) {
-  size_t size = im.width * im.height;
-  unsigned char nvalues[256];
+    // A gamma of 1.0 means no change. Also, gamma must be positive.
+    if (gamma == 1.0f || gamma <= 0.0f) {
+        if (gamma <= 0.0f) {
+            LOG_WARN("Gamma must be positive. Got %.2f. No correction applied.", gamma);
+        }
+        return;
+    }
 
-  for (unsigned int i = 0; i < 256; i++)
-    nvalues[i] = (unsigned char)(255 * pow(i / 255.0, gamma));
+    size_t num_pixels = im.width * im.height;
+    unsigned char lut[256];
+    int channels_to_process = (im.bpp == 2 || im.bpp == 4) ? im.bpp - 1 : im.bpp;
 
-  for (size_t i = 0; i < size; i++) {
-    unsigned int p = i * im.bpp;
-    unsigned int j = im.data[p];
-    im.data[p] = nvalues[j];
-    if (im.bpp >= 3) {
-        im.data[p + 1] = nvalues[im.data[p + 1]];
-        im.data[p + 2] = nvalues[im.data[p + 2]];
-      }
-  }
+    // Pre-calculate the gamma correction LUT.
+    // The exponent is 1.0/gamma, which is the standard convention.
+    // A gamma > 1.0 brightens the image, a gamma < 1.0 darkens it.
+    float exponent = 1.0f / gamma;
+    for (int i = 0; i < 256; i++) {
+        lut[i] = (unsigned char)(255.0 * pow(i / 255.0, exponent) + 0.5);
+    }
+
+    #pragma omp parallel for
+    for (size_t i = 0; i < num_pixels; i++) {
+        for (int ch = 0; ch < channels_to_process; ch++) {
+            size_t idx = i * im.bpp + ch;
+            im.data[idx] = lut[im.data[idx]];
+        }
+    }
 }
 
 /**

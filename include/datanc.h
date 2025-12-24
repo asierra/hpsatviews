@@ -110,4 +110,12 @@ DataF datanc_get_float_base(DataNC *datanc);
 #define M_PI 3.14159265358979323846
 #define M_PI_2 1.57079632679489661923
 
+/**
+ * @brief Aplica corrección gamma a nivel de datos flotantes.
+ * Formula: pixel = pixel^(1/gamma)
+ * @param data Puntero a la estructura DataF.
+ * @param gamma Valor de gamma (ej. 2.0 para raíz cuadrada).
+ */
+void dataf_apply_gamma(DataF *data, float gamma);
+
 #endif /* HPSATVIEWS_DATANC_H_ */

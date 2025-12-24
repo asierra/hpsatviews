@@ -1,27 +1,26 @@
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
 #include <libgen.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-#include "rgb.h"
 #include "args.h"
-#include "logger.h"
 #include "clip_loader.h"
-#include "filename_utils.h"
-#include "truecolor.h"
-#include "processing.h"
-#include "image.h"
 #include "datanc.h"
-#include "reprojection.h"
+#include "daynight_mask.h"
+#include "filename_utils.h"
+#include "image.h"
+#include "logger.h"
+#include "nocturnal_pseudocolor.h"
+#include "parse_expr.h"
+#include "processing.h"
+#include "rayleigh.h"
 #include "reader_nc.h"
 #include "reader_png.h"
-#include "writer_png.h"
+#include "reprojection.h"
+#include "rgb.h"
+#include "truecolor.h"
 #include "writer_geotiff.h"
-#include "gray.h"
-#include "nocturnal_pseudocolor.h"
-#include "daynight_mask.h"
-#include "parse_expr.h"
-
+#include "writer_png.h"
 
 /**
  * @brief Inicializa el contexto RGB a sus valores por defecto.
@@ -44,25 +43,26 @@ void rgb_context_init(RgbContext *ctx) {
  * @param ctx Puntero al contexto a destruir.
  */
 void rgb_context_destroy(RgbContext *ctx) {
-    if (!ctx) return;
+    if (!ctx)
+        return;
 
     // Liberar ChannelSet
     channelset_destroy(ctx->channel_set);
-    
+
     // Liberar canales cargados
     for (int i = 1; i <= 16; i++) {
         // datanc_destroy es seguro para estructuras no inicializadas
         datanc_destroy(&ctx->channels[i]);
     }
-    
+
     // Liberar navegación
     dataf_destroy(&ctx->nav_lat);
     dataf_destroy(&ctx->nav_lon);
-    
+
     // Liberar resultados
     image_destroy(&ctx->final_image);
     image_destroy(&ctx->alpha_mask);
-    
+
     // Liberar output_filename si fue generado dinámicamente
     if (ctx->opts.output_generated && ctx->opts.output_filename) {
         free(ctx->opts.output_filename);
@@ -70,22 +70,24 @@ void rgb_context_destroy(RgbContext *ctx) {
 }
 
 /**
- * @brief Parsea los argumentos de la línea de comandos y puebla la estructura RgbOptions.
- * Centraliza toda la lógica de parsing de argumentos para el comando 'rgb'.
+ * @brief Parsea los argumentos de la línea de comandos y puebla la estructura
+ * RgbOptions. Centraliza toda la lógica de parsing de argumentos para el
+ * comando 'rgb'.
  * @param parser El parser de argumentos inicializado.
- * @param ctx El contexto RGB donde se guardarán las opciones y los mensajes de error.
+ * @param ctx El contexto RGB donde se guardarán las opciones y los mensajes de
+ * error.
  * @return true si el parsing fue exitoso, false en caso de error.
  */
 bool rgb_parse_options(ArgParser *parser, RgbContext *ctx) {
     // Validar archivo de entrada
     if (!ap_has_args(parser)) {
-        snprintf(ctx->error_msg, sizeof(ctx->error_msg), 
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
                  "El comando 'rgb' requiere un archivo NetCDF de entrada.");
         ctx->error_occurred = true;
         return false;
     }
     ctx->opts.input_file = ap_get_arg_at_index(parser, 0);
-    
+
     // Parsear opciones booleanas
     ctx->opts.do_reprojection = ap_found(parser, "geographics");
     ctx->opts.apply_histogram = ap_found(parser, "histo");
@@ -94,7 +96,7 @@ bool rgb_parse_options(ArgParser *parser, RgbContext *ctx) {
     ctx->opts.use_citylights = ap_found(parser, "citylights");
     ctx->opts.use_alpha = ap_found(parser, "alpha");
     ctx->opts.use_full_res = ap_found(parser, "full-res");
-    
+
     // Parsear opciones con valores
     ctx->opts.mode = ap_get_str_value(parser, "mode");
     if (!ctx->opts.mode) {
@@ -103,37 +105,38 @@ bool rgb_parse_options(ArgParser *parser, RgbContext *ctx) {
 
     // ap_get_dbl_value y ap_get_int_value retornan 0 si no se encuentra la opción
     double gamma_val = ap_get_dbl_value(parser, "gamma");
-    if (gamma_val != 0.0) ctx->opts.gamma = (float)gamma_val;
-    
+    if (gamma_val != 0.0)
+        ctx->opts.gamma = (float)gamma_val;
+
     int scale_val = ap_get_int_value(parser, "scale");
-    if (ap_found(parser, "scale")) ctx->opts.scale = scale_val;
-    
+    if (ap_found(parser, "scale"))
+        ctx->opts.scale = scale_val;
+
     // Parsear CLAHE
     ctx->opts.apply_clahe = ap_found(parser, "clahe") || ap_found(parser, "clahe-params");
     if (ctx->opts.apply_clahe) {
-		const char* clahe_params = ap_get_str_value(parser, "clahe-params");
-        sscanf(clahe_params, "%d,%d,%f", 
-               &ctx->opts.clahe_tiles_x, 
-               &ctx->opts.clahe_tiles_y, 
+        const char *clahe_params = ap_get_str_value(parser, "clahe-params");
+        sscanf(clahe_params, "%d,%d,%f", &ctx->opts.clahe_tiles_x, &ctx->opts.clahe_tiles_y,
                &ctx->opts.clahe_clip_limit);
     }
-    
+
     // Parsear clip
     ctx->opts.has_clip = false;
     if (ap_found(parser, "clip")) {
-        const char* clip_value = ap_get_str_value(parser, "clip");
+        const char *clip_value = ap_get_str_value(parser, "clip");
         if (clip_value && strlen(clip_value) > 0) {
             // Intentar parsear como 4 coordenadas
-            int parsed = sscanf(clip_value, "%f%*[, ]%f%*[, ]%f%*[, ]%f", 
-                               &ctx->opts.clip_coords[0], &ctx->opts.clip_coords[1], 
-                               &ctx->opts.clip_coords[2], &ctx->opts.clip_coords[3]);
-            
+            int parsed = sscanf(clip_value, "%f%*[, ]%f%*[, ]%f%*[, ]%f", &ctx->opts.clip_coords[0],
+                                &ctx->opts.clip_coords[1], &ctx->opts.clip_coords[2],
+                                &ctx->opts.clip_coords[3]);
+
             if (parsed == 4) {
                 ctx->opts.has_clip = true;
                 LOG_INFO("Usando recorte con coordenadas directas");
             } else {
                 // Intentar cargar desde CSV
-                GeoClip clip = buscar_clip_por_clave("/usr/local/share/lanot/docs/recortes_coordenadas.csv", clip_value);
+                GeoClip clip = buscar_clip_por_clave(
+                    "/usr/local/share/lanot/docs/recortes_coordenadas.csv", clip_value);
                 if (clip.encontrado) {
                     ctx->opts.clip_coords[0] = (float)clip.ul_x; // lon_min
                     ctx->opts.clip_coords[1] = (float)clip.ul_y; // lat_max
@@ -147,15 +150,16 @@ bool rgb_parse_options(ArgParser *parser, RgbContext *ctx) {
             }
         }
     }
-    
+
     // Custom
     ctx->opts.expr = ap_get_str_value(parser, "expr");
-    
+
     // Detectar producto L2
     // Es necesario duplicar el string porque basename puede modificarlo
     char *input_dup = strdup(ctx->opts.input_file);
     if (!input_dup) {
-        snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falla de memoria al duplicar el nombre de archivo.");
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                 "Falla de memoria al duplicar el nombre de archivo.");
         ctx->error_occurred = true;
         return false;
     }
@@ -166,54 +170,80 @@ bool rgb_parse_options(ArgParser *parser, RgbContext *ctx) {
     // Parsear nombre de salida
     if (ap_found(parser, "out")) {
         const char *user_out = ap_get_str_value(parser, "out");
-        
+
         // Detectar patrones con llaves y expandirlos
         if (strchr(user_out, '{') && strchr(user_out, '}')) {
             ctx->opts.output_filename = expand_filename_pattern(user_out, ctx->opts.input_file);
             ctx->opts.output_generated = true; // Lo generamos nosotros
         } else {
-            ctx->opts.output_filename = (char*)user_out;
+            ctx->opts.output_filename = (char *)user_out;
             ctx->opts.output_generated = false; // El usuario lo proveyó exactamente así
         }
     }
-    
+
     return true;
 }
 
 // --- FASE 2: COMPOSERS (PATRÓN ESTRATEGIA) ---
 
-static ImageData compose_truecolor(RgbContext *ctx) {
+static bool compose_truecolor(RgbContext *ctx) {
+    // 1. Setup y Copia
+    DataF *ch_blue = &ctx->channels[1].fdata; // C01
+    DataF *ch_red = &ctx->channels[2].fdata;  // C02
+    DataF *ch_nir = &ctx->channels[3].fdata;  // C03
+
+    ctx->comp_b = dataf_copy(ch_blue);
+    ctx->comp_r = dataf_copy(ch_red);
+    if (!ctx->comp_b.data_in || !ctx->comp_r.data_in)
+        return false;
+
+    // 2. CORRECCIÓN RAYLEIGH (Analítica)
     if (ctx->opts.apply_rayleigh) {
-        // El filename de referencia para Rayleigh es el del canal 1
-        const char *ref_filename = NULL;
+        // Encontrar el archivo correcto para navegación 
+        const char *nav_file = NULL;
         for (int i = 0; i < ctx->channel_set->count; i++) {
             if (strcmp(ctx->channel_set->channels[i].name, "C01") == 0) {
-                ref_filename = ctx->channel_set->channels[i].filename;
+                nav_file = ctx->channel_set->channels[i].filename;
                 break;
             }
         }
-        return create_truecolor_rgb_rayleigh(
-            ctx->channels[1].fdata, 
-            ctx->channels[2].fdata, 
-            ctx->channels[3].fdata,
-            ref_filename,
-            true);
-    } else {
-        return create_truecolor_rgb(
-            ctx->channels[1].fdata, 
-            ctx->channels[2].fdata, 
-            ctx->channels[3].fdata);
+        RayleighNav nav = {0};
+        // Cargar navegación ajustada al tamaño de la imagen azul (C01)
+        if (rayleigh_load_navigation(nav_file, &nav, ctx->comp_b.width, ctx->comp_b.height)) {
+            LOG_INFO("Aplicando Rayleigh Analítico...");
+            rayleigh_correct_analytic(&ctx->comp_b, &nav, RAYLEIGH_TAU_BLUE);
+            rayleigh_correct_analytic(&ctx->comp_r, &nav, RAYLEIGH_TAU_RED);
+            rayleigh_free_navigation(&nav);
+        } else {
+            LOG_WARN("Falló carga de navegación, saltando Rayleigh.");
+        }
     }
+    // 3. Generar Verde
+    ctx->comp_g = create_truecolor_synthetic_green(&ctx->comp_b, &ctx->comp_r, ch_nir);
+    if (!ctx->comp_g.data_in)
+        return false;
+    // Resalte adicional del verde
+    ctx->comp_g = dataf_op_scalar(&ctx->comp_g, 1.05f, OP_MUL, false);
+
+    // 4. Rangos
+    ctx->min_r = 0.0f;
+    ctx->max_r = 1.1f;
+    ctx->min_g = 0.0f;
+    ctx->max_g = 1.1f;
+    ctx->min_b = 0.0f;
+    ctx->max_b = 1.1f;
+
+    return true;
 }
 
-static ImageData compose_night(RgbContext *ctx) {
+static bool compose_night(RgbContext *ctx) {
     // Cargar imagen de fondo (luces de ciudad) si se solicita
     ImageData fondo_img = {0};
-    const ImageData* fondo_ptr = NULL;
+    const ImageData *fondo_ptr = NULL;
     if (ctx->opts.use_citylights) {
-        const char* bg_path = (ctx->channels[ctx->ref_channel_idx].fdata.width == 2500)
-                ? "/usr/local/share/lanot/images/land_lights_2012_conus.png"
-                : "/usr/local/share/lanot/images/land_lights_2012_fd.png";
+        const char *bg_path = (ctx->channels[ctx->ref_channel_idx].fdata.width == 2500)
+                                  ? "/usr/local/share/lanot/images/land_lights_2012_conus.png"
+                                  : "/usr/local/share/lanot/images/land_lights_2012_fd.png";
         LOG_INFO("Cargando imagen de fondo: %s", bg_path);
         fondo_img = reader_load_png(bg_path);
         if (fondo_img.data != NULL) {
@@ -222,175 +252,134 @@ static ImageData compose_night(RgbContext *ctx) {
             LOG_WARN("No se pudo cargar la imagen de fondo de luces de ciudad.");
         }
     }
-
-    ImageData result = create_nocturnal_pseudocolor(&ctx->channels[13].fdata, fondo_ptr);
-    image_destroy(&fondo_img); // Liberar la imagen de fondo si fue cargada
-    return result;
+    ctx->final_image = create_nocturnal_pseudocolor(&ctx->channels[13].fdata, fondo_ptr);
+    image_destroy(&fondo_img); // Liberar la imagen de fondo si fue cargada*/
+    return true;
 }
 
-static ImageData compose_ash(RgbContext *ctx) {
-    // Buffers temporales locales, no en el contexto (diseño v3.1)
-    DataF r_temp = {0}, g_temp = {0};
-
-    r_temp = dataf_op_dataf(&ctx->channels[15].fdata, &ctx->channels[13].fdata, OP_SUB);
-    g_temp = dataf_op_dataf(&ctx->channels[14].fdata, &ctx->channels[11].fdata, OP_SUB);
-    
-    ImageData result = create_multiband_rgb(&r_temp, &g_temp, &ctx->channels[13].fdata,
-                                            -6.7f, 2.6f, -6.0f, 6.3f, 243.6f, 302.4f);
-    
-    dataf_destroy(&r_temp);
-    dataf_destroy(&g_temp);
-    return result;
+static bool compose_ash(RgbContext *ctx) {
+    ctx->comp_r = dataf_op_dataf(&ctx->channels[15].fdata, &ctx->channels[13].fdata, OP_SUB);
+    ctx->comp_g = dataf_op_dataf(&ctx->channels[14].fdata, &ctx->channels[11].fdata, OP_SUB);
+    ctx->comp_b = ctx->channels[13].fdata;
+    ctx->min_r = -6.7f;
+    ctx->max_r = 2.6f;
+    ctx->min_g = -6.0f;
+    ctx->max_g = 6.3f;
+    ctx->min_b = 243.6f;
+    ctx->max_b = 302.4f;
+    return true;
 }
 
-static ImageData compose_airmass(RgbContext *ctx) {
-    // Buffers temporales locales
-    DataF r_temp = {0}, g_temp = {0}, b_temp = {0};
-
-    r_temp = dataf_op_dataf(&ctx->channels[8].fdata, &ctx->channels[10].fdata, OP_SUB);
-    g_temp = dataf_op_dataf(&ctx->channels[12].fdata, &ctx->channels[13].fdata, OP_SUB);
-    b_temp = dataf_op_scalar(&ctx->channels[8].fdata, 273.15f, OP_SUB, true);
-
-    ImageData result = create_multiband_rgb(&r_temp, &g_temp, &b_temp,
-                                            -26.2f, 0.6f, -43.2f, 6.7f, 29.25f, 64.65f);
-
-    dataf_destroy(&r_temp);
-    dataf_destroy(&g_temp);
-    dataf_destroy(&b_temp);
-    return result;
+static bool compose_airmass(RgbContext *ctx) {
+    ctx->comp_r = dataf_op_dataf(&ctx->channels[8].fdata, &ctx->channels[10].fdata, OP_SUB);
+    ctx->comp_g = dataf_op_dataf(&ctx->channels[12].fdata, &ctx->channels[13].fdata, OP_SUB);
+    ctx->comp_b = dataf_op_scalar(&ctx->channels[8].fdata, 273.15f, OP_SUB, true);
+    ctx->min_r = -26.2f;
+    ctx->max_r = 0.6f;
+    ctx->min_g = -43.2f;
+    ctx->max_g = 6.7f;
+    ctx->min_b = 29.25f;
+    ctx->max_b = 64.65f;
+    return true;
 }
 
-static ImageData compose_so2(RgbContext *ctx) {
-    // Buffers temporales locales
-    DataF r_temp = {0}, g_temp = {0};
-
-    r_temp = dataf_op_dataf(&ctx->channels[9].fdata, &ctx->channels[10].fdata, OP_SUB);
-    g_temp = dataf_op_dataf(&ctx->channels[13].fdata, &ctx->channels[11].fdata, OP_SUB);
-
-    ImageData result = create_multiband_rgb(&r_temp, &g_temp, &ctx->channels[13].fdata,
-                                            -4.0f, 2.0f, -4.0f, 5.0f, 233.0f, 300.0f);
-
-    dataf_destroy(&r_temp);
-    dataf_destroy(&g_temp);
-    return result;
+static bool compose_so2(RgbContext *ctx) {
+    ctx->comp_r = dataf_op_dataf(&ctx->channels[9].fdata, &ctx->channels[10].fdata, OP_SUB);
+    ctx->comp_g = dataf_op_dataf(&ctx->channels[13].fdata, &ctx->channels[11].fdata, OP_SUB);
+    ctx->comp_b = ctx->channels[13].fdata;
+    ctx->min_r = -4.0f;
+    ctx->max_r = 2.0f;
+    ctx->min_g = -4.0f;
+    ctx->max_g = 5.0f;
+    ctx->min_b = 233.0f;
+    ctx->max_b = 300.0f;
+    return true;
 }
 
-static ImageData compose_daynite(RgbContext *ctx) {
-    // Genera imagen diurna (truecolor)
-    ImageData diurna = compose_truecolor(ctx);
-    
-    // Aplicar histogram/CLAHE a la diurna ANTES del blend
-    //if (ctx->opts.apply_histogram) image_apply_histogram(diurna);
-    //if (ctx->opts.apply_clahe) {
-    //    image_apply_clahe(diurna, ctx->opts.clahe_tiles_x, 
-    //                      ctx->opts.clahe_tiles_y, ctx->opts.clahe_clip_limit);
-    //}
-    
-    // Para el modo composite, forzamos el uso de citylights para la parte nocturna.
-    // Guardamos el estado original de la opción para restaurarlo después.
-    bool original_use_citylights = ctx->opts.use_citylights;
+static bool compose_daynite(RgbContext *ctx) {
+    // Genera imagen diurna
+    // Forzamos rayleigh y gamma 2.2
+    ctx->opts.apply_rayleigh = true;
+    ctx->opts.gamma = 2.2f;
+    if (!compose_truecolor(ctx)) {
+        return false;
+    }
+    // Forzamos el uso de citylights para la parte nocturna.
     ctx->opts.use_citylights = true;
-    ImageData nocturna = compose_night(ctx);
-    ctx->opts.use_citylights = original_use_citylights; // Restaurar estado original
-    
-    // La navegación ya está remuestreada al tamaño de referencia en process_geospatial,
-    // así que podemos usarla directamente
-    DataF *nav_lat_ptr = &ctx->nav_lat;
-    DataF *nav_lon_ptr = &ctx->nav_lon;
-
-    // Genera máscara día/noche usando los datos del contexto
-    float day_night_ratio = 0.0f;
-    ImageData mask = create_daynight_mask(
-        ctx->channels[13], 
-        *nav_lat_ptr, 
-        *nav_lon_ptr, 
-        &day_night_ratio, 
-        263.15f);
-    
-    ImageData result = {0};
-    // Si hay una porción significativa de noche (>15%), mezclamos las imágenes.
-    // De lo contrario, usamos la imagen diurna directamente para ahorrar procesamiento.
-    if (day_night_ratio > 0.15f && mask.data) {
-        LOG_INFO("Mezclando imágenes diurna y nocturna (ratio día/noche: %.2f)", day_night_ratio);
-        result = blend_images(nocturna, diurna, mask);
-        image_destroy(&diurna); // La diurna ya no se necesita, blend_images crea una nueva
-    } else {
-        LOG_INFO("La escena es mayormente diurna, usando solo imagen diurna.");
-        result = diurna; // Asignamos la imagen diurna directamente al resultado
-    }
-    
-    // Liberar las imágenes temporales que ya no se necesitan
-    image_destroy(&nocturna);
-    image_destroy(&mask);
-    return result;
+    if (!compose_night(ctx)) {
+        return false;
+	}
+	ctx->alpha_mask = ctx->final_image;
+	
+	return true;
 }
 
-static ImageData compose_custom(RgbContext *ctx) {
+static bool compose_custom(RgbContext *ctx) {
     LOG_INFO("Armando custom RGB con expresión: %s", ctx->opts.expr);
-    
-    LinearCombo combo[3];
-    float ranges[3][2] = {{0, 255}, {0, 255}, {0, 255}}; // Default [min, max] para R, G, B
-    
-    // 1. Parsear expresiones (R;G;B)
-    // Usamos una copia de la cadena porque strtok modifica el original
-    char *expr_copy = strdup(ctx->opts.expr);
-    char *token = strtok(expr_copy, ";");
-    for (int i = 0; i < 3 && token != NULL; i++) {
-        if (parse_expr_string(token, &combo[i]) != 0) {
-            LOG_ERROR("Error parseando expresión componente %d", i);
-        }
-        token = strtok(NULL, ";");
-    }
-    free(expr_copy);
+    /*
+       LinearCombo combo[3];
+       float ranges[3][2] = {{0, 255}, {0, 255}, {0, 255}}; // Default [min, max]
+       para R, G, B
 
-    // 2. Parsear rangos minmax (min,max; min,max; min,max) si los hay
-    if (ctx->opts.minmax) {
-        char *minmax_copy = strdup(ctx->opts.minmax);
-        char *m_token = strtok(minmax_copy, ";");
-        for (int i = 0; i < 3 && m_token != NULL; i++) {
-            sscanf(m_token, "%f,%f", &ranges[i][0], &ranges[i][1]);
-            m_token = strtok(NULL, ";");
-        }
-        free(minmax_copy);
-    }
+       // 1. Parsear expresiones (R;G;B)
+       // Usamos una copia de la cadena porque strtok modifica el original
+       char *expr_copy = strdup(ctx->opts.expr);
+       char *token = strtok(expr_copy, ";");
+       for (int i = 0; i < 3 && token != NULL; i++) {
+           if (parse_expr_string(token, &combo[i]) != 0) {
+               LOG_ERROR("Error parseando expresión componente %d", i);
+           }
+           token = strtok(NULL, ";");
+       }
+       free(expr_copy);
 
-    // 5. Evaluar las combinaciones lineales
-    DataF r_f = evaluate_linear_combo(&combo[0], ctx->channels);
-    DataF g_f = evaluate_linear_combo(&combo[1], ctx->channels);
-    DataF b_f = evaluate_linear_combo(&combo[2], ctx->channels);
+       // 2. Parsear rangos minmax (min,max; min,max; min,max) si los hay
+       if (ctx->opts.minmax) {
+           char *minmax_copy = strdup(ctx->opts.minmax);
+           char *m_token = strtok(minmax_copy, ";");
+           for (int i = 0; i < 3 && m_token != NULL; i++) {
+               sscanf(m_token, "%f,%f", &ranges[i][0], &ranges[i][1]);
+               m_token = strtok(NULL, ";");
+           }
+           free(minmax_copy);
+       }
 
-    // 6. Crear la imagen RGB final usando los rangos parseados
-    ImageData result = create_multiband_rgb(&r_f, &g_f, &b_f,
-                                           ranges[0][0], ranges[0][1],
-                                           ranges[1][0], ranges[1][1],
-                                           ranges[2][0], ranges[2][1]);
+       // 5. Evaluar las combinaciones lineales
+       DataF r_f = evaluate_linear_combo(&combo[0], ctx->channels);
+       DataF g_f = evaluate_linear_combo(&combo[1], ctx->channels);
+       DataF b_f = evaluate_linear_combo(&combo[2], ctx->channels);
 
-    // 7. Limpieza de memoria temporal
-    dataf_destroy(&r_f);
-    dataf_destroy(&g_f);
-    dataf_destroy(&b_f);
+       // 6. Crear la imagen RGB final usando los rangos parseados
+       ImageData result = create_multiband_rgb(&r_f, &g_f, &b_f,
+                                              ranges[0][0], ranges[0][1],
+                                              ranges[1][0], ranges[1][1],
+                                              ranges[2][0], ranges[2][1]);
 
-    return result;
+       // 7. Limpieza de memoria temporal
+       dataf_destroy(&r_f);
+       dataf_destroy(&g_f);
+       dataf_destroy(&b_f);
+   */
+    return true;
 }
 
 static const RgbStrategy STRATEGIES[] = {
-    { "truecolor", {"C01", "C02", "C03", NULL}, compose_truecolor, 
-      "True Color RGB (natural)", false },
-    { "night", {"C13", NULL}, compose_night, 
-      "Nocturnal IR with temperature pseudocolor", false },
-    { "ash", {"C11", "C13", "C14", "C15", NULL}, compose_ash, 
-      "Volcanic Ash RGB", false },
-    { "airmass", {"C08", "C10", "C12", "C13", NULL}, compose_airmass, 
-      "Air Mass RGB", false },
-    { "so2", {"C09", "C10", "C11", "C13", NULL}, compose_so2, 
-      "SO2 Detection RGB", false },
-    { "daynite", {"C01", "C02", "C03", "C13", NULL}, compose_daynite, 
-      "Day/Night Composite", true },  // needs_navigation = true
-    { "custom", { NULL }, compose_custom, "Custom mode", false},  
-    { NULL, {NULL}, NULL, NULL, false }  // Centinela
+    {"truecolor",
+     {"C01", "C02", "C03", NULL},
+     compose_truecolor,
+     "True Color RGB (natural)",
+     false},
+    {"night", {"C13", NULL}, compose_night, "Nocturnal IR with temperature pseudocolor", false},
+    {"ash", {"C11", "C13", "C14", "C15", NULL}, compose_ash, "Volcanic Ash RGB", false},
+    {"airmass", {"C08", "C10", "C12", "C13", NULL}, compose_airmass, "Air Mass RGB", false},
+    {"so2", {"C09", "C10", "C11", "C13", NULL}, compose_so2, "SO2 Detection RGB", false},
+    {"daynite", {"C01", "C02", "C03", "C13", NULL}, compose_daynite,
+     "Day/Night Composite", true}, 
+    {"custom", {NULL}, compose_custom, "Custom mode", false},
+    {NULL, {NULL}, NULL, NULL, false} // Centinela
 };
 
-static const RgbStrategy* get_strategy_for_mode(const char *mode) {
+static const RgbStrategy *get_strategy_for_mode(const char *mode) {
     for (int i = 0; STRATEGIES[i].mode_name != NULL; i++) {
         if (strcmp(STRATEGIES[i].mode_name, mode) == 0) {
             return &STRATEGIES[i];
@@ -404,47 +393,53 @@ static const RgbStrategy* get_strategy_for_mode(const char *mode) {
 static bool load_channels(RgbContext *ctx, const char **req_channels) {
     // 1. Crear ChannelSet
     int count = 0;
-    while (req_channels[count] != NULL) count++;
-    ctx->channel_set = channelset_create((const char**) req_channels, count);
+    while (req_channels[count] != NULL)
+        count++;
+    ctx->channel_set = channelset_create((const char **)req_channels, count);
     if (!ctx->channel_set) {
         snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falla de memoria al crear ChannelSet.");
         return false;
     }
-    
+
     // 2. Extraer ID signature del input_file
     char *input_dup_id = strdup(ctx->opts.input_file);
     if (!input_dup_id) {
-        snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falla de memoria al duplicar nombre de archivo.");
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                 "Falla de memoria al duplicar nombre de archivo.");
         return false;
     }
     const char *basename_input = basename(input_dup_id);
     if (find_id_from_name(basename_input, ctx->id_signature, sizeof(ctx->id_signature)) != 0) {
-        snprintf(ctx->error_msg, sizeof(ctx->error_msg), "No se pudo extraer ID del nombre: %s", basename_input);
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg), "No se pudo extraer ID del nombre: %s",
+                 basename_input);
         free(input_dup_id);
         return false;
     }
     strcpy(ctx->channel_set->id_signature, ctx->id_signature);
     free(input_dup_id);
-    
+
     // 3. Buscar archivos de canales
     char *input_dup_dir = strdup(ctx->opts.input_file);
     if (!input_dup_dir) {
-        snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falla de memoria al duplicar nombre de archivo.");
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                 "Falla de memoria al duplicar nombre de archivo.");
         return false;
     }
     const char *dirnm = dirname(input_dup_dir);
     if (find_channel_filenames(dirnm, ctx->channel_set, ctx->opts.is_l2_product) != 0) {
-        snprintf(ctx->error_msg, sizeof(ctx->error_msg), "No se pudo acceder al directorio o encontrar los canales en %s", dirnm);
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                 "No se pudo acceder al directorio o encontrar los canales en %s", dirnm);
         free(input_dup_dir);
         return false;
     }
     free(input_dup_dir);
-    
+
     // 4. Cargar canales y validar
     LOG_INFO("Cargando canales requeridos...");
     for (int i = 0; i < ctx->channel_set->count; i++) {
         if (!ctx->channel_set->channels[i].filename) {
-            snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falta archivo para canal %s", ctx->channel_set->channels[i].name);
+            snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falta archivo para canal %s",
+                     ctx->channel_set->channels[i].name);
             return false;
         }
         int cn = atoi(ctx->channel_set->channels[i].name + 1); // "C01" -> 1
@@ -452,25 +447,31 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
             const char *var = ctx->opts.is_l2_product ? "CMI" : "Rad";
             LOG_DEBUG("Cargando canal C%02d desde %s", cn, ctx->channel_set->channels[i].filename);
             if (load_nc_sf(ctx->channel_set->channels[i].filename, var, &ctx->channels[cn]) != 0) {
-                snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falla al cargar NetCDF: %s", ctx->channel_set->channels[i].filename);
+                snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falla al cargar NetCDF: %s",
+                         ctx->channel_set->channels[i].filename);
                 return false;
             }
-            
+
             // Identificar canal de referencia
             if (ctx->opts.use_full_res) {
                 // Modo --full-res: buscar la MAYOR resolución (valor en km MÁS PEQUEÑO)
-                if (ctx->ref_channel_idx == 0 || ctx->channels[cn].native_resolution_km < ctx->channels[ctx->ref_channel_idx].native_resolution_km) {
+                if (ctx->ref_channel_idx == 0 ||
+                    ctx->channels[cn].native_resolution_km <
+                        ctx->channels[ctx->ref_channel_idx].native_resolution_km) {
                     ctx->ref_channel_idx = cn;
                 }
             } else {
                 // Modo por defecto: buscar la MENOR resolución (valor en km MÁS GRANDE)
-                if (ctx->ref_channel_idx == 0 || ctx->channels[cn].native_resolution_km > ctx->channels[ctx->ref_channel_idx].native_resolution_km) {
+                if (ctx->ref_channel_idx == 0 ||
+                    ctx->channels[cn].native_resolution_km >
+                        ctx->channels[ctx->ref_channel_idx].native_resolution_km) {
                     ctx->ref_channel_idx = cn;
                 }
             }
+            printf("load referencia %d %d\n", ctx->ref_channel_idx, ctx->opts.use_full_res);
         }
     }
-    
+
     // Log de canales cargados para debug
     LOG_DEBUG("Canales cargados:");
     for (int i = 0; i < ctx->channel_set->count; i++) {
@@ -479,9 +480,10 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
             LOG_DEBUG("  C%02d: %.1f km", cn, ctx->channels[cn].native_resolution_km);
         }
     }
-    
-    LOG_INFO("Canal de referencia: C%02d (%.1fkm)", ctx->ref_channel_idx, ctx->channels[ctx->ref_channel_idx].native_resolution_km);
-    
+
+    LOG_INFO("Canal de referencia: C%02d (%.1fkm)", ctx->ref_channel_idx,
+             ctx->channels[ctx->ref_channel_idx].native_resolution_km);
+
     // Resample channels to match reference resolution
     float ref_res = ctx->channels[ctx->ref_channel_idx].native_resolution_km;
     for (int i = 0; i < ctx->channel_set->count; i++) {
@@ -497,12 +499,16 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
             int factor = (int)(factor_f + 0.5f);
             DataF resampled = {0};
 
-            if (factor_f < 1.0f) { // La resolución de este canal es mayor que la de referencia -> Downsample
+            if (factor_f < 1.0f) { // La resolución de este canal es mayor que la de
+                                   // referencia -> Downsample
                 factor = (int)((1.0f / factor_f) + 0.5f);
-                LOG_INFO("Downsampling C%02d (%.1fkm -> %.1fkm, factor %d)", cn, res, ref_res, factor);
+                LOG_INFO("Downsampling C%02d (%.1fkm -> %.1fkm, factor %d)", cn, res, ref_res,
+                         factor);
                 resampled = downsample_boxfilter(ctx->channels[cn].fdata, factor);
-            } else { // La resolución de este canal es menor que la de referencia -> Upsample
-                LOG_INFO("Upsampling C%02d (%.1fkm -> %.1fkm, factor %d)", cn, res, ref_res, factor);
+            } else { // La resolución de este canal es menor que la de referencia ->
+                     // Upsample
+                LOG_INFO("Upsampling C%02d (%.1fkm -> %.1fkm, factor %d)", cn, res, ref_res,
+                         factor);
                 resampled = upsample_bilinear(ctx->channels[cn].fdata, factor);
             }
 
@@ -510,15 +516,17 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
                 dataf_destroy(&ctx->channels[cn].fdata);
                 ctx->channels[cn].fdata = resampled;
             } else {
-                snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falla al remuestrear el canal C%02d", cn);
+                snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                         "Falla al remuestrear el canal C%02d", cn);
                 for (int j = 0; j < i; j++) { // Limpiar los ya remuestreados en esta vuelta
-                    dataf_destroy(&ctx->channels[atoi(ctx->channel_set->channels[j].name + 1)].fdata);
+                    dataf_destroy(
+                        &ctx->channels[atoi(ctx->channel_set->channels[j].name + 1)].fdata);
                 }
                 return false;
             }
         }
     }
-    
+
     return true;
 }
 
@@ -531,26 +539,31 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
         LOG_WARN("No se pudieron cargar los datos de navegación.");
         ctx->has_navigation = false;
     }
-    
+
     // 2. Validar si la estrategia requiere navegación
     if (strategy->needs_navigation && !ctx->has_navigation) {
-        snprintf(ctx->error_msg, sizeof(ctx->error_msg), "El modo '%s' requiere datos de navegación, pero no se pudieron cargar.", strategy->mode_name);
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                 "El modo '%s' requiere datos de navegación, pero no se pudieron "
+                 "cargar.",
+                 strategy->mode_name);
         return false;
     }
-    
+
     // 3. Remuestrear navegación al tamaño del canal de referencia si es necesario
     if (ctx->has_navigation && ctx->ref_channel_idx > 0) {
         size_t nav_width = ctx->nav_lat.width;
         size_t ref_width = ctx->channels[ctx->ref_channel_idx].fdata.width;
-        
+
         if (nav_width != ref_width) {
             if (nav_width > ref_width) {
                 // Downsampling de navegación
                 int factor = nav_width / ref_width;
-                LOG_INFO("Remuestreando navegación al tamaño de referencia (factor downsample %d)", factor);
+                LOG_INFO("Remuestreando navegación al tamaño de referencia (factor "
+                         "downsample %d)",
+                         factor);
                 DataF nav_lat_resampled = downsample_boxfilter(ctx->nav_lat, factor);
                 DataF nav_lon_resampled = downsample_boxfilter(ctx->nav_lon, factor);
-                
+
                 if (nav_lat_resampled.data_in && nav_lon_resampled.data_in) {
                     dataf_destroy(&ctx->nav_lat);
                     dataf_destroy(&ctx->nav_lon);
@@ -563,10 +576,12 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
             } else {
                 // Upsampling de navegación
                 int factor = ref_width / nav_width;
-                LOG_INFO("Remuestreando navegación al tamaño de referencia (factor upsample %d)", factor);
+                LOG_INFO("Remuestreando navegación al tamaño de referencia (factor "
+                         "upsample %d)",
+                         factor);
                 DataF nav_lat_resampled = upsample_bilinear(ctx->nav_lat, factor);
                 DataF nav_lon_resampled = upsample_bilinear(ctx->nav_lon, factor);
-                
+
                 if (nav_lat_resampled.data_in && nav_lon_resampled.data_in) {
                     dataf_destroy(&ctx->nav_lat);
                     dataf_destroy(&ctx->nav_lon);
@@ -579,72 +594,100 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
             }
         }
     }
-    
+
     return true;
 }
 
 static bool generate_output_filename(RgbContext *ctx, const RgbStrategy *strategy) {
-    (void)strategy; // Evita warning de parámetro no usado
-    if (ctx->opts.output_filename) { // Nombre provisto por el usuario (o expandido por patrón)
+    (void)strategy;                  // Evita warning de parámetro no usado
+    if (ctx->opts.output_filename) { // Nombre provisto por el usuario (o
+                                     // expandido por patrón)
         return true;
     }
 
     // Extraer nombre del satélite del archivo de entrada
-    char* satellite_name = extract_satellite_name(ctx->opts.input_file);
-    
-    // Poblar la estructura de información para el nuevo generador de nombres canónico
-    // Usamos el primer canal cargado como referencia para metadatos
-    FilenameGeneratorInfo info = {
-        .datanc = &ctx->channels[ctx->ref_channel_idx],
-        .satellite_name = satellite_name,
-        .command = "rgb",
-        .rgb_mode = ctx->opts.mode,
-        .apply_rayleigh = ctx->opts.apply_rayleigh,
-        .apply_histogram = ctx->opts.apply_histogram,
-        .apply_clahe = ctx->opts.apply_clahe,
-        .gamma = ctx->opts.gamma,
-        .has_clip = ctx->opts.has_clip,
-        .do_reprojection = ctx->opts.do_reprojection,
-        .force_geotiff = ctx->opts.force_geotiff
-    };
+    char *satellite_name = extract_satellite_name(ctx->opts.input_file);
+
+    // Poblar la estructura de información para el nuevo generador de nombres
+    // canónico Usamos el primer canal cargado como referencia para metadatos
+    FilenameGeneratorInfo info = {.datanc = &ctx->channels[ctx->ref_channel_idx],
+                                  .satellite_name = satellite_name,
+                                  .command = "rgb",
+                                  .rgb_mode = ctx->opts.mode,
+                                  .apply_rayleigh = ctx->opts.apply_rayleigh,
+                                  .apply_histogram = ctx->opts.apply_histogram,
+                                  .apply_clahe = ctx->opts.apply_clahe,
+                                  .gamma = ctx->opts.gamma,
+                                  .has_clip = ctx->opts.has_clip,
+                                  .do_reprojection = ctx->opts.do_reprojection,
+                                  .force_geotiff = ctx->opts.force_geotiff};
 
     ctx->opts.output_filename = generate_hpsv_filename(&info);
     free(satellite_name);
-    
+
     if (!ctx->opts.output_filename) {
-        snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falla al generar nombre de archivo de salida.");
+        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
+                 "Falla al generar nombre de archivo de salida.");
         return false;
     }
-    
+
     ctx->opts.output_generated = true;
     return true;
 }
 
 static bool apply_postprocessing(RgbContext *ctx) {
-    // 1. Gamma
-    if (ctx->opts.gamma != 1.0f) {
-        LOG_INFO("Aplicando corrección gamma: %.2f", ctx->opts.gamma);
-        image_apply_gamma(ctx->final_image, ctx->opts.gamma);
+	// daynite es un caso exclusivo especial
+    if (strcmp(ctx->opts.mode, "daynite") == 0) {
+        // La navegación ya está remuestreada al tamaño de referencia en
+        // process_geospatial, así que podemos usarla directamente
+        DataF *nav_lat_ptr = &ctx->nav_lat;
+        DataF *nav_lon_ptr = &ctx->nav_lon;
+
+        // Genera máscara día/noche usando los datos del contexto
+        float day_night_ratio = 0.0f;
+        ImageData mask = create_daynight_mask(ctx->channels[13], *nav_lat_ptr, *nav_lon_ptr,
+                                              &day_night_ratio, 263.15f);
+
+        // Si hay una porción significativa de noche (>15%), mezclamos las imágenes,
+        // de lo contrario, usamos la imagen diurna directamente.
+        if (day_night_ratio > 0.15f && mask.data) {
+            LOG_INFO("Mezclando imágenes diurna y nocturna (ratio día/noche: %.2f)",
+                     day_night_ratio);
+            ctx->final_image = blend_images(ctx->alpha_mask, ctx->final_image, mask);
+        } else {
+            LOG_INFO("La escena es mayormente diurna, usando solo imagen diurna.");
+            // Ya está en ctx->final_image
+        }
+        image_destroy(&ctx->alpha_mask);
+        image_destroy(&mask);
     }
-    
-    // 2. Histogram/CLAHE (no para composite, que lo hace internamente)
+    // 1. Gamma solo se aplica a DataF
+    /*   if (ctx->opts.gamma != 1.0f) {
+           LOG_INFO("Aplicando corrección gamma: %.2f", ctx->opts.gamma);
+           image_apply_gamma(ctx->final_image, ctx->opts.gamma);
+       }*/
+
+    // 2. Histogram/CLAHE (no para daynite)
     if (strcmp(ctx->opts.mode, "daynite") != 0) {
         if (ctx->opts.apply_histogram) {
             LOG_INFO("Aplicando ecualización de histograma.");
             image_apply_histogram(ctx->final_image);
         }
         if (ctx->opts.apply_clahe) {
-            LOG_INFO("Aplicando CLAHE (tiles=%dx%d, clip=%.1f)", ctx->opts.clahe_tiles_x, ctx->opts.clahe_tiles_y, ctx->opts.clahe_clip_limit);
-            image_apply_clahe(ctx->final_image, ctx->opts.clahe_tiles_x, ctx->opts.clahe_tiles_y, ctx->opts.clahe_clip_limit);
+            LOG_INFO("Aplicando CLAHE (tiles=%dx%d, clip=%.1f)", ctx->opts.clahe_tiles_x,
+                     ctx->opts.clahe_tiles_y, ctx->opts.clahe_clip_limit);
+            image_apply_clahe(ctx->final_image, ctx->opts.clahe_tiles_x, ctx->opts.clahe_tiles_y,
+                              ctx->opts.clahe_clip_limit);
         }
     }
-    
+
     // 3. Crear máscara alpha (antes de remuestreo)
     if (ctx->opts.use_alpha) {
         LOG_INFO("Creando máscara alpha...");
-        ctx->alpha_mask = image_create_alpha_mask_from_dataf(&ctx->channels[ctx->ref_channel_idx].fdata);
+        ctx->alpha_mask =
+            image_create_alpha_mask_from_dataf(&ctx->channels[ctx->ref_channel_idx].fdata);
     }
-    
+
     // 4. Remuestreo (scale)
     if (ctx->opts.scale != 1) {
         ImageData scaled_img = {0};
@@ -658,7 +701,7 @@ static bool apply_postprocessing(RgbContext *ctx) {
         image_destroy(&ctx->final_image);
         ctx->final_image = scaled_img;
     }
-    
+
     // 5. Agregar canal alpha
     if (ctx->opts.use_alpha && ctx->alpha_mask.data) {
         LOG_INFO("Agregando canal alpha a la imagen final...");
@@ -668,15 +711,15 @@ static bool apply_postprocessing(RgbContext *ctx) {
             ctx->final_image = with_alpha;
         }
     }
-    
+
     return true;
 }
 
 static bool write_output(RgbContext *ctx) {
-    bool is_geotiff = ctx->opts.force_geotiff || 
-                     (ctx->opts.output_filename && 
-                      (strstr(ctx->opts.output_filename, ".tif") || strstr(ctx->opts.output_filename, ".tiff")));
-    
+    bool is_geotiff = ctx->opts.force_geotiff ||
+                      (ctx->opts.output_filename && (strstr(ctx->opts.output_filename, ".tif") ||
+                                                     strstr(ctx->opts.output_filename, ".tiff")));
+
     if (is_geotiff) {
         LOG_INFO("Guardando como GeoTIFF...");
         DataNC meta_out = {0};
@@ -687,16 +730,16 @@ static bool write_output(RgbContext *ctx) {
             meta_out = ctx->channels[ctx->ref_channel_idx];
             // TODO: Ajustar geotransform si hay scale o crop
         }
-        write_geotiff_rgb(ctx->opts.output_filename, &ctx->final_image, &meta_out, ctx->crop_x_offset, ctx->crop_y_offset);
+        write_geotiff_rgb(ctx->opts.output_filename, &ctx->final_image, &meta_out,
+                          ctx->crop_x_offset, ctx->crop_y_offset);
     } else {
         LOG_INFO("Guardando como PNG...");
         writer_save_png(ctx->opts.output_filename, &ctx->final_image);
     }
-    
+
     LOG_INFO("Imagen guardada en: %s", ctx->opts.output_filename);
     return true;
 }
-
 
 int run_rgb(ArgParser *parser) {
     RgbContext ctx;
@@ -712,29 +755,30 @@ int run_rgb(ArgParser *parser) {
     // Paso 2: Obtener estrategia
     const RgbStrategy *strategy = get_strategy_for_mode(ctx.opts.mode);
     if (!strategy) {
-		LOG_ERROR("Modo '%s' no reconocido.", ctx.opts.mode);
-		goto cleanup;
+        LOG_ERROR("Modo '%s' no reconocido.", ctx.opts.mode);
+        goto cleanup;
     }
     LOG_INFO("Modo seleccionado: %s - %s", strategy->mode_name, strategy->description);
-	
+
     const char **req_channels = NULL;
     char **custom_channels = NULL;
-	if (strcmp(ctx.opts.mode,"custom")==0) {
-		if (!ctx.opts.expr) {
+    if (strcmp(ctx.opts.mode, "custom") == 0) {
+        if (!ctx.opts.expr) {
             LOG_ERROR("El modo 'custom' requiere especificar una fórmula con --expr");
             goto cleanup;
         }
         int count = get_unique_channels_rgb(ctx.opts.expr, &custom_channels);
-        
+
         if (count == 0 || custom_channels == NULL) {
-            LOG_ERROR("No se detectaron bandas válidas (C01-C16) en la expresión: %s", ctx.opts.expr);
+            LOG_ERROR("No se detectaron bandas válidas (C01-C16) en la expresión: %s",
+                      ctx.opts.expr);
             goto cleanup;
         }
-        
+
         LOG_INFO("Modo Custom: Se requieren %d bandas únicas para la fórmula.", count);
-        req_channels = (const char**)custom_channels;
-	} else {
-        req_channels = (const char**)strategy->req_channels;
+        req_channels = (const char **)custom_channels;
+    } else {
+        req_channels = (const char **)strategy->req_channels;
     }
 
     // Paso 3: Cargar canales
@@ -756,35 +800,57 @@ int run_rgb(ArgParser *parser) {
     }
 
     // Paso 6: Composición (corazón de la estrategia)
-    LOG_INFO("Generando imagen '%s'...", strategy->mode_name);
-    ctx.final_image = strategy->composer_func(&ctx);
+    LOG_INFO("Generando compuesto '%s'...", strategy->mode_name);
+    if (!strategy->composer_func(&ctx)) {
+        LOG_ERROR("Falla al generar el compuesto RGB para el modo '%s'.", strategy->mode_name);
+        goto cleanup;
+    }
+
+    // Paso 7: Si hace falta, preprocesar DataF
+    if (ctx.comp_r.data_in && ctx.comp_g.data_in && ctx.comp_b.data_in) {
+        if (ctx.opts.gamma > 0.0f && fabsf(ctx.opts.gamma - 1.0f) > 1e-6) {
+            LOG_INFO("Aplicando Gamma %.2f a canales flotantes...", ctx.opts.gamma);
+            dataf_apply_gamma(&ctx.comp_r, ctx.opts.gamma);
+            dataf_apply_gamma(&ctx.comp_g, ctx.opts.gamma);
+            dataf_apply_gamma(&ctx.comp_b, ctx.opts.gamma);
+
+            // Resetear gamma en opciones para que no se aplique de nuevo
+            ctx.opts.gamma = 1.0f;
+        }
+
+        // Paso 8: Renderizar a imagen
+        ctx.final_image =
+            create_multiband_rgb(&ctx.comp_r, &ctx.comp_g, &ctx.comp_b, ctx.min_r, ctx.max_r,
+                                 ctx.min_g, ctx.max_g, ctx.min_b, ctx.max_b);
+    }
+
     if (ctx.final_image.data == NULL) {
         LOG_ERROR("Falla al generar la imagen RGB para el modo '%s'.", strategy->mode_name);
         goto cleanup;
     }
 
-    // Paso 6.5: Reproyección (si fue solicitada)
+    // Paso 9: Reproyección (si fue solicitada)
     if (ctx.opts.do_reprojection) {
         if (!ctx.has_navigation) {
-            LOG_ERROR("La reproyección fue solicitada pero no se pudo cargar la navegación.");
+            LOG_ERROR("La reproyección fue solicitada pero no se pudo cargar la "
+                      "navegación.");
             goto cleanup;
         }
-        
+
         LOG_INFO("Iniciando reproyección de imagen RGB a coordenadas geográficas...");
-        ImageData reprojected = reproject_image_to_geographics(
-            &ctx.final_image, &ctx.nav_lat, &ctx.nav_lon, 
-            ctx.channels[ctx.ref_channel_idx].native_resolution_km,
-            ctx.opts.has_clip ? ctx.opts.clip_coords : NULL
-        );
-        
+        ImageData reprojected =
+            reproject_image_to_geographics(&ctx.final_image, &ctx.nav_lat, &ctx.nav_lon,
+                                           ctx.channels[ctx.ref_channel_idx].native_resolution_km,
+                                           ctx.opts.has_clip ? ctx.opts.clip_coords : NULL);
+
         if (reprojected.data == NULL) {
             LOG_ERROR("Falla durante la reproyección de la imagen RGB.");
             goto cleanup;
         }
-        
+
         image_destroy(&ctx.final_image);
         ctx.final_image = reprojected;
-        
+
         // Actualizar límites geográficos para GeoTIFF
         if (ctx.opts.has_clip) {
             ctx.final_lon_min = ctx.opts.clip_coords[0];
@@ -799,18 +865,17 @@ int run_rgb(ArgParser *parser) {
         }
     }
 
-    // Paso 7: Post-procesamiento (gamma, histogram, CLAHE, scale, alpha)
+    // Paso 10: Post-procesamiento (histogram, CLAHE, scale, alpha)
     if (!apply_postprocessing(&ctx)) {
         LOG_ERROR("Falla en la etapa de post-procesamiento.");
         goto cleanup;
     }
 
-    // Paso 8: Escritura
+    // Paso 11: Escritura
     if (!write_output(&ctx)) {
         LOG_ERROR("Falla al guardar la imagen de salida.");
         goto cleanup;
     }
-
     status = 0; // ¡Éxito!
 
 cleanup:

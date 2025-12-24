@@ -81,6 +81,16 @@ typedef struct {
     float final_lat_min, final_lat_max;
     unsigned crop_x_offset, crop_y_offset; // Para GeoTIFF nativo con clip
     
+    // --- Canales intermedios ---
+    DataF comp_r;
+    DataF comp_g;
+    DataF comp_b;
+    
+    // --- Límites de visualización (Scaling) ---
+    float min_r, max_r;
+    float min_g, max_g;
+    float min_b, max_b;
+    
     // Resultado final
     ImageData final_image;
     ImageData alpha_mask;
@@ -91,7 +101,7 @@ typedef struct {
 } RgbContext;
 
 // Declaración del tipo de función para compositores RGB
-typedef ImageData (*RgbComposer)(RgbContext *ctx);
+typedef bool (*RgbComposer)(RgbContext *ctx);
 
 /**
  * @brief Define una estrategia RGB (modo de composición).

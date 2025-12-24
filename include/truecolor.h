@@ -11,15 +11,11 @@
 #include <stdbool.h>
 
 /**
- * @brief Crea una imagen True Color RGB a partir de los canales azul, rojo y NIR.
+ * @brief Genera SOLO el canal verde sintético.
+ * Formula CIMSS: Green = 0.45*Red + 0.10*NIR + 0.45*Blue
  */
-ImageData create_truecolor_rgb(DataF c01_blue, DataF c02_red, DataF c03_nir);
+DataF create_truecolor_synthetic_green(const DataF *c_blue, const DataF *c_red, const DataF *c_nir);
 
-/**
- * @brief Crea una imagen True Color RGB con corrección atmosférica de Rayleigh opcional.
- */
-ImageData create_truecolor_rgb_rayleigh(DataF c01_blue, DataF c02_red, DataF c03_nir,
-                                        const char *filename_ref, bool apply_rayleigh);
 
 /**
  * @brief Crea una imagen RGB a partir de tres mallas de datos flotantes (DataF).
