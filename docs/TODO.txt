@@ -126,8 +126,9 @@ Falta la salida de metadatos *.json
 
 Wed Dec 24 01:56:33 PM CST 2025
 
-Nombres documentados, help simplificado. Algebra di bandas completada
-y documentada. Falta en custom aplicar rayleygh solo a las visibles. Y
+Nombres documentados, help simplificado. Algebra de bandas completada
+y documentada. Falta verificar errores en expr y minmax tanto simple
+como rgb. Falta en custom aplicar rayleigh solo a las visibles. Y
 recuperar implementación rayleygh por lectura de luts y comparar con
 implementación analítica (preferida).
 
