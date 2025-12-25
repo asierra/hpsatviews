@@ -262,7 +262,7 @@ void analytic_rayleigh_correction(DataF *img, const RayleighNav *nav, float tau)
 
 
 
-/*****         Implementación Rayleigh con LUTs           ******/
+/*********         Implementación Rayleigh con LUTs          **********/
 
 /**
  * Realiza una interpolación trilineal rápida sobre la LUT.

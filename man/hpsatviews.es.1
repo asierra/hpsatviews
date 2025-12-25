@@ -1,13 +1,13 @@
-.TH HPSATVIEWS 1 "2025" "HPSATVIEWS" "Comandos de Usuario"
+.TH HPSV 1 "January 2026" "1.0" "HPSatViews Manual"
 .SH NOMBRE
-hpsatviews \- Generación de alto rendimiento de productos visuales de satélite a partir de imágenes GOES
+hpsv \- High Performance Satellite Views processing tool
 
 .SH SINOPSIS
-.B hpsatviews
+.B hpsv
 .RI <comando> " " <archivo_ancla> " " [opciones]
 
 .SH DESCRIPCIÓN
-.B hpsatviews
+.B HPSatViews
 es una herramienta de línea de comandos de alto rendimiento para generar
 productos visuales (vistas) a partir de datos satelitales ambientales calibrados,
 con énfasis en la familia de satélites GOES-R.
@@ -49,7 +49,7 @@ enfatizando su significado físico-observacional.
 La forma general de invocación es:
 
 .EX
-hpsatviews <comando> <archivo_ancla> [opciones]
+hpsv <comando> <archivo_ancla> [opciones]
 .EE
 
 El
@@ -88,7 +88,7 @@ Las siguientes opciones están disponibles para todos los comandos.
 .TP
 .BI "-o, --out " archivo
 Nombre del archivo de salida. Si se omite, se genera un nombre
-determinístico automáticamente a partir de la metadata de la escena
+determinista automáticamente a partir de los metadatos   de la escena
 y las operaciones aplicadas.
 Se soportan marcadores como
 {YYYY}, {JJJ}, {hh}, {mm}, {TS}, {CH}, {SAT}.

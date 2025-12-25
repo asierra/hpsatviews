@@ -6,7 +6,7 @@
  * Help general
  * ========================= */
 static const char *HPSATVIEWS_HELP =
-"Uso: hpsatviews <comando> <ancla> [opciones]\n"
+"Uso: hpsv <comando> <ancla> [opciones]\n"
 "\n"
 "El archivo netcdf <ancla> permite inferir la ruta y el instante de las "
 "bandas necesarias.\n\n"
@@ -38,22 +38,22 @@ static const char *HPSATVIEWS_HELP =
 "    {OPS}  Operaciones realizadas (-h, --clahe, -s, -r)\n"
 "\n"
 "Ejemplo:\n"
-"  hpsatviews pseudo archivo.nc -o \"{SAT}_{CLIP}.png\" -c mexico\n"
+"  hpsv pseudo archivo.nc -o \"{SAT}_{CLIP}.png\" -c mexico\n"
 "  -> G16_mexico.png\n"
 "\n"
 "Álgebra de Bandas (combinación lineal de bandas):\n"
-"  --expr <f>      Suma y resta de coeficientes \"a*CH1+b*CH2...\".\n"
+"  --expr <f>      Suma y resta de términos \"a*CH1+b*CH2...\".\n"
 "                  Soporta: +, - constantes numéricas y bandas (C01-C16).\n"
 "                  Ej: \"2.0*C13-C15-200\" .\n"
 "  --minmax <m>    Rango opcional [min,max] para ajustar el contraste.\n\n"
-"Use 'hpsatviews help <comando>' para ayuda específica de un comando.\n";
+"Use 'hpsv help <comando>' para ayuda específica de un comando.\n";
 
 
 /* =========================
  * Help comando: rgb
  * ========================= */
 static const char *HPSATVIEWS_HELP_RGB =
-"Uso: hpsatviews rgb <ancla> [opciones]\n"
+"Uso: hpsv rgb <ancla> [opciones]\n"
 "\n"
 "Modos (--mode):\n"
 "  daynite (def), truecolor, night, airmass, ash, so2, custom.\n"
@@ -70,14 +70,14 @@ static const char *HPSATVIEWS_HELP_RGB =
  * Help comando: pseudocolor / gray
  * ========================= */
 static const char *HPSATVIEWS_HELP_PSEUDOCOLOR =
-"Uso: hpsatviews pseudocolor <ancla> -p <paleta> [opciones]\n"
+"Uso: hpsv pseudocolor <ancla> -p <paleta> [opciones]\n"
 "\n"
 "Opciones:\n"
 "  -p, --cpt <nombre>  Paleta de colores (def. rainbow interno).\n"
 "  -i, --invert        Invierte la polaridad de los datos.\n";
 
 static const char *HPSATVIEWS_HELP_GRAY =
-"Uso: hpsatviews gray <ancla> [opciones]\n"
+"Uso: hpsv gray <ancla> [opciones]\n"
 "\n"
 "Opciones:\n"
 "  -i, --invert        Invierte escala (blanco es negro).\n";

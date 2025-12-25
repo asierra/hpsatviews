@@ -4,47 +4,65 @@
 [![C11](https://img.shields.io/badge/C-C11-blue.svg)](https://en.wikipedia.org/wiki/C11)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](#building)
 
-**Fast, reliable satellite image processing for GOES family satellites**
+**HPSATVIEWS - Visualización de datos satelitales de alto rendimiento**
 
 ## 1. Introducción
 
 ### 1.1 Resumen
 
-**HPSATVIEWS** es un sistema de generación de **vistas y productos visuales** de alto rendimiento a partir de datos satelitales ambientales. 
-Permite generar vistas en escala de grises, pseudocolor y compuestos RGB en tiempos del orden de segundos, manteniendo rigor geométrico y reproducibilidad. Está optimizado para satélites geoestacionarios de la familia **GOES-R**. 
+**HPSATVIEWS** es un sistema de generación de **vistas 
+y productos visuales** de alto rendimiento a partir de datos satelitales 
+ambientales. Permite generar vistas en escala de grises, pseudocolor y 
+compuestos RGB en tiempos del orden de segundos, manteniendo rigor geométrico 
+y reproducibilidad. Está optimizado para satélites geoestacionarios de la 
+familia **GOES-R**. 
 
 ### 1.2 Filosofía de diseño
 
-HPSATVIEWS está diseñado exclusivamente para operar en el dominio de las **vistas** y **productos visuales**. No sustituye plataformas de análisis físico ni herramientas GIS generalistas. Su objetivo es ofrecer un flujo de trabajo simple, muy rápido y conceptualmente claro para la interpretación visual de escenas satelitales.
+Está diseñado exclusivamente para operar en el dominio de las 
+**vistas** y **productos visuales**. No sustituye plataformas de análisis 
+físico ni herramientas GIS generalistas. Su objetivo es ofrecer un flujo 
+de trabajo simple, muy rápido y conceptualmente claro para la interpretación 
+visual de escenas satelitales.
 
 ---
 
 ## 2. Conceptos fundamentales
 
+Conceptos y términos usados en el contexto de este proyecto.
+
 ### Imagen
 
-Representación numérica de datos satelitales calibrados (campos discretos o en punto flotante) que contienen magnitudes físicas como radiancia, temperatura o reflectancia.
+Imagen: Representación numérica de una escena física continua, organizada 
+como una colección de bandas que registran la distribución espacial y espectral 
+de magnitudes físicas —como radiancia, temperatura o reflectancia— mediante 
+elementos lógicos discretos. [Lira, 2010]
 
 ### Vista (view)
 
-Representación visual derivada de una imagen, normalizada y cuantizada para su interpretación por el sistema visual humano.
+Representación derivada de una imagen, normalizada y cuantizada para 
+su interpretación por el sistema visual humano.
 
 ### Producto
 
-Vista asociada a una semántica meteorológica reconocible por la comunidad (por ejemplo: *true color*, *air mass*, *ash*).
+Vista asociada a un concepto reconocible por la comunidad de ciencias 
+ambientales (por ejemplo: *true color*, *air mass*, *ash*).
 
 ### Instante (timestamp)
 
-Se denomina **instante** al momento temporal asociado a una escena satelital, definido por la hora efectiva de observación del sensor y representado mediante un conjunto discreto de componentes temporales (año, día juliano, hora, minuto, segundo).
+Se denomina **instante** al momento temporal asociado a una escena satelital, 
+definido por la hora efectiva de observación del sensor y representado mediante 
+un conjunto discreto de componentes temporales (año, día juliano, hora, 
+minuto, segundo).
 
 ---
 
 ## 3. Uso básico
 
-HPSATVIEWS se utiliza desde la línea de comandos con una sintaxis simple:
+*High Performance Satellite Views* se utiliza desde la línea de comandos con una sintaxis simple:
 
 ```bash
-hpsatviews <comando> <archivo_ancla> [opciones]
+hpsv <comando> <archivo_ancla> [opciones]
 ```
 
 El **archivo ancla** en formato NetCDF permite identificar la escena, su instante y su ruta. El sistema infiere automáticamente los archivos de las bandas necesarias.
@@ -52,7 +70,7 @@ El **archivo ancla** en formato NetCDF permite identificar la escena, su instant
 ### Ejemplo
 
 ```bash
-hpsatviews gray OR_ABI-L1b-RadF-M6C13_G16.nc
+hpsv gray OR_ABI-L1b-RadF-M6C13_G16.nc
 ```
 
 Genera una vista en escala de grises del canal C13.
@@ -96,13 +114,13 @@ Genera una vista en escala de grises del canal C13.
   Ejemplos:
   ```bash
   # Usar un recorte predefinido con clave
-  hpsatviews gray -c mexico -o recorte.png archivo.nc
+  hpsv gray -c mexico -o recorte.png archivo.nc
   
   # Con comas (sin comillas ni espacios)
-  hpsatviews rgb -m ash -c -107.23,22.72,-93.84,14.94 -o recorte.png archivo.nc
+  hpsv rgb -m ash -c -107.23,22.72,-93.84,14.94 -o recorte.png archivo.nc
 
   # Con espacios (CON comillas)
-  hpsatviews rgb -m ash -c "-107.23 22.72 -93.84 14.94" -o recorte.png archivo.nc
+  hpsv rgb -m ash -c "-107.23 22.72 -93.84 14.94" -o recorte.png archivo.nc
   ```
 
 * `--clahe`
@@ -145,7 +163,7 @@ Genera una vista en escala de grises del canal C13.
   Ejemplo:
 
   ```bash
-  hpsatviews gray -o "ir_{SAT}_{CH}_{YYYY}{MM}{DD}.png" \
+  hpsv gray -o "ir_{SAT}_{CH}_{YYYY}{MM}{DD}.png" \
         OR_ABI-L1b-RadF-M6C13_G19_s20253551801183.nc
   # → ir_G19_C15_20251221.png
   ``` 
@@ -167,10 +185,10 @@ Genera una vista en escala de grises del canal C13.
   Ejemplos:
   ```bash
 	# Opción explícita
-	hpsatviews gray -t archivo.nc
+	hpsv gray -t archivo.nc
 
 	# Detección automática por extensión
-	hpsatviews gray -o salida.tif archivo.nc
+	hpsv gray -o salida.tif archivo.nc
   ```
 
 * `-v, --verbose`
@@ -192,7 +210,7 @@ Asocia un mapa de color a una vista en grises.
   
   Ejemplo:
   ```bash
-  hpsatviews pseudocolor -p paleta.cpt archivo_GOES.nc
+  hpsv pseudocolor -p paleta.cpt archivo_GOES.nc
   ```
 
 ### 4.6 Opciones comando *rgb*
@@ -211,13 +229,13 @@ Genera un compuesto RGB a partir de combinaciones lineales de varias bandas.
   Ejemplos:
   ```bash
   # Compuesto día/noche predeterminado, con Rayleigh y realce de contraste implícitos
-  hpsatviews rgb -o dianoche.png archivo.nc
+  hpsv rgb -o dianoche.png archivo.nc
   
   # True color con corrección atmosférica de Rayleigh y CLAHE para mejorar contraste local
-  hpsatviews rgb -m truecolor --rayleigh --clahe archivo.nc
+  hpsv rgb -m truecolor --rayleigh --clahe archivo.nc
 
   # Detección de ceniza volcánica
-  hpsatviews rgb -m ash -o ceniza.png archivo.nc
+  hpsv rgb -m ash -o ceniza.png archivo.nc
   ```
   
 El modo `daynite` hace una mezcla inteligente de los modos `truecolor` 
@@ -235,13 +253,13 @@ Si no se especifica la opción `-o` o `--out`, se genera un nombre determinista 
 
 Ejemplo:
   ```bash
-  hpsatviews gray OR_ABI-L1b-RadF-M6C13_G16_s20242190300217.nc
+  hpsv gray OR_ABI-L1b-RadF-M6C13_G16_s20242190300217.nc
   # → hpsv_G16_2024219_0300_gray_C13.png
   ```
   
 ### 4.8 Álgebra de bandas y composiciones personalizadas
 
-`hpsatviews` permite definir combinaciones lineales de bandas al vuelo para generar composiciones RGB o imágenes monocanal complejas sin necesidad de generar archivos intermedios.
+`hpsv` permite definir combinaciones lineales de bandas al vuelo para generar composiciones RGB o imágenes monocanal complejas sin necesidad de generar archivos intermedios.
 
 **Sintaxis Soportada:**
 * **Términos con coeficientes por banda:** (ej. `2.0*C13`).
@@ -254,7 +272,7 @@ Ejemplo:
 **1. Álgebra Monocanal** en los comandos gray o pseudocolor.
 
 ```bash
-hpsatviews gray archivo_ancla.nc \
+hpsv gray archivo_ancla.nc \
   --expr "C13-C15" \
   --minmax "0.0,100.0"
 ```
@@ -262,7 +280,7 @@ hpsatviews gray archivo_ancla.nc \
 **2. Composición RGB Personalizada** Define fórmulas independientes para los canales Rojo, Verde y Azul usando el modo `custom`. Nota el uso de comillas para proteger los espacios y el punto y coma.
 
 ```bash
-hpsatviews rgb archivo_ancla.nc \
+hpsv rgb archivo_ancla.nc \
   --mode custom \
   --expr "C13-C14; C13-C11; C13" \
   --minmax "-2,2; -4,2; 240,300" \
@@ -355,4 +373,4 @@ Consulta el archivo [LICENSE](LICENSE) para más detalles.
 
 ---
 
-*HPSATVIEWS - Procesamiento satelital de alta velocidad para meteorología operacional*
+*HPSATVIEWS - Visualización de datos satelitales de alto rendimiento*

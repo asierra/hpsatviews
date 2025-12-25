@@ -18,20 +18,20 @@ CFLAGS_LANG =
 
 ifeq ($(HPSV_LANG),es)
     CFLAGS_LANG += -DHPSV_LANG_ES
-    MANPAGE = man/hpsatviews.es.1
+    MANPAGE = man/hpsv.es.1
 else
-	MANPAGE = man/hpsatviews.1
+	MANPAGE = man/hpsv.1
 endif
-                
+
 # --- Modos de Compilación ---
 # Uso: make (Release por defecto) | make debug (para desarrollo con gdb)
 ifdef DEBUG
     CFLAGS = $(CFLAGS_COMMON) $(CFLAGS_LANG) -g -O0 -DDEBUG_MODE
-    TARGET_NAME = hpsatviews_debug
+    TARGET_NAME = hpsv_debug
 else
     # Release: Optimización máxima (-O3) y nativa de la arquitectura
     CFLAGS = $(CFLAGS_COMMON) $(CFLAGS_LANG) -O3 -march=native -funroll-loops
-    TARGET_NAME = hpsatviews
+    TARGET_NAME = hpsv
 endif
 
 # --- Directorios ---
@@ -44,7 +44,6 @@ PREFIX = /usr/local
 MANDIR ?= $(PREFIX)/share/man
 
 # --- Archivos ---
-# Busca automáticamente todos los .c en src/ (Cero mantenimiento)
 SRCS = $(wildcard $(SRC_DIR)/*.c)
 # Genera la lista de objetos esperados en obj/
 OBJS = $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(SRCS))
@@ -93,15 +92,15 @@ clean:
 install: all
 	@echo "Installing into $(PREFIX)/bin..."
 	@install -d $(PREFIX)/bin
-	@install -m 755 $(TARGET) $(PREFIX)/bin/hpsatviews
+	@install -m 755 $(TARGET) $(PREFIX)/bin/hpsv
 	@install -d $(MANDIR)/man1
-	@install -m 644 $(MANPAGE) $(MANDIR)/man1/hpsatviews.1
+	@install -m 644 $(MANPAGE) $(MANDIR)/man1/hpsv.1
 	@echo "Installation successful."
 
 uninstall:
-	@rm -f $(PREFIX)/bin/hpsatviews
-	@rm -f $(MANDIR)/man1/hpsatviews.1
-	@echo "Uninstalled hpsatviews."
+	@rm -f $(PREFIX)/bin/hpsv
+	@rm -f $(MANDIR)/man1/hpsv.1
+	@echo "Uninstalled hpsv."
 
 # Ayuda para debuggear el Makefile
 info:

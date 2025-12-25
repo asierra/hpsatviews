@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Comparar resultados de hpsatviews y gdal
+# Comparar resultados de hpsv y gdal
 
 # Dataset
 #DATASET="/data/input/abi/l1b/fd/OR_ABI-L1b-RadF-M6C01_G19_s20253361800210_e20253361809518_c20253361809549.nc"
@@ -36,7 +36,7 @@ GDAL_TE="$LON_MIN $LAT_MIN $LON_MAX $LAT_MAX"
 # ---------------------------------------------------------
 # CASO 1: Recorte sin reproyección (Mantiene proyección GOES)
 # ---------------------------------------------------------
-./hpsatviews gray \
+./hpsv gray \
     --clip $CLIP_COORDS \
     -o a2_sp_hpsv.png \
     "$DATASET" -v
@@ -44,7 +44,7 @@ GDAL_TE="$LON_MIN $LAT_MIN $LON_MAX $LAT_MAX"
 mapdrawer --bounds $CLIP_COORDS \
     --layer COASTLINE:cyan:0.5  --crs goes16 a2_sp_hpsv.png
 
-./hpsatviews gray \
+./hpsv gray \
     --clip $CLIP_COORDS \
     -o a2_sp_hpsv.tif \
     "$DATASET" -v
@@ -76,7 +76,7 @@ gdal_translate \
 # ---------------------------------------------------------
 # CASO 2: Recorte con reproyección (Transformado a Lat/Lon)
 # ---------------------------------------------------------
-./hpsatviews gray \
+./hpsv gray \
     --geographics \
     --clip $CLIP_COORDS \
     -o a2_rp_hpsv.png \
@@ -85,7 +85,7 @@ gdal_translate \
 mapdrawer --bounds $CLIP_COORDS \
     --layer COASTLINE:cyan:0.5  a2_rp_hpsv.png
 
-./hpsatviews gray \
+./hpsv gray \
     --geographics \
     --clip $CLIP_COORDS \
     -o a2_rp_hpsv.tif \

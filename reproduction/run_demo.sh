@@ -33,7 +33,7 @@ mkdir -p reproduction
 
 # 2. Run True Color
 echo "[2/3] Generating True Color..."
-bin/hpsatviews rgb \
+bin/hpsv rgb \
     --mode truecolor \
     --out reproduction/demo_truecolor.tif \
     --verbose \
@@ -41,7 +41,7 @@ bin/hpsatviews rgb \
 
 # 3. Run Ash (Ceniza)
 echo "[3/3] Generating Ash Product..."
-bin/hpsatviews rgb \
+bin/hpsv rgb \
     --mode ash \
     --out reproduction/demo_ash.tif \
     --verbose \
@@ -51,7 +51,7 @@ echo "✅ Demo finished. Check results in 'reproduction/'"
 
 # 4. Run Composite (Complex Test)
 echo "[4/4] Generating default composite (Complex Test)..."
-bin/hpsatviews rgb \
+bin/hpsv rgb \
     --geographics \
     --clip mexico \
     --out reproduction/test_composite.tif \

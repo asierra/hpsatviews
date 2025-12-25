@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "version.h"
 #include "args.h"
 #include "logger.h"
 #include "rgb.h"
@@ -59,6 +60,7 @@ static void add_common_opts(ArgParser* cmd_parser) {
     ap_add_str_opt(cmd_parser, "minmax", "0.0,255.0");
 }
 
+
 int main(int argc, char *argv[]) {
     // Verificar --list-clips antes de parsear (para salir rápido)
     for (int i = 1; i < argc; i++) {
@@ -71,7 +73,7 @@ int main(int argc, char *argv[]) {
     
     ArgParser *parser = ap_new_parser();
     ap_set_helptext(parser, HPSATVIEWS_HELP);
-    ap_set_version(parser, "1.0");
+    ap_set_version(parser, HPSV_VERSION_STRING);
 
     // --- Comando 'rgb' ---
     ArgParser *rgb_cmd = ap_new_cmd(parser, "rgb");
@@ -104,7 +106,6 @@ int main(int argc, char *argv[]) {
         ap_set_cmd_callback(sg_cmd, cmd_gray);
     }
 
-    // Parsear los argumentos UNA SOLA VEZ. La librería ejecutará el callback apropiado.
     if (!ap_parse(parser, argc, argv)) {
         // ap_parse ya imprime errores, solo necesitamos salir.
         ap_free(parser);
@@ -133,6 +134,7 @@ int main(int argc, char *argv[]) {
     #else
         logger_init(LOG_INFO);
     #endif
+		puts(HPSV_VERSION_STRING);
         }
 
     ap_free(parser);
