@@ -212,8 +212,8 @@ static bool compose_truecolor(RgbContext *ctx) {
         // Cargar navegación ajustada al tamaño de la imagen azul (C01)
         if (rayleigh_load_navigation(nav_file, &nav, ctx->comp_b.width, ctx->comp_b.height)) {
             LOG_INFO("Aplicando Rayleigh Analítico...");
-            rayleigh_correct_analytic(&ctx->comp_b, &nav, RAYLEIGH_TAU_BLUE);
-            rayleigh_correct_analytic(&ctx->comp_r, &nav, RAYLEIGH_TAU_RED);
+            analytic_rayleigh_correction(&ctx->comp_b, &nav, RAYLEIGH_TAU_BLUE);
+            analytic_rayleigh_correction(&ctx->comp_r, &nav, RAYLEIGH_TAU_RED);
             rayleigh_free_navigation(&nav);
         } else {
             LOG_WARN("Falló carga de navegación, saltando Rayleigh.");
@@ -329,7 +329,12 @@ static bool compose_custom(RgbContext *ctx) {
     }
     char *token = strtok(expr_copy, ";");
     bool parse_error = false;
-    for (int i = 0; i < 3 && token != NULL; i++) {
+    for (int i = 0; i < 3; i++) {
+		if (token == NULL) {
+            LOG_ERROR("Error, deben ser 3 expresiones divididas por ';'.");
+            parse_error = true;
+            break;
+        }
         if (parse_expr_string(token, &combo[i]) != 0) {
             LOG_ERROR("Error parseando expresión componente %d", i);
             parse_error = true;

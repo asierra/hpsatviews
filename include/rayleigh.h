@@ -36,17 +36,8 @@ typedef struct {
  * @param nav Estructura con la navegación (SZA, VZA, RAA)
  * @param tau Coeficiente de profundidad óptica de la banda (ej. 0.061 para azul)
  */
-void rayleigh_correct_analytic(DataF *img, const RayleighNav *nav, float tau);
+void analytic_rayleigh_correction(DataF *img, const RayleighNav *nav, float tau);
 
-
-// Rayleigh Lookup Table structure (simple version with min/max/step)
-typedef struct {
-    float *table;       // Flat array with precalculated values
-    int n_sz, n_vz, n_az; // Dimensions (Solar Zen, View Zen, Azimuth)
-    float sz_min, sz_max, sz_step; // Solar Zenith range
-    float vz_min, vz_max, vz_step; // View Zenith range
-    float az_min, az_max, az_step; // Relative Azimuth range
-} RayleighLUT;
 
 /**
  * @brief Carga y calcula toda la geometría necesaria para la corrección Rayleigh.
@@ -57,6 +48,16 @@ typedef struct {
  */
 bool rayleigh_load_navigation(const char *filename, RayleighNav *nav, 
 				unsigned int target_width, unsigned int target_height);
+
+
+// Rayleigh Lookup Table structure (simple version with min/max/step)
+typedef struct {
+    float *table;       // Flat array with precalculated values
+    int n_sz, n_vz, n_az; // Dimensions (Solar Zen, View Zen, Azimuth)
+    float sz_min, sz_max, sz_step; // Solar Zenith range
+    float vz_min, vz_max, vz_step; // View Zenith range
+    float az_min, az_max, az_step; // Relative Azimuth range
+} RayleighLUT;
 
 /**
  * @brief Libera la memoria de la estructura de navegación.
