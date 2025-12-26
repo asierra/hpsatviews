@@ -1,5 +1,5 @@
 /* High Performance Satellite Views - Structured Logging System
- * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Labotatorio Nacional de Observación de la Tierra, UNAM
  */
 #ifndef HPSATVIEWS_LOGGER_H_

@@ -1,13 +1,12 @@
 /* To define the colormap for a pseudocolor image, we use GPT from GMT.
  * 
- * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Labotatorio Nacional de Observación de la Tierra, UNAM
  */
 // https://docs.generic-mapping-tools.org/dev/reference/features.html#color-palette-tables
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <stdbool.h>
 #include <assert.h>
 #include "logger.h"
@@ -15,6 +14,7 @@
 
 // Ensure the color entries array has an even size for range processing.
 static_assert(MAX_COLOR_ENTRIES % 2 == 0, "MAX_COLOR_ENTRIES must be an even number.");
+
 
 
 // If the CPT is normalized, we use all the colors 

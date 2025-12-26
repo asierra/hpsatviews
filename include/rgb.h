@@ -1,7 +1,7 @@
 /*
  * RGB and day/night composite generation module.
  *
- * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Laboratorio Nacional de Observación de la Tierra, UNAM
  */
 #ifndef HPSATVIEWS_RGB_H_

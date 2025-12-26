@@ -1,7 +1,7 @@
 /*
  * Single-channel processing module (gray and pseudocolor)
  *
- * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Laboratorio Nacional de Observación de la Tierra, UNAM
  */
 #include "processing.h"
@@ -19,6 +19,7 @@
 #include "gray.h"
 #include "parse_expr.h"
 #include "channelset.h"
+#include "paleta.h"
 #include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -97,12 +98,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     if (ap_has_args(parser)) {
         fnc01 = ap_get_arg_at_index(parser, 0);
     } else {
-        LOG_ERROR("Debe proporcionar un archivo NetCDF de entrada.");
-        return -1;
-    }
-
-    if (is_pseudocolor && !ap_found(parser, "cpt")) {
-        LOG_ERROR("El comando 'pseudocolor' requiere una paleta de colores. Use la opción -p/--cpt.");
+        LOG_ERROR("Se requiere un archivo NetCDF de entrada.");
         return -1;
     }
 
@@ -225,18 +221,24 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     CPTData* cptdata = NULL;
     ColorArray *color_array = NULL;
     if (is_pseudocolor) {
-        char *cptfn = ap_get_str_value(parser, "cpt");
-        cptdata = read_cpt_file(cptfn);
-        if (cptdata) {
-            color_array = cpt_to_color_array(cptdata);
-        } else {
-            LOG_ERROR("No se pudo cargar el archivo de paleta: %s", cptfn);
-            if (out_filename_generated) free(out_filename_generated);
-            if (expr_mode) {
-                for (int i = 0; i < num_required_channels; i++) free(required_channels[i]);
-            }
-            return -1;
-        }
+		if (ap_found(parser, "cpt")) {
+			char *cptfn = ap_get_str_value(parser, "cpt");
+			cptdata = read_cpt_file(cptfn);
+			if (cptdata) {
+				color_array = cpt_to_color_array(cptdata);
+			} else {
+				LOG_ERROR("No se pudo cargar el archivo de paleta: %s", cptfn);
+				if (out_filename_generated) free(out_filename_generated);
+				if (expr_mode) {
+					for (int i = 0; i < num_required_channels; i++) free(required_channels[i]);
+				}
+				return -1;
+			}
+		} else {
+			LOG_WARN("Sin opción -p/--cpt se usará arcoiris interno.");
+			cptdata = cpt_create(256, true);
+			color_array = create_rainbow_color_array(256);
+		}
     }
     
     DataNC c01;
@@ -540,6 +542,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         native_image = create_single_gray_range(c01.fdata, invert_values, use_alpha, minmax[0], minmax[1]);
     } else if (c01.is_float) {
         if (is_pseudocolor) {
+			printf("puto\n");
             native_image = create_single_gray(c01.fdata, invert_values, use_alpha, cptdata);
         } else {
             native_image = create_single_gray(c01.fdata, invert_values, use_alpha, NULL);

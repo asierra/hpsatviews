@@ -1,6 +1,7 @@
 #ifndef READER_CPT_H_
 #define READER_CPT_H_
 
+#include <string.h>
 #include "image.h"
 
 #define MAX_LINE_LENGTH 256
@@ -27,6 +28,18 @@ typedef struct {
     bool has_nan_color;
     bool is_discrete;
 } CPTData;
+
+
+static inline CPTData *cpt_create(unsigned int num_colors, bool has_nan_color) {
+	CPTData* cpt = malloc(sizeof(CPTData));
+	memset(cpt, 0, sizeof(CPTData));
+    cpt->num_colors = num_colors;
+    cpt->has_foreground = false;
+    cpt->has_background = false;
+    cpt->has_nan_color = has_nan_color;
+    cpt->is_discrete = false;
+  return cpt;
+}
 
 CPTData* read_cpt_file(const char* filename);
 

@@ -33,7 +33,7 @@ Conceptos y términos usados en el contexto de este proyecto.
 
 ### Imagen
 
-Imagen: Representación numérica de una escena física continua, organizada 
+Representación numérica de una escena física continua, organizada 
 como una colección de bandas que registran la distribución espacial y espectral 
 de magnitudes físicas —como radiancia, temperatura o reflectancia— mediante 
 elementos lógicos discretos. [Lira, 2010]
@@ -231,7 +231,7 @@ Genera un compuesto RGB a partir de combinaciones lineales de varias bandas.
   # Compuesto día/noche predeterminado, con Rayleigh y realce de contraste implícitos
   hpsv rgb -o dianoche.png archivo.nc
   
-  # True color con corrección atmosférica de Rayleigh y CLAHE para mejorar contraste local
+  # True color con corrección atmosférica de Rayleigh y CLAHE
   hpsv rgb -m truecolor --rayleigh --clahe archivo.nc
 
   # Detección de ceniza volcánica
@@ -360,7 +360,7 @@ HPSATVIEWS se encuentra en desarrollo activo, funcional estable y ampliación pr
 ## 9. Autor y licencia
 
 ```
-Copyright (c) 2025 Alejandro Aguilar Sierra (asierra@unam.mx)
+Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
 Laboratorio Nacional de Observación de la Tierra, UNAM
 
 This program is free software: you can redistribute it and/or modify

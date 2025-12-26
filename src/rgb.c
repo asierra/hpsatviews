@@ -82,7 +82,7 @@ bool rgb_parse_options(ArgParser *parser, RgbContext *ctx) {
     // Validar archivo de entrada
     if (!ap_has_args(parser)) {
         snprintf(ctx->error_msg, sizeof(ctx->error_msg),
-                 "El comando 'rgb' requiere un archivo NetCDF de entrada.");
+                 "Se requiere un archivo NetCDF de entrada.");
         ctx->error_occurred = true;
         return false;
     }

@@ -2,7 +2,7 @@
  * HPSatViews - High Performance Satellite Views
  * Main entry point for all processing commands.
  *
- * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Laboratorio Nacional de Observación de la Tierra, UNAM
  */
 #include <stdio.h>

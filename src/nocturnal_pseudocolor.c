@@ -1,7 +1,7 @@
 /*
  * Generación de imagen de pseudocolor nocturno.
  * 
- * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Labotatorio Nacional de Observación de la Tierra, UNAM
  */
 #include <math.h>
@@ -58,7 +58,7 @@ ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* 
       if (!IS_NONDATA(f)) {
         unsigned int t;
         for (t = 0; t < 255; t++)
-          if (f >= paleta[t].d && f < paleta[t + 1].d)
+          if (f >= atmosrainbow[t].d && f < atmosrainbow[t + 1].d)
             break;
 
         // Si el bucle termina, 't' será 255, lo que significa que el valor
@@ -66,12 +66,12 @@ ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* 
         // evitar un acceso fuera de límites en paleta[t+1].
         if (t == 255) t = 254;
 
-        r = (unsigned char)(255 * paleta[t].r);
-        g = (unsigned char)(255 * paleta[t].g);
-        b = (unsigned char)(255 * paleta[t].b);
+        r = (unsigned char)(255 * atmosrainbow[t].r);
+        g = (unsigned char)(255 * atmosrainbow[t].g);
+        b = (unsigned char)(255 * atmosrainbow[t].b);
 
         if (fondo && f > max_ir_temp) {
-          float w = 1. - paleta[t].a;
+          float w = 1. - atmosrainbow[t].a;
           size_t pf = i * fondo->bpp;
           r = (unsigned char)(r * (1 - w) + w * fondo->data[pf]);
           g = (unsigned char)(g * (1 - w) + w * fondo->data[pf + 1]);

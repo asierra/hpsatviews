@@ -1,5 +1,5 @@
 /* NetCDF Data reader
- * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Labotatorio Nacional de Observación de la Tierra, UNAM
  */
 #include "datanc.h"
@@ -91,8 +91,13 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
   if ((retval = nc_inq_vartype(ncid, rad_varid, &var_type)))
     ERR(retval);
 
+  if (var_type!=NC_BYTE && var_type!=NC_UBYTE && var_type!=NC_SHORT && var_type!=NC_USHORT) {
+    LOG_FATAL("Unsupported data type %d", var_type);
+	  return -1;
+  }
+    
   size_t type_size =
-      (var_type == NC_BYTE) ? sizeof(signed char) : sizeof(short);
+      (var_type == NC_SHORT) ? sizeof(short) : sizeof(char);
   void *datatmp = malloc(type_size * total_size);
   if (datatmp == NULL) {
     LOG_FATAL("Failed to allocate memory for NetCDF data");
@@ -101,7 +106,7 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
   if ((retval = nc_get_var(ncid, rad_varid, datatmp))) // Lectura genérica
     ERR(retval);
 
-  // Obtenemos el tiempo
+  // Obtenemos el instante
   int time_varid;
   if ((retval = nc_inq_varid(ncid, "t", &time_varid)))
     ERR(retval);
@@ -255,8 +260,9 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
   float fmax = -fmin;
   unsigned nondatas = 0;
 
-  if (var_type == NC_BYTE) {
+  if (var_type != NC_SHORT) {
     // --- RUTA PARA DATOS TIPO BYTE (ej. Cloud Phase) ---
+    LOG_DEBUG("Leyendo tipo de datos BYTE");
     datanc->is_float = false;
     datanc->bdata = datab_create(width, height);
     if (datanc->bdata.data_in == NULL) {
@@ -276,7 +282,8 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
       }
     }
   } else {
-    // --- RUTA PARA DATOS TIPO SHORT (ej. Radiancia) ---
+    // --- RUTA PARA DATOS TIPO SHORT (ej. Radiancia) ---   
+    LOG_DEBUG("Leyendo tipo de datos SHORT"); 
     datanc->is_float = true;
     datanc->fdata = dataf_create(width, height);
     if (datanc->fdata.data_in == NULL) {

@@ -1,6 +1,6 @@
 /* Creates a single BW image from an original NC.
  *
- * Copyright (c) 2025  Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Labotatorio Nacional de Observación de la Tierra, UNAM
  */
 #include "datanc.h"
@@ -33,7 +33,6 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha, const
       int po = i * imout.bpp;
       uint8_t r = 0, a = 0;
 
-      // Since DataF is now always float, we only need the float processing logic.
       if (c01.data_in[i] != NonData) {
         float range = c01.fmax - c01.fmin;
         float normalized_val;
@@ -59,13 +58,6 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha, const
           a = 0;
         }
       }
-
-      // This block was unused and caused a warning. It is now removed.
-      if (cpt != NULL && 0) { // The '&& 0' makes this block dead code.
-        // Color c = get_color_for_value(cpt, (double)r);
-        // r = (unsigned char)(((double)r / 255.0) * (cpt->entry_count > 0 ? cpt->entry_count - 1 : 255));
-      }
-
       imout.data[po] = r;
       if (imout.bpp == 2) {
         imout.data[po + 1] = a;

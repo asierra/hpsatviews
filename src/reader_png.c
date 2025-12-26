@@ -8,7 +8,7 @@
  * Refactored for hpsatviews by Alejandro Aguilar Sierra.
  *
  * Copyright 2002-2010 Guillaume Cottenceau.
- * Copyright (c) 2025 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
  *
  */
 #include <stdlib.h>
