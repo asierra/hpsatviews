@@ -15,7 +15,7 @@ typedef struct {
     const DataNC* datanc;           // Metadatos de tiempo, banda, etc.
     const char* satellite_name;     // "goes-16", "goes-18", etc. (de filename)
     const char* command;            // "gray", "pseudocolor", "rgb"
-    const char* rgb_mode;           // "truecolor", "ash", etc. (solo para RGB)
+    const char* mode;               // "truecolor" (RGB) o nombre paleta (Pseudo)
     bool        apply_rayleigh;
     bool        apply_histogram;
     bool        apply_clahe;
@@ -23,6 +23,7 @@ typedef struct {
     bool        has_clip;
     bool        do_reprojection;
     bool        force_geotiff;
+    bool        invert_values;
 } FilenameGeneratorInfo;
 
 char* generate_hpsv_filename(const FilenameGeneratorInfo* info);

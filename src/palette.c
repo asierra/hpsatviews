@@ -1,13 +1,13 @@
 /*
- * Definición de la paleta de colores de arcoiris interna.
+ * Onternal palettes.
  * 
  * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Labotatorio Nacional de Observación de la Tierra, UNAM
  */
-#include "paleta.h"
+#include "palette.h"
 
 
-PaletaData atmosrainbow[257] = {
+PaletteData atmosrainbow[257] = {
     { 170.00, 1.000000, 1.000000, 1.000000, 1.000000 },
     { 170.81, 1.000000, 1.000000, 1.000000, 1.000000 },
     { 171.62, 1.000000, 1.000000, 1.000000, 1.000000 },

@@ -81,9 +81,9 @@ static void get_type_part(const FilenameGeneratorInfo* info, char* buffer, size_
     } else if (strcmp(info->command, "pseudocolor") == 0) {
         snprintf(buffer, size, "pseudo");
     } else if (strcmp(info->command, "rgb") == 0) {
-        if (info->rgb_mode && strcmp(info->rgb_mode, "truecolor") != 0 && strcmp(info->rgb_mode, "composite") != 0) {
+        if (info->mode && strcmp(info->mode, "truecolor") != 0 && strcmp(info->mode, "composite") != 0) {
             // Producto semántico: usar el nombre del modo
-            snprintf(buffer, size, "%s", info->rgb_mode);
+            snprintf(buffer, size, "%s", info->mode);
         } else {
             // RGB sin producto semántico
             snprintf(buffer, size, "rgb");
@@ -101,25 +101,24 @@ static void get_type_part(const FilenameGeneratorInfo* info, char* buffer, size_
  */
 static void get_bands_part(const FilenameGeneratorInfo* info, char* buffer, size_t size) {
     if (strcmp(info->command, "gray") == 0 || strcmp(info->command, "pseudocolor") == 0) {
+        char band_str[32] = "NA";
         if (info->datanc && info->datanc->band_id > 0) {
-            // Detectar si es modo álgebra de bandas (expr)
-            // Heurística: si band_id==0, pero estamos en gray, es expr; pero mejor: si el nombre de banda es NA y command==gray, es expr
-            // Pero aquí solo tenemos datanc, así que usamos band_id==0 como señal de expr
-            if (info->datanc->band_id == 0 && strcmp(info->command, "gray") == 0) {
-                snprintf(buffer, size, "C_expr");
+            snprintf(band_str, sizeof(band_str), "C%02d", info->datanc->band_id);
+        } else if (strcmp(info->command, "gray") == 0) {
+            strcpy(band_str, "C_expr");
+        }
+
+        if (strcmp(info->command, "pseudocolor") == 0 && info->mode) {
+            if (strcmp(band_str, "NA") == 0) {
+                snprintf(buffer, size, "%s", info->mode);
             } else {
-                snprintf(buffer, size, "C%02d", info->datanc->band_id);
+                snprintf(buffer, size, "%s_%s", band_str, info->mode);
             }
         } else {
-            // Si no hay band_id, pero es gray y álgebra, poner _expr
-            if (strcmp(info->command, "gray") == 0) {
-                snprintf(buffer, size, "C_expr");
-            } else {
-                snprintf(buffer, size, "NA");
-            }
+            strncpy(buffer, band_str, size);
         }
     } else if (strcmp(info->command, "rgb") == 0) {
-        if (info->rgb_mode && strcmp(info->rgb_mode, "truecolor") != 0 && strcmp(info->rgb_mode, "composite") != 0) {
+        if (info->mode && strcmp(info->mode, "truecolor") != 0 && strcmp(info->mode, "composite") != 0) {
             // Producto semántico
             snprintf(buffer, size, "auto");
         } else {
@@ -142,10 +141,11 @@ static bool build_ops_string(const FilenameGeneratorInfo* info, char* buffer, si
     buffer[0] = '\0';
     bool has_ops = false;
 
-    const char* ops_list[6];
+    const char* ops_list[7];
     int op_count = 0;
     char gamma_str[16];
 
+    if (info->invert_values) ops_list[op_count++] = "inv";
     if (info->apply_rayleigh) ops_list[op_count++] = "ray";
     if (info->apply_histogram) ops_list[op_count++] = "histo";
     if (info->apply_clahe) ops_list[op_count++] = "clahe";

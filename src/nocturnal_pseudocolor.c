@@ -11,7 +11,7 @@
 
 #include "datanc.h"
 #include "image.h"
-#include "paleta.h"
+#include "palette.h"
 #include "logger.h"
 
 /**

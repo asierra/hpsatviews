@@ -19,7 +19,7 @@
 #include "gray.h"
 #include "parse_expr.h"
 #include "channelset.h"
-#include "paleta.h"
+#include "palette.h"
 #include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -79,27 +79,21 @@ static bool process_clip_coords(ArgParser* parser, const char* clip_csv_path, fl
 
 
 int run_processing(ArgParser *parser, bool is_pseudocolor) {
-    LogLevel log_level;
-#ifdef DEBUG_MODE
-    log_level = LOG_DEBUG;
-#else
-    log_level = ap_found(parser, "verbose") ? LOG_DEBUG : LOG_INFO;
-#endif
-    logger_init(log_level);
-    LOG_DEBUG("Modo de log: %s", 
-#ifdef DEBUG_MODE
-        "debug (compilación)"
-#else
-        ap_found(parser, "verbose") ? "verboso" : "normal"
-#endif
-    );
+    int status = -1; // Default to error
+    char *fnc01 = NULL;
+    char *out_filename_generated = NULL;
+    CPTData* cptdata = NULL;
+    ColorArray *color_array = NULL;
+    DataNC c01 = {0}, channels[17] = {0};
+    DataF result_data = {0}, navla_full = {0}, navlo_full = {0};
+    ImageData final_image = {0}, temp_image = {0};
+    char *palette_name = NULL;
 
-    char *fnc01;
     if (ap_has_args(parser)) {
         fnc01 = ap_get_arg_at_index(parser, 0);
     } else {
         LOG_ERROR("Se requiere un archivo NetCDF de entrada.");
-        return -1;
+        goto cleanup;
     }
 
     // --- Detección de modo --expr (álgebra de bandas) ---
@@ -115,20 +109,20 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         const char* expr_str = ap_get_str_value(parser, "expr");
         if (!expr_str || strlen(expr_str) == 0) {
             LOG_ERROR("La opción --expr requiere una expresión válida.");
-            return -1;
+            goto cleanup;
         }
 
         LOG_INFO("Modo álgebra de bandas: %s", expr_str);
         if (parse_expr_string(expr_str, &combo) != 0) {
             LOG_ERROR("Error al parsear la expresión: %s", expr_str);
-            return -1;
+            goto cleanup;
         }
 
         // Extraer bandas requeridas
         num_required_channels = extract_required_channels(&combo, required_channels);
         if (num_required_channels == 0) {
             LOG_ERROR("No se encontraron bandas válidas en la expresión.");
-            return -1;
+            goto cleanup;
         }
 
         LOG_INFO("Expresión parseada correctamente: %d bandas requeridas", num_required_channels);
@@ -140,9 +134,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         if (ap_found(parser, "minmax")) {
             const char* minmax_str = ap_get_str_value(parser, "minmax");
             if (sscanf(minmax_str, "%f,%f", &minmax[0], &minmax[1]) != 2) {
-                LOG_ERROR("Formato inválido para --minmax. Use: min,max");
-                for (int i = 0; i < num_required_channels; i++) free(required_channels[i]);
-                return -1;
+                LOG_ERROR("Formato inválido para --minmax. Use: min,max"); goto cleanup;
             }
             minmax_provided = true;
             LOG_INFO("Rango de salida especificado: [%.2f, %.2f]", minmax[0], minmax[1]);
@@ -185,7 +177,6 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     const bool has_clip = process_clip_coords(parser, "/usr/local/share/lanot/docs/recortes_coordenadas.csv", clip_coords);
 
     // --- Nombre de archivo de salida (procesamiento de patrones) ---
-    char* out_filename_generated = NULL;
     const char* outfn = NULL;
     bool user_provided_output = false;
     
@@ -218,32 +209,28 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     }
 
     // --- Carga de datos ---
-    CPTData* cptdata = NULL;
-    ColorArray *color_array = NULL;
     if (is_pseudocolor) {
 		if (ap_found(parser, "cpt")) {
 			char *cptfn = ap_get_str_value(parser, "cpt");
 			cptdata = read_cpt_file(cptfn);
 			if (cptdata) {
 				color_array = cpt_to_color_array(cptdata);
-			} else {
-				LOG_ERROR("No se pudo cargar el archivo de paleta: %s", cptfn);
-				if (out_filename_generated) free(out_filename_generated);
-				if (expr_mode) {
-					for (int i = 0; i < num_required_channels; i++) free(required_channels[i]);
-				}
-				return -1;
-			}
+                // Extraer nombre de la paleta para el archivo de salida
+                char *cpt_dup = strdup(cptfn);
+                if (cpt_dup) {
+                    char *base = basename(cpt_dup);
+                    char *ext = strrchr(base, '.');
+                    if (ext) *ext = '\0';
+                    palette_name = strdup(base);
+                    free(cpt_dup);
+                }
+			} else { LOG_ERROR("No se pudo cargar el archivo de paleta: %s", cptfn); goto cleanup; }
 		} else {
 			LOG_WARN("Sin opción -p/--cpt se usará arcoiris interno.");
 			cptdata = cpt_create(256, true);
 			color_array = create_rainbow_color_array(256);
 		}
     }
-    
-    DataNC c01;
-    DataNC channels[17] = {0};  // Array para múltiples canales (índices 1-16)
-    DataF result_data = {0};     // Resultado de la combinación lineal
     
     if (expr_mode) {
         // --- MODO EXPR: Cargar múltiples canales ---
@@ -252,11 +239,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         ChannelSet* cset = channelset_create((const char**)required_channels, num_required_channels);
         if (!cset) {
             LOG_ERROR("No se pudo crear el ChannelSet.");
-            if (out_filename_generated) free(out_filename_generated);
-            for (int i = 0; i < num_required_channels; i++) free(required_channels[i]);
-            free_cpt_data(cptdata);
-            color_array_destroy(color_array);
-            return -1;
+            goto cleanup;
         }
         
         // 2. Extraer firma de identificación del archivo ancla (satélite + timestamp)
@@ -264,39 +247,23 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         char* input_dup_for_id = strdup(fnc01);
         if (!input_dup_for_id) {
             LOG_ERROR("Error de memoria al duplicar nombre de archivo.");
-            channelset_destroy(cset);
-            if (out_filename_generated) free(out_filename_generated);
-            for (int i = 0; i < num_required_channels; i++) free(required_channels[i]);
-            free_cpt_data(cptdata);
-            color_array_destroy(color_array);
-            return -1;
+            channelset_destroy(cset); goto cleanup;
         }
         const char* basename_input = basename(input_dup_for_id);
         
         if (find_id_from_name(basename_input, id_signature, sizeof(id_signature)) != 0) {
             LOG_ERROR("No se pudo extraer la firma de identificación del archivo ancla: %s", basename_input);
-            free(input_dup_for_id);
-            channelset_destroy(cset);
-            if (out_filename_generated) free(out_filename_generated);
-            for (int i = 0; i < num_required_channels; i++) free(required_channels[i]);
-            free_cpt_data(cptdata);
-            color_array_destroy(color_array);
-            return -1;
+            free(input_dup_for_id); channelset_destroy(cset); goto cleanup;
         }
         strcpy(cset->id_signature, id_signature);
         free(input_dup_for_id);
         LOG_DEBUG("Firma de identificación: %s", id_signature);
         
         // 3. Buscar archivos para cada canal
-        char* input_dup_for_dir = strdup(fnc01);
+        char* input_dup_for_dir = strdup(fnc01); // dirname puede modificar el string
         if (!input_dup_for_dir) {
             LOG_ERROR("Error de memoria al duplicar nombre de archivo.");
-            channelset_destroy(cset);
-            if (out_filename_generated) free(out_filename_generated);
-            for (int i = 0; i < num_required_channels; i++) free(required_channels[i]);
-            free_cpt_data(cptdata);
-            color_array_destroy(color_array);
-            return -1;
+            channelset_destroy(cset); goto cleanup;
         }
         const char* dirnm = dirname(input_dup_for_dir);
         
@@ -305,13 +272,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         
         if (find_channel_filenames(dirnm, cset, is_l2_product) != 0) {
             LOG_ERROR("No se pudieron encontrar todos los archivos necesarios en %s", dirnm);
-            free(input_dup_for_dir);
-            channelset_destroy(cset);
-            if (out_filename_generated) free(out_filename_generated);
-            for (int i = 0; i < num_required_channels; i++) free(required_channels[i]);
-            free_cpt_data(cptdata);
-            color_array_destroy(color_array);
-            return -1;
+            free(input_dup_for_dir); channelset_destroy(cset); goto cleanup;
         }
         free(input_dup_for_dir);
         
@@ -324,21 +285,15 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
             int band_id = atoi(ch_name + 1);  // Skip 'C'
             if (band_id < 1 || band_id > 16) {
                 LOG_ERROR("Band ID inválido: %s", ch_name);
-                channelset_destroy(cset);
-                if (out_filename_generated) free(out_filename_generated);
-                for (int j = 0; j < num_required_channels; j++) free(required_channels[j]);
-                free_cpt_data(cptdata);
-                color_array_destroy(color_array);
-                return -1;
+                channelset_destroy(cset); goto cleanup;
             }
             
             // Cargar NetCDF
-            char* varname = "Rad";
-            if (strstr(ch_file, "CMIP")) varname = "CMI";
-            else if (strstr(ch_file, "LST")) varname = "LST";
-            else if (strstr(ch_file, "ACTP")) varname = "Phase";
-            else if (strstr(ch_file, "CTP")) varname = "PRES";
-            
+            char* varname = "Rad"; // Default
+            if (strinstr(ch_file, "CMIP")) varname = "CMI"; 
+             else if (strinstr(ch_file, "LST")) varname = "LST";
+             else if (strinstr(ch_file, "ACTP")) varname = "Phase"; 
+             else if (strinstr(ch_file, "CTP")) varname = "PRES";
             LOG_INFO("Cargando canal %s desde: %s", ch_name, ch_file);
             if (load_nc_sf(ch_file, varname, &channels[band_id]) != 0) {
                 LOG_ERROR("No se pudo cargar el canal %s: %s", ch_name, ch_file);
@@ -346,12 +301,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
                 // Limpiar canales ya cargados
                 for (int j = 1; j <= 16; j++) {
                     if (channels[j].fdata.data_in) datanc_destroy(&channels[j]);
-                }
-                if (out_filename_generated) free(out_filename_generated);
-                for (int j = 0; j < num_required_channels; j++) free(required_channels[j]);
-                free_cpt_data(cptdata);
-                color_array_destroy(color_array);
-                return -1;
+                } goto cleanup;
             }
         }
         
@@ -408,15 +358,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
                     channels[cn].fdata = resampled;
                 } else {
                     LOG_ERROR("Falla al resamplear el canal C%02d", cn);
-                    channelset_destroy(cset);
-                    for (int j = 1; j <= 16; j++) {
-                        if (channels[j].fdata.data_in) datanc_destroy(&channels[j]);
-                    }
-                    if (out_filename_generated) free(out_filename_generated);
-                    for (int j = 0; j < num_required_channels; j++) free(required_channels[j]);
-                    free_cpt_data(cptdata);
-                    color_array_destroy(color_array);
-                    return -1;
+                    channelset_destroy(cset); goto cleanup;
                 }
             }
         }
@@ -425,16 +367,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         LOG_INFO("Evaluando expresión algebraica...");
         result_data = evaluate_linear_combo(&combo, channels);
         if (!result_data.data_in) {
-            LOG_ERROR("Falla al evaluar la expresión.");
-            channelset_destroy(cset);
-            for (int j = 1; j <= 16; j++) {
-                if (channels[j].fdata.data_in) datanc_destroy(&channels[j]);
-            }
-            if (out_filename_generated) free(out_filename_generated);
-            for (int j = 0; j < num_required_channels; j++) free(required_channels[j]);
-            free_cpt_data(cptdata);
-            color_array_destroy(color_array);
-            return -1;
+            LOG_ERROR("Falla al evaluar la expresión."); channelset_destroy(cset); goto cleanup;
         }
         
         // Si no se proporcionó --minmax, calcular del resultado
@@ -457,17 +390,13 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         
     } else {
         // --- MODO NORMAL: Un solo canal ---
-        char *varname = "Rad"; // Default
-        if (strinstr(fnc01, "CMIP")) varname = "CMI"; else if (strinstr(fnc01, "LST")) varname = "LST";
-        else if (strinstr(fnc01, "ACTP")) varname = "Phase"; else if (strinstr(fnc01, "CTP")) varname = "PRES";
+        char *varname = "Rad"; // Default para L1b
+        if (strinstr(fnc01, "CMIP")) varname = "CMI"; else if (strinstr(fnc01, "LST")) varname = "LST"; else if (strinstr(fnc01, "ACTP")) varname = "Phase"; else if (strinstr(fnc01, "CTP")) varname = "PRES";
         
         // NOTA: load_nc_sf debe llenar los metadatos de DataNC (geotransform, proj_code)
         if (load_nc_sf(fnc01, varname, &c01) != 0) {
             LOG_ERROR("No se pudo cargar el archivo NetCDF: %s", fnc01);
-            if (out_filename_generated) free(out_filename_generated);
-            free_cpt_data(cptdata);
-            color_array_destroy(color_array);
-            return -1;
+            goto cleanup;
         }
     }
 
@@ -483,14 +412,15 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
             .datanc = &c01_for_name,
             .satellite_name = satellite_name,
             .command = is_pseudocolor ? "pseudocolor" : "gray",
-            .rgb_mode = NULL,
+            .mode = is_pseudocolor ? palette_name : NULL,
             .apply_rayleigh = false, // No aplicable
             .apply_histogram = apply_histogram,
             .apply_clahe = apply_clahe,
             .gamma = gamma,
             .has_clip = has_clip,
             .do_reprojection = do_reprojection,
-            .force_geotiff = force_geotiff
+            .force_geotiff = force_geotiff,
+            .invert_values = invert_values
         };
 
         out_filename_generated = generate_hpsv_filename(&info);
@@ -499,7 +429,6 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     }
 
     // --- Navegación y Recorte ---
-    DataF navla_full = {0}, navlo_full = {0};
     bool nav_loaded = false;
     bool is_geotiff = force_geotiff || (outfn && (strstr(outfn, ".tif") || strstr(outfn, ".tiff")));
 
@@ -509,12 +438,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         } else {
             LOG_WARN("No se pudo cargar la navegación del archivo NetCDF.");
             if (is_geotiff) {
-                LOG_ERROR("La navegación es requerida para GeoTIFF. Abortando.");
-                if (out_filename_generated) free(out_filename_generated);
-                free_cpt_data(cptdata);
-                datanc_destroy(&c01);
-                color_array_destroy(color_array);
-                return -1;
+                LOG_ERROR("La navegación es requerida para GeoTIFF. Abortando."); goto cleanup;
             }
         }
     }
@@ -533,103 +457,81 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     }
     
     // --- PASO 1: Crear imagen en proyección nativa ---
-    ImageData final_image = {0};
-
-    // --- PASO 2: Crear imagen nativa (siempre se hace primero) ---
-    ImageData native_image = {0};
     if (expr_mode) {
         // Modo expr: usar rango personalizado
-        native_image = create_single_gray_range(c01.fdata, invert_values, use_alpha, minmax[0], minmax[1]);
+        final_image = create_single_gray_range(c01.fdata, invert_values, use_alpha, minmax[0], minmax[1]);
     } else if (c01.is_float) {
-        if (is_pseudocolor) {
-			printf("puto\n");
-            native_image = create_single_gray(c01.fdata, invert_values, use_alpha, cptdata);
-        } else {
-            native_image = create_single_gray(c01.fdata, invert_values, use_alpha, NULL);
-        }
+        final_image = create_single_gray(c01.fdata, invert_values, use_alpha, is_pseudocolor ? cptdata : NULL);
     } else {
-        native_image = create_single_grayb(c01.bdata, invert_values, use_alpha, cptdata);
+        final_image = create_single_grayb(c01.bdata, invert_values, use_alpha, is_pseudocolor ? cptdata : NULL);
     }
-    if (!native_image.data) {
+    if (!final_image.data) {
         LOG_ERROR("Falla al crear la imagen nativa.");
-        // ... (cleanup)
-        return -1;
+        goto cleanup;
     }
 
     // --- PASO 3: Reproyección o recorte (si es necesario) ---
     if (do_reprojection) {
         if (!nav_loaded) {
             LOG_ERROR("La reproyección fue solicitada pero no se pudo cargar la navegación.");
-            image_destroy(&native_image);
-            // ... (cleanup)
-            return -1;
+            goto cleanup;
         }
 
         LOG_INFO("Iniciando reproyección de imagen a coordenadas geográficas...");
-        final_image = reproject_image_to_geographics(
-            &native_image, &navla_full, &navlo_full, c01.native_resolution_km,
+        temp_image = reproject_image_to_geographics(
+            &final_image, &navla_full, &navlo_full, c01.native_resolution_km,
             has_clip ? clip_coords : NULL
         );
-        image_destroy(&native_image); // Liberar imagen nativa
+        image_destroy(&final_image);
+        final_image = temp_image;
 
         if (final_image.data == NULL) {
             LOG_ERROR("Falla durante la reproyección de la imagen.");
-            // ... (cleanup)
-            return -1;
+            goto cleanup;
         }
 
         // Actualizar los límites geográficos para el GeoTIFF de salida
         if (has_clip) {
-            final_lon_min = clip_coords[0];
-            final_lat_max = clip_coords[1];
-            final_lon_max = clip_coords[2];
-            final_lat_min = clip_coords[3];
+            final_lon_min = clip_coords[0]; final_lat_max = clip_coords[1];
+            final_lon_max = clip_coords[2]; final_lat_min = clip_coords[3];
         } else {
-            final_lon_min = navlo_full.fmin;
-            final_lon_max = navlo_full.fmax;
-            final_lat_min = navla_full.fmin;
-            final_lat_max = navla_full.fmax;
+            final_lon_min = navlo_full.fmin; final_lon_max = navlo_full.fmax;
+            final_lat_min = navla_full.fmin; final_lat_max = navla_full.fmax;
         }
     } else if (has_clip) {
         // --- Recorte en proyección nativa (sin reproyección) ---
         if (!nav_loaded) {
             LOG_ERROR("El recorte fue solicitado pero no se pudo cargar la navegación.");
-            image_destroy(&native_image);
-            // ... (cleanup)
-            return -1;
+            goto cleanup;
         }
         int ix, iy, iw, ih;
         reprojection_find_bounding_box(&navla_full, &navlo_full, clip_coords[0], clip_coords[1], clip_coords[2], clip_coords[3], &ix, &iy, &iw, &ih);
         LOG_INFO("Aplicando recorte geoestacionario: start[%d,%d], size[%d,%d]", ix, iy, iw, ih);
         
-        final_image = image_crop(&native_image, ix, iy, iw, ih);
-        image_destroy(&native_image);
+        temp_image = image_crop(&final_image, ix, iy, iw, ih);
+        image_destroy(&final_image);
+        final_image = temp_image;
         crop_x_start = (unsigned)ix;
         crop_y_start = (unsigned)iy;
-    } else {
-        // Sin reproyección ni recorte, la imagen final es la nativa.
-        final_image = native_image;
     }
 
     // --- PASO 4: Post-procesamiento ---
-    ImageData imout = final_image; // Usamos imout como puntero de trabajo
-
     // La ecualización de histograma y CLAHE no tienen sentido para pseudocolor,
     // ya que la paleta de colores es la que define el "realce".
     if (!is_pseudocolor) {
-        if (apply_histogram) image_apply_histogram(imout);
-        if (apply_clahe) image_apply_clahe(imout, clahe_tiles_x, clahe_tiles_y, clahe_clip_limit);
+        if (apply_histogram) image_apply_histogram(final_image);
+        if (apply_clahe) image_apply_clahe(final_image, clahe_tiles_x, clahe_tiles_y, clahe_clip_limit);
     }
     
     // --- REMUESTREO (si se solicitó) ---
     if (scale < 0) {
-        ImageData scaled = image_downsample_boxfilter(&imout, -scale);
-        image_destroy(&imout);
-        imout = scaled;
+        temp_image = image_downsample_boxfilter(&final_image, -scale);
+        image_destroy(&final_image);
+        final_image = temp_image;
     } else if (scale > 1) {
-        ImageData scaled = image_upsample_bilinear(&imout, scale);
-        image_destroy(&imout);
-        imout = scaled;
+        temp_image = image_upsample_bilinear(&final_image, scale);
+        image_destroy(&final_image);
+        final_image = temp_image;
     }
 
     // --- Escritura de archivo ---
@@ -642,29 +544,28 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
             
             // Construir GeoTransform [TL_X, W_Px, 0, TL_Y, 0, H_Px]
             meta_out.geotransform[0] = final_lon_min;
-            meta_out.geotransform[1] = (final_lon_max - final_lon_min) / (double)imout.width;
+            meta_out.geotransform[1] = (final_lon_max - final_lon_min) / (double)final_image.width;
             meta_out.geotransform[2] = 0.0;
             meta_out.geotransform[3] = final_lat_max;
             meta_out.geotransform[4] = 0.0;
             // Altura de pixel suele ser negativa (Norte -> Sur)
-            meta_out.geotransform[5] = (final_lat_min - final_lat_max) / (double)imout.height; 
+            meta_out.geotransform[5] = (final_lat_min - final_lat_max) / (double)final_image.height; 
 
             // Pasamos offset 0,0 porque la imagen y el geotransform ya están alineados
             if (is_pseudocolor && color_array) {
                 if (use_alpha) {
-                    // Expandir paleta a RGB/RGBA para soportar alpha
-                    ImageData expanded = image_expand_palette(&imout, color_array);
-                    write_geotiff_rgb(outfn, &expanded, &meta_out, 0, 0);
-                    image_destroy(&expanded);
+                    temp_image = image_expand_palette(&final_image, color_array);
+                    write_geotiff_rgb(outfn, &temp_image, &meta_out, 0, 0);
+                    image_destroy(&temp_image);
                 } else {
-                    write_geotiff_indexed(outfn, &imout, color_array, &meta_out, 0, 0);
+                    write_geotiff_indexed(outfn, &final_image, color_array, &meta_out, 0, 0);
                 }
             } else {
-                write_geotiff_gray(outfn, &imout, &meta_out, 0, 0);
+                write_geotiff_gray(outfn, &final_image, &meta_out, 0, 0);
             }
         } else {
             // MODO: Nativo (Geoestacionario)
-            // Copiamos la info del NetCDF original
+            // Copiamos la info del NetCDF original (c01)
             meta_out = c01;
             
             // Ajustar geotransform si se aplicó scale
@@ -686,27 +587,29 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
             // Pasamos el offset del recorte para que GDAL ajuste el origen
             if (is_pseudocolor && color_array) {
                 if (use_alpha) {
-                    // Expandir paleta a RGB/RGBA para soportar alpha
-                    ImageData expanded = image_expand_palette(&imout, color_array);
-                    write_geotiff_rgb(outfn, &expanded, &meta_out, crop_x_start, crop_y_start);
-                    image_destroy(&expanded);
+                    temp_image = image_expand_palette(&final_image, color_array);
+                    write_geotiff_rgb(outfn, &temp_image, &meta_out, crop_x_start, crop_y_start);
+                    image_destroy(&temp_image);
                 } else {
-                    write_geotiff_indexed(outfn, &imout, color_array, &meta_out, crop_x_start, crop_y_start);
+                    write_geotiff_indexed(outfn, &final_image, color_array, &meta_out, crop_x_start, crop_y_start);
                 }
             } else {
-                write_geotiff_gray(outfn, &imout, &meta_out, crop_x_start, crop_y_start);
+                write_geotiff_gray(outfn, &final_image, &meta_out, crop_x_start, crop_y_start);
             }
         }
     } else {
         if (is_pseudocolor && color_array) {
-            LOG_DEBUG("Escribiendo PNG con paleta: %ux%u bpp=%u", imout.width, imout.height, imout.bpp);
-            writer_save_png_palette(outfn, &imout, color_array);
+            LOG_DEBUG("Escribiendo PNG con paleta: %ux%u bpp=%u", final_image.width, final_image.height, final_image.bpp);
+            writer_save_png_palette(outfn, &final_image, color_array);
         } else {
-            writer_save_png(outfn, &imout);
+            writer_save_png(outfn, &final_image);
         }
     }
     LOG_INFO("Imagen guardada en: %s", outfn);
 
+    status = 0; // Éxito
+
+cleanup:
     // --- Liberación de memoria ---
     if (nav_loaded) {
         dataf_destroy(&navla_full);
@@ -714,7 +617,6 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     }
     free_cpt_data(cptdata);
     
-    // Limpiar canales cargados en modo expr
     if (expr_mode) {
         for (int i = 1; i <= 16; i++) {
             if (channels[i].fdata.data_in || channels[i].bdata.data_in) {
@@ -724,14 +626,14 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         for (int i = 0; i < num_required_channels; i++) {
             if (required_channels[i]) free(required_channels[i]);
         }
-        if (result_data.data_in) dataf_destroy(&result_data);
-    } else {
-        datanc_destroy(&c01);
     }
     
-    image_destroy(&imout);
+    datanc_destroy(&c01);
+    dataf_destroy(&result_data); // Seguro aunque esté vacío
+    image_destroy(&final_image);
     color_array_destroy(color_array);
     if (out_filename_generated) free(out_filename_generated);
+    if (palette_name) free(palette_name);
 
-    return 0;
+    return status;
 }

@@ -41,7 +41,7 @@ typedef struct {
 
 typedef enum {
   PROJ_GEOS = 0,   // GOES-R ABI Fixed Grid
-  PROJ_LATLON = 1, // Equirectangular / Plate Carrée (EPSG:4326)
+  PROJ_LATLON = 1, // Equirrectangular / Plate Carrée (EPSG:4326)
   PROJ_UNKNOWN = 255
 } ProjectionCode;
   

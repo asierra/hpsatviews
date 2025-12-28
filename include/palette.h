@@ -11,11 +11,14 @@
 typedef struct {
     double d;
     float r, g, b, a;
-} PaletaData;
+} PaletteData;
 
 
 //  Meteorological palette for surface and high clouds
-extern PaletaData atmosrainbow[];
+//  Temp K,        Color,         Transparency
+//  254 - 340, White - Black, Opaque - Transparent
+//  170 - 253, Rainbow, Opaque
+extern PaletteData atmosrainbow[];
 
 ColorArray* atmosrainbow_to_color_array();
 

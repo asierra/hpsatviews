@@ -169,7 +169,7 @@ Genera una vista en escala de grises del canal C13.
   ``` 
 
 * `-r, --geographics`
-  Reproyecta la salida a coordenadas geográficas (latitud/longitud) ecuirrectangulares.
+  Reproyecta la salida a coordenadas geográficas (latitud/longitud) equirrectangulares.
 
 * `-s, --scale <factor>`
   Factor entero de escala espacial. Valores mayores que 1 amplían la 

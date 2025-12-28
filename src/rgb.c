@@ -634,7 +634,7 @@ static bool generate_output_filename(RgbContext *ctx, const RgbStrategy *strateg
     FilenameGeneratorInfo info = {.datanc = &ctx->channels[ctx->ref_channel_idx],
                                   .satellite_name = satellite_name,
                                   .command = "rgb",
-                                  .rgb_mode = ctx->opts.mode,
+                                  .mode = ctx->opts.mode,
                                   .apply_rayleigh = ctx->opts.apply_rayleigh,
                                   .apply_histogram = ctx->opts.apply_histogram,
                                   .apply_clahe = ctx->opts.apply_clahe,

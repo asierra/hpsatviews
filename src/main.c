@@ -88,7 +88,7 @@ int main(int argc, char *argv[]) {
     }
 
     // --- Comando 'pseudocolor' ---
-    ArgParser *pc_cmd = ap_new_cmd(parser, "pseudocolor");
+    ArgParser *pc_cmd = ap_new_cmd(parser, "pseudocolor pseudo");
     if (pc_cmd) {
         ap_set_helptext(pc_cmd, HPSATVIEWS_HELP_PSEUDOCOLOR);
         add_common_opts(pc_cmd);
