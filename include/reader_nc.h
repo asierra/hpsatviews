@@ -9,7 +9,7 @@
 
 
 // Load GOES L1b data and metadada from nc file
-int load_nc_sf(const char *filename, const char *variable, DataNC *datanc);
+int load_nc_sf(const char *filename, DataNC *datanc);
 
 // Just load float array from nc file
 int load_nc_float(const char *filename, DataF *datanc, const char *variable);

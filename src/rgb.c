@@ -466,9 +466,8 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
         }
         int cn = atoi(ctx->channel_set->channels[i].name + 1); // "C01" -> 1
         if (cn > 0 && cn <= 16) {
-            const char *var = ctx->opts.is_l2_product ? "CMI" : "Rad";
             LOG_DEBUG("Cargando canal C%02d desde %s", cn, ctx->channel_set->channels[i].filename);
-            if (load_nc_sf(ctx->channel_set->channels[i].filename, var, &ctx->channels[cn]) != 0) {
+            if (load_nc_sf(ctx->channel_set->channels[i].filename, &ctx->channels[cn]) != 0) {
                 snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falla al cargar NetCDF: %s",
                          ctx->channel_set->channels[i].filename);
                 return false;

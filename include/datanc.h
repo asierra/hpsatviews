@@ -49,6 +49,7 @@ typedef enum {
 typedef struct {
   DataF fdata; // Used if the data is float
   DataB bdata; // Used if the data is byte
+  const char* varname;
   bool is_float; // True if fdata is valid, false if bdata is valid
   int year, mon, day, hour, min, sec;
   unsigned char band_id;

@@ -289,13 +289,8 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
             }
             
             // Cargar NetCDF
-            char* varname = "Rad"; // Default
-            if (strinstr(ch_file, "CMIP")) varname = "CMI"; 
-             else if (strinstr(ch_file, "LST")) varname = "LST";
-             else if (strinstr(ch_file, "ACTP")) varname = "Phase"; 
-             else if (strinstr(ch_file, "CTP")) varname = "PRES";
             LOG_INFO("Cargando canal %s desde: %s", ch_name, ch_file);
-            if (load_nc_sf(ch_file, varname, &channels[band_id]) != 0) {
+            if (load_nc_sf(ch_file, &channels[band_id]) != 0) {
                 LOG_ERROR("No se pudo cargar el canal %s: %s", ch_name, ch_file);
                 channelset_destroy(cset);
                 // Limpiar canales ya cargados
@@ -390,11 +385,9 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
         
     } else {
         // --- MODO NORMAL: Un solo canal ---
-        char *varname = "Rad"; // Default para L1b
-        if (strinstr(fnc01, "CMIP")) varname = "CMI"; else if (strinstr(fnc01, "LST")) varname = "LST"; else if (strinstr(fnc01, "ACTP")) varname = "Phase"; else if (strinstr(fnc01, "CTP")) varname = "PRES";
         
         // NOTA: load_nc_sf debe llenar los metadatos de DataNC (geotransform, proj_code)
-        if (load_nc_sf(fnc01, varname, &c01) != 0) {
+        if (load_nc_sf(fnc01, &c01) != 0) {
             LOG_ERROR("No se pudo cargar el archivo NetCDF: %s", fnc01);
             goto cleanup;
         }

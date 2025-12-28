@@ -13,6 +13,32 @@
 #include <string.h>
 #include <time.h>
 
+
+const char *VAR_NAME_RAD = "Rad";
+
+const char *detect_variable_from_filename(const char *filename) {
+    if (filename == NULL) return NULL;
+
+    if (strstr(filename, "L1b"))     return VAR_NAME_RAD;
+    if (strstr(filename, "CMIP"))    return "CMI";
+    if (strstr(filename, "LST"))     return "LST";
+    if (strstr(filename, "SST"))     return "SST";
+    if (strstr(filename, "ACTP"))    return "Phase";
+    if (strstr(filename, "CTP"))     return "PRES";
+
+    return NULL; 
+}
+
+static const char *detect_variable_from_content(int ncid) {
+    int varid;
+
+    // Probamos en orden de prioridad
+    if (nc_inq_varid(ncid, VAR_NAME_RAD, &varid) == NC_NOERR)   return VAR_NAME_RAD;
+    if (nc_inq_varid(ncid, "CMI", &varid) == NC_NOERR)   return "CMI";
+
+    return NULL; // Archivo no contiene ninguna variable soportada
+}
+
 #define ERRCODE 2
 #define ERR(e)                                                                 \
   {                                                                            \
@@ -24,15 +50,29 @@
     LOG_WARN("NetCDF warning: %s", nc_strerror(e));                            \
   }
 
+// En reader_nc.c, antes de load_nc_sf
+
+
 // Carga un conjunto de datos de NetCDF y lo pone en una estructura DataNC
 // Específico para datos L1b de GOES
-int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
+int load_nc_sf(const char *filename, DataNC *datanc) {
   int retval;
   int ncid;
-  bool is_l1b = (strcmp(variable, "Rad") == 0);
   
   if ((retval = nc_open(filename, NC_NOWRITE, &ncid)))
     ERR(retval);
+
+  const char *varname = detect_variable_from_filename(filename);
+  if (varname == NULL) {
+    varname = detect_variable_from_content(ncid);
+    if (varname == NULL) {
+      nc_close(ncid);
+      LOG_FATAL("Variable no soportada.");
+      return -1;
+    }
+  }
+  datanc->varname = varname;
+  bool is_l1b = (varname==VAR_NAME_RAD);
 
   int xid;
   if ((retval = nc_inq_dimid(ncid, "x", &xid)))
@@ -68,7 +108,7 @@ int load_nc_sf(const char *filename, const char *variable, DataNC *datanc) {
 
   // Obtenemos el id de la variable
   int rad_varid;
-  if ((retval = nc_inq_varid(ncid, variable, &rad_varid)))
+  if ((retval = nc_inq_varid(ncid, varname, &rad_varid)))
     ERR(retval);
 
   // Obtiene el factor de escala y offset de la variable y el fillvalue
