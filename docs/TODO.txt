@@ -132,3 +132,9 @@ como rgb. Falta en custom aplicar rayleigh solo a las visibles. Y
 recuperar implementación rayleygh por lectura de luts y comparar con
 implementación analítica (preferida).
 
+
+Sun Dec 28 07:11:51 PM CST 2025
+
+En pseudo y en general, leer primero el archivo para saber los maxmin
+y como alternativa, usar --minmax.
+
