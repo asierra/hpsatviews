@@ -133,6 +133,15 @@ recuperar implementación rayleygh por lectura de luts y comparar con
 implementación analítica (preferida).
 
 
+Fri Dec 26 08:38:03 PM UTC 2025
+
+Listo versión opción y sin argumentos. CLI simplificado
+hpsv. Refactoring necesario para generar metadata.json y simplemente
+para mejorar el proceso. Por ejemplo, conviene leer primero los datos
+antes de tomar algunas decisiones, como decidir el tamaño de la paleta
+en pseudo.
+
+
 Sun Dec 28 07:11:51 PM CST 2025
 
 En pseudo y en general, leer primero el archivo para saber los maxmin

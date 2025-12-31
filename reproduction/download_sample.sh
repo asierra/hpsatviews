@@ -48,6 +48,25 @@ download_channel() {
     fi
 }
 
+download_l2_product() {
+    local PRODUCT=$1
+    local LABEL=$2
+
+    echo "Buscando $LABEL ($PRODUCT) para $SCAN_TIME"
+
+    FILE=$(curl -s "$BUCKET_URL/$PRODUCT_PREFIX/" | \
+           grep "$PRODUCT" | \
+           grep "$SCAN_TIME" | \
+           sed -n 's/.*href="\([^"]*\)".*/\1/p' | head -n 1)
+
+    if [ -n "$FILE" ]; then
+        echo "Descargando $FILE"
+        wget -q -O "$DATA_DIR/$FILE" "$BUCKET_URL/$PRODUCT_PREFIX/$FILE"
+    else
+        echo "⚠️  No se encontró $LABEL para $SCAN_TIME"
+    fi
+}
+
 # --- Ejecución ---
 
 # 1. Canales Visibles (True Color)
@@ -63,6 +82,11 @@ download_channel "12" # Ozone
 download_channel "13" # Clean IR (Reference)
 download_channel "14" # IR
 download_channel "15" # Dirty IR
+
+download_l2_product "ABI-L2-SSTC" "Sea Surface Temperature"
+download_l2_product "ABI-L2-LST"  "Land Surface Temperature"
+download_l2_product "ABI-L2-ACTP" "Cloud phase category"
+download_l2_product "ABI-L2-CTP" "Air pressure at cloud top"
 
 echo "--- Proceso finalizado ---"
 ls -lh $DATA_DIR

@@ -88,6 +88,10 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     DataF result_data = {0}, navla_full = {0}, navlo_full = {0};
     ImageData final_image = {0}, temp_image = {0};
     char *palette_name = NULL;
+    bool nav_loaded = false;
+    bool expr_mode = false;
+    int num_required_channels = 0;
+    char* required_channels[17] = {NULL};
 
     if (ap_has_args(parser)) {
         fnc01 = ap_get_arg_at_index(parser, 0);
@@ -97,10 +101,8 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     }
 
     // --- Detección de modo --expr (álgebra de bandas) ---
-    const bool expr_mode = ap_found(parser, "expr");
+    expr_mode = ap_found(parser, "expr");
     LinearCombo combo = {0};
-    char* required_channels[17] = {NULL};  // Máximo 16 bandas + terminador NULL
-    int num_required_channels = 0;
     float minmax[2] = {0.0f, 255.0f};  // Rango por defecto
     bool minmax_provided = false;  // Track si el usuario especificó --minmax
 
@@ -422,7 +424,6 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
     }
 
     // --- Navegación y Recorte ---
-    bool nav_loaded = false;
     bool is_geotiff = force_geotiff || (outfn && (strstr(outfn, ".tif") || strstr(outfn, ".tiff")));
 
     if (ap_found(parser, "clip") || is_geotiff || do_reprojection) {
