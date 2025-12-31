@@ -115,6 +115,7 @@ ImageData image_crop(const ImageData *src, unsigned int x, unsigned int y, unsig
     return cropped_img;
 }
 
+
 ImageData blend_images(ImageData bg, ImageData fg, ImageData mask) {
     if (bg.width != fg.width || bg.height != fg.height || bg.width != mask.width ||
         bg.height != mask.height) {
@@ -172,7 +173,6 @@ void image_apply_histogram(ImageData im) {
             unsigned int po = i * im.bpp;
             unsigned int q;
             if (im.bpp >= 3)
-                // Average luminosity
                 q = (unsigned int)(luminance_from_rgb(im.data[po],im.data[po + 1],im.data[po + 2])+0.5);
             else
                 q = im.data[po];
@@ -209,18 +209,19 @@ ImageData extract_luminance_rgb(const ImageData *rgb) {
         LOG_ERROR("Solo se puede extraer luminancia de una imagen con 3 canales");
         return image_create(0, 0, 0);
     }
-    ImageData lum = image_create(rgb->width, rgb->height, rgb->bpp);
+    ImageData lum = image_create(rgb->width, rgb->height, 1);
     if (lum.data == NULL) {
         LOG_ERROR("No se pudo asignar memoria para luminancia.");
         return image_create(0, 0, 0);
     }
 
     size_t size = rgb->width * rgb->height;
-
+    #pragma omp parallel for
     for (size_t i = 0; i < size; i++) {
-        uint8_t R = rgb->data[3 * i];
-        uint8_t G = rgb->data[3 * i + 1];
-        uint8_t B = rgb->data[3 * i + 2];
+		size_t po = i * rgb->bpp;
+        uint8_t R = rgb->data[po];
+        uint8_t G = rgb->data[po + 1];
+        uint8_t B = rgb->data[po + 2];
 
         /* Luminancia lineal Rec.709 */
         float L = luminance_from_rgb(R, G, B);
@@ -236,18 +237,18 @@ ImageData extract_luminance_rgb(const ImageData *rgb) {
     return lum;
 }
 
-void apply_luminance_to_rgb(const ImageData *rgb, const ImageData *lum_clahe) {
+void apply_luminance_to_rgb(ImageData *rgb, const ImageData *lum_clahe) {
     if (rgb->bpp < 3) {
-        LOG_ERROR("Solo se puede aplicar luminancia a una imagen con 3 canales");
+        LOG_ERROR("Solo se puede aplicar luminancia a una imagen RGB.");
         return;
     }
-
     size_t size = rgb->width * rgb->height;
-
+    #pragma omp parallel for
     for (size_t i = 0; i < size; i++) {
-		float r = rgb->data[3*i];
-        float g = rgb->data[3*i + 1];
-        float b = rgb->data[3*i + 2];
+		size_t po = i * rgb->bpp;
+		float r = rgb->data[po];
+        float g = rgb->data[po + 1];
+        float b = rgb->data[po + 2];
 
         float L0 =
             0.2126f * r +
@@ -269,9 +270,9 @@ void apply_luminance_to_rgb(const ImageData *rgb, const ImageData *lum_clahe) {
         if (g > 255.0f) g = 255.0f;
         if (b > 255.0f) b = 255.0f;
 
-        rgb->data[3*i]     = (uint8_t)(r + 0.5f);
-        rgb->data[3*i + 1] = (uint8_t)(g + 0.5f);
-        rgb->data[3*i + 2] = (uint8_t)(b + 0.5f);
+        rgb->data[po]     = (uint8_t)(r + 0.5f);
+        rgb->data[po + 1] = (uint8_t)(g + 0.5f);
+        rgb->data[po + 2] = (uint8_t)(b + 0.5f);
     }
 }
 
@@ -333,7 +334,6 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
         LOG_ERROR("Parámetros inválidos para CLAHE");
         return;
     }
-
 	ImageData lum = (im.bpp < 3) ? im: extract_luminance_rgb(&im);
 
     int tile_width = im.width / tiles_x;
@@ -385,7 +385,6 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
             calculate_cdf_mapping(hist, lut[ty][tx], actual_pixels);
         }
     }
-
 // Paso 2: Aplicar interpolación bilinear pixel por pixel
 #pragma omp parallel for
     for (unsigned int y = 0; y < lum.height; y++) {
@@ -440,10 +439,13 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
     }
     free(lut);
 
-	if (im.bpp >= 3) apply_luminance_to_rgb(&im, &lum);
-	
+	if (im.bpp >= 3) {
+        apply_luminance_to_rgb(&im, &lum);
+        image_destroy(&lum);
+    }
     LOG_INFO("CLAHE aplicado: tiles=%dx%d, clip_limit=%.2f", tiles_x, tiles_y, clip_limit);
 }
+
 
 // ============================================================================
 // Image Resampling
