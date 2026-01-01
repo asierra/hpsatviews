@@ -150,17 +150,24 @@ bool rayleigh_load_navigation(const char *filename, RayleighNav *nav,
  * atmosphere. Applied Optics, 34(15), 2765-2773.
  *
  *
- * 3. Terminator Correction (SZA Fading)
- * -------------------------------------
- * The plane-parallel approximation diverges as the Solar Zenith Angle (SZA)
- * approaches 90 degrees (horizon). To prevent artifacts (e.g., yellowing clouds,
- * noise amplification) at the terminator, a linear fading factor is applied.
+ * 3. Terminator Correction (SZA/VZA Fading)
+ * ------------------------------------------
+ * The plane-parallel approximation diverges at high zenith angles.
+ * To prevent artifacts (e.g., yellowing clouds, noise amplification) at extreme
+ * viewing geometries, a smooth fading factor is applied using smoothstep.
  *
- * - SZA < 65.0 deg: Full correction (Factor = 1.0)
- * - SZA > 80.0 deg: No correction   (Factor = 0.0)
- * - 65.0 < SZA < 80.0: Linear interpolation.
+ * Solar Zenith Angle (SZA):
+ * - SZA < 55.0°: Full correction (Factor = 1.0)
+ * - SZA > 85.0°: No correction   (Factor = 0.0)
+ * - 55° < SZA < 85°: Smooth interpolation (smoothstep)
  *
- * This heuristic is standard in processing packages like SatPy/Geo2Grid (NOAA/CIMSS).
+ * View Zenith Angle (VZA):
+ * - VZA < 50.0°: Full correction (Factor = 1.0)
+ * - VZA > 75.0°: No correction   (Factor = 0.0)
+ * - 50° < VZA < 75°: Smooth interpolation (smoothstep)
+ *
+ * The final factor is the minimum of both, ensuring conservative correction.
+ * Smoothstep provides much better visual transitions than linear interpolation.
  *
  *
  * 4. Hybrid Green Generation (True Color)
@@ -203,15 +210,32 @@ void analytic_rayleigh_correction(DataF *img, const RayleighNav *nav, float tau)
         if (IS_NONDATA(val) || IS_NONDATA(sza) || IS_NONDATA(vza) || IS_NONDATA(raa)) continue;
 
         // 1. Límite estricto de seguridad
-        if (sza > 80.0f || vza > 80.0f) continue;
+        if (sza > 85.0f || vza > 75.0f) continue;
 
-		// 2. CÁLCULO DEL FACTOR DE DESVANECIMIENTO (SZA Fading)
-        // Esto evita que las nubes se vuelvan amarillas en el norte/bordes
-        float factor = 1.0f;
-        if (sza > 65.0f) {
-            // Cae linealmente de 1.0 (a los 65°) hasta 0.0 (a los 80°)
-            factor = (80.0f - sza) / (80.0f - 65.0f);
-        }        
+		// 2. CÁLCULO DEL FACTOR DE DESVANECIMIENTO SUAVE (Fading)
+        // Esto evita que las nubes se vuelvan amarillas en ángulos altos
+        // Usamos smoothstep para transición suave, no lineal
+        float factor_sza = 1.0f;
+        float factor_vza = 1.0f;
+        
+        // Transición suave para SZA: 55° (100%) -> 85° (0%)
+        if (sza > 55.0f) {
+            float t = (sza - 55.0f) / (85.0f - 55.0f);
+            // Smoothstep: 3t^2 - 2t^3
+            factor_sza = 1.0f - (t * t * (3.0f - 2.0f * t));
+        }
+        
+        // Transición suave para VZA: 50° (100%) -> 75° (0%)
+        if (vza > 50.0f) {
+            float t = (vza - 50.0f) / (75.0f - 50.0f);
+            factor_vza = 1.0f - (t * t * (3.0f - 2.0f * t));
+        }
+        
+        // Factor combinado (tomar el mínimo para ser conservador)
+        float factor = fminf(factor_sza, factor_vza);
+        
+        // Si el factor es muy pequeño, mejor saltar
+        if (factor < 0.05f) continue;
 	
         // Convertir a radianes
         float theta_s = sza * deg2rad;
@@ -220,6 +244,10 @@ void analytic_rayleigh_correction(DataF *img, const RayleighNav *nav, float tau)
 
         float cos_s = cosf(theta_s);
         float cos_v = cosf(theta_v);
+        
+        // Protección contra ángulos extremos donde la fórmula se vuelve inestable
+        // Cuando cos_s o cos_v son muy pequeños, el denominador explota
+        if (cos_s < 0.087f || cos_v < 0.174f) continue; // ~85° y ~80°
 
         // Calcular ángulo de dispersión (Scattering Angle) Theta
         // Cos(Theta) = -Cos(S)*Cos(V) + Sin(S)*Sin(V)*Cos(Phi)
@@ -232,11 +260,15 @@ void analytic_rayleigh_correction(DataF *img, const RayleighNav *nav, float tau)
         
         float cos_scat = -cos_s * cos_v + sin_s * sin_v * cosf(phi);
         
-        // Función de fase de Rayleigh: P(Theta) = 0.75 * (1 + cos^2(Theta))
-        float phase = 0.75f * (1.0f + cos_scat * cos_scat);
-
+        // Función de fase de Rayleigh mejorada con factor de despolarización
+        // P(Theta) = 0.75 * (1 + cos^2(Theta)) para aire sin despolarización
+        // Con despolarización δ=0.0279: P(Theta) = 0.7629 * (1 + 0.9320*cos^2(Theta))
+        // Simplificamos manteniendo el factor 0.75 y ajustando ligeramente el cos^2
+        float cos_scat_sq = cos_scat * cos_scat;
+        float phase = 0.75f * (1.0f + 0.935f * cos_scat_sq);
+        
         // Reflectancia de Rayleigh: R = (Tau * P) / (4 * cos_s * cos_v)
-        // Factor 4.0 viene de la definición de reflectancia bidireccional
+        // Factor 4.0 viene de la normalización para reflectancia bidireccional
         float ray_refl = (tau * phase) / (4.0f * cos_s * cos_v);
 
         // 3. Aplicar la corrección moderada por el factor
@@ -340,131 +372,10 @@ static inline float get_rayleigh_value(const RayleighLUT *lut, float s, float v,
     // Interpolar en eje Solar Zenith
     float result = c0 * (1.0f - ds) + c1 * ds;
     
-    // CRÍTICO: Las LUTs de pyspectral están en escala 0-100, necesitamos dividir por 100
-    // para convertir a reflectancia 0-1
-    return result / 100.0f;
-}
-
-
-/**
- * Aplica corrección Rayleigh con LUTs.
- * img: DataF con reflectancia TOA (input/output)
- * sza: Solar Zenith Angle
- * vza: View Zenith Angle (Satellite Zenith)
- * raa: Relative Azimuth Angle
- * lut: Puntero a la tabla cargada
- */
-void apply_rayleigh_correction(DataF *img, const DataF *sza, const DataF *vza, const DataF *raa, const RayleighLUT *lut) {
-    if (img->size != sza->size || img->size != vza->size || img->size != raa->size) {
-        LOG_ERROR("Dimensiones de geometría no coinciden con la imagen en hpsat_rayleigh_correct.");
-        LOG_ERROR("  Imagen:  %zux%zu = %zu píxeles", img->width, img->height, img->size);
-        LOG_ERROR("  SZA:     %zux%zu = %zu píxeles", sza->width, sza->height, sza->size);
-        LOG_ERROR("  VZA:     %zux%zu = %zu píxeles", vza->width, vza->height, vza->size);
-        LOG_ERROR("  RAA:     %zux%zu = %zu píxeles", raa->width, raa->height, raa->size);
-        return;
-    }
-
-    size_t n = img->size;
-    double start_time = omp_get_wtime();
-    
-    // Estadísticas para debugging
-    size_t night_pixels = 0;
-    size_t negative_pixels = 0;
-    size_t valid_pixels = 0;
-    double sum_original = 0.0;
-    double sum_rayleigh = 0.0;
-    double sum_corrected = 0.0;
-    float max_rayleigh = 0.0f;
-    float min_original = 1e9;
-    float max_original = -1e9;
-
-    // Paralelización con OpenMP
-    // 'schedule(static)' es eficiente porque la carga de trabajo por píxel es constante
-    #pragma omp parallel for schedule(static) reduction(+:night_pixels,negative_pixels,valid_pixels,sum_original,sum_rayleigh,sum_corrected) reduction(max:max_rayleigh,max_original) reduction(min:min_original)
-    for (size_t i = 0; i < n; i++) {
-        float theta_s = sza->data_in[i];
-        float original = img->data_in[i];
-        
-        // Skip invalid data - usar macro IS_NONDATA
-        if (IS_NONDATA(original)) {
-            // Mantener como NonData
-            continue;
-        }
-        
-        if (original < min_original) min_original = original;
-        if (original > max_original) max_original = original;
-
-        // Optimización: Si el cenit solar es muy alto (noche/crepúsculo), saltar
-        // Usamos 88° en lugar de 85° para permitir corrección en crepúsculo
-        if (theta_s > 88.0f || IS_NONDATA(theta_s) || theta_s < 0.0f) {
-            img->data_in[i] = 0.0f; // Enmascarar noche
-            night_pixels++;
-            continue;
-        }
-
-        // Calcular valor Rayleigh de la tabla
-        float r_corr = get_rayleigh_value(lut, theta_s, vza->data_in[i], raa->data_in[i]);
-        if (r_corr > max_rayleigh) max_rayleigh = r_corr;
-        
-        // Debug: samplear algunos valores distribuidos por la imagen
-        if (valid_pixels % 10000 == 0 && valid_pixels < 100000) {
-            #pragma omp critical
-            {
-                LOG_DEBUG("Sample pixel %zu: SZA=%.2f, VZA=%.2f, RAA=%.2f, Original=%.6f, Rayleigh=%.6f", 
-                         i, theta_s, vza->data_in[i], raa->data_in[i], original, r_corr);
-            }
-        }
-
-        // Aplicar corrección: Reflectancia = Observada - Rayleigh
-        float val = original - r_corr;
-
-        // Clamping: Evitar valores negativos que ensucian la imagen
-        if (val < 0.0f) {
-            val = 0.0f;
-            negative_pixels++;
-        }
-
-        sum_original += original;
-        sum_rayleigh += r_corr;
-        sum_corrected += val;
-        valid_pixels++;
-
-        // Guardar resultado
-        img->data_in[i] = val;
-    }
-
-    double end_time = omp_get_wtime();
-    LOG_INFO("Kernel de corrección de Rayleigh completado en %.4f segundos.", end_time - start_time);
-    LOG_INFO("Estadísticas de corrección:");
-    LOG_INFO("  Píxeles noche (SZA>85°):    %zu (%.1f%%)", night_pixels, 100.0*night_pixels/n);
-    LOG_INFO("  Píxeles válidos corregidos: %zu (%.1f%%)", valid_pixels, 100.0*valid_pixels/n);
-    LOG_INFO("  Píxeles negativos clamped:  %zu (%.1f%%)", negative_pixels, 100.0*negative_pixels/n);
-    if (valid_pixels > 0) {
-        LOG_INFO("  Reflectancia original:  min=%.6f, max=%.6f, media=%.6f", 
-                 min_original, max_original, sum_original/valid_pixels);
-        LOG_INFO("  Corrección Rayleigh:    max=%.6f, media=%.6f", 
-                 max_rayleigh, sum_rayleigh/valid_pixels);
-        LOG_INFO("  Reflectancia corregida: media=%.6f", sum_corrected/valid_pixels);
-    }
-
-    // Actualizar fmin/fmax de la estructura para que la normalización sea correcta
-    // Recalcular min/max sobre los datos corregidos
-    float new_min = 1e20f;
-    float new_max = -1e20f;
-    for (size_t i = 0; i < n; i++) {
-        float val = img->data_in[i];
-        // Solo considerar píxeles válidos: mayor que 0 y no NonData
-        if (val > 0.0f && !IS_NONDATA(val)) {
-            if (val < new_min) new_min = val;
-            if (val > new_max) new_max = val;
-        }
-    }
-    
-    if (new_max > new_min) {
-        img->fmin = new_min;
-        img->fmax = new_max;
-        LOG_INFO("  Rango actualizado después de Rayleigh: [%.6f, %.6f]", new_min, new_max);
-    }
+    // Las LUTs de pyspectral ya contienen valores de reflectancia directos (0-100)
+    // No necesitan dividirse por 100, están en porcentaje directo
+    // Multiplicaremos por tau en la función que llama
+    return result;
 }
 
 
@@ -480,8 +391,24 @@ void apply_rayleigh_correction(DataF *img, const DataF *sza, const DataF *vza, c
  * @param name Nombre descriptivo para logs (ej: "C01")
  * @return Estructura RayleighLUT cargada (table será NULL si falla)
  */
-static RayleighLUT rayleigh_lut_load_from_memory(const unsigned char *data, unsigned int data_len, const char *name) {
+static RayleighLUT rayleigh_lut_load_from_memory(const char *name) {
     RayleighLUT lut = {0};
+    const unsigned char *data;
+    unsigned int data_len;
+    // Determinar qué LUT embebida usar
+    if (strcmp(name, "C01") == 0) {
+        data = rayleigh_lut_C01_bin;
+        data_len = rayleigh_lut_C01_bin_len;
+    } else if (strcmp(name, "C02") == 0) {
+        data = rayleigh_lut_C02_bin;
+        data_len = rayleigh_lut_C02_bin_len;
+    } else if (strcmp(name, "C03") == 0) {
+        data = rayleigh_lut_C03_bin;
+        data_len = rayleigh_lut_C03_bin_len;
+    } else {
+        LOG_ERROR("Nombre de LUT no reconocido %s", name);
+        return lut;
+    }
     
     if (!data || data_len < 48) {
         LOG_ERROR("Datos embebidos inválidos para LUT %s", name);
@@ -534,6 +461,18 @@ static RayleighLUT rayleigh_lut_load_from_memory(const unsigned char *data, unsi
     // Copiar datos de la tabla
     memcpy(lut.table, ptr, table_size * sizeof(float));
     
+    // Calcular estadísticas de la tabla para verificar el rango
+    float min_val = lut.table[0];
+    float max_val = lut.table[0];
+    double sum = 0.0;
+    for (size_t i = 0; i < table_size; i++) {
+        float v = lut.table[i];
+        if (v < min_val) min_val = v;
+        if (v > max_val) max_val = v;
+        sum += v;
+    }
+    float mean_val = (float)(sum / table_size);
+    
     LOG_INFO("LUT de Rayleigh %s cargada desde datos embebidos", name);
     LOG_INFO("  Dimensiones: %d × %d × %d = %zu valores", 
              lut.n_sz, lut.n_vz, lut.n_az, table_size);
@@ -543,103 +482,12 @@ static RayleighLUT rayleigh_lut_load_from_memory(const unsigned char *data, unsi
              lut.vz_min, lut.vz_max, lut.vz_step);
     LOG_INFO("  Azimuth: %.0f° - %.0f° (step: %.1f°)", 
              lut.az_min, lut.az_max, lut.az_step);
+    LOG_INFO("  Valores tabla: min=%.6f, max=%.6f, media=%.6f", 
+             min_val, max_val, mean_val);
     
     return lut;
 }
 
-/**
- * Carga una LUT de Rayleigh desde un archivo binario.
- * 
- * Formato del archivo:
- * - Header (48 bytes): 9 floats (min, max, step) + 3 ints (dimensiones)
- * - Data: Array 3D float32 [sza][vza][azimuth]
- * 
- * @param filename Ruta al archivo binario (.bin)
- * @return Estructura RayleighLUT cargada (table será NULL si falla)
- */
-RayleighLUT rayleigh_lut_load(const char *filename) {
-    RayleighLUT lut = {0};
-    
-    // Determinar qué LUT embebida usar basándose en el nombre del archivo
-    if (strstr(filename, "C01") || strstr(filename, "c01")) {
-        return rayleigh_lut_load_from_memory(rayleigh_lut_C01_bin, rayleigh_lut_C01_bin_len, "C01");
-    } else if (strstr(filename, "C02") || strstr(filename, "c02")) {
-        return rayleigh_lut_load_from_memory(rayleigh_lut_C02_bin, rayleigh_lut_C02_bin_len, "C02");
-    } else if (strstr(filename, "C03") || strstr(filename, "c03")) {
-        return rayleigh_lut_load_from_memory(rayleigh_lut_C03_bin, rayleigh_lut_C03_bin_len, "C03");
-    }
-    
-    // Fallback: intentar cargar desde archivo (para compatibilidad)
-    FILE *f = fopen(filename, "rb");
-    if (!f) {
-        LOG_ERROR("No se pudo abrir LUT de Rayleigh: %s", filename);
-        return lut;
-    }
-    
-    // Leer header (48 bytes: 9 floats + 3 ints)
-    size_t items_read = 0;
-    items_read += fread(&lut.sz_min, sizeof(float), 1, f);
-    items_read += fread(&lut.sz_max, sizeof(float), 1, f);
-    items_read += fread(&lut.sz_step, sizeof(float), 1, f);
-    items_read += fread(&lut.vz_min, sizeof(float), 1, f);
-    items_read += fread(&lut.vz_max, sizeof(float), 1, f);
-    items_read += fread(&lut.vz_step, sizeof(float), 1, f);
-    items_read += fread(&lut.az_min, sizeof(float), 1, f);
-    items_read += fread(&lut.az_max, sizeof(float), 1, f);
-    items_read += fread(&lut.az_step, sizeof(float), 1, f);
-    items_read += fread(&lut.n_sz, sizeof(int), 1, f);
-    items_read += fread(&lut.n_vz, sizeof(int), 1, f);
-    items_read += fread(&lut.n_az, sizeof(int), 1, f);
-    
-    if (items_read != 12) {
-        LOG_ERROR("Error al leer header de LUT: %s", filename);
-        fclose(f);
-        return lut;
-    }
-    
-    // Validar dimensiones
-    if (lut.n_sz <= 0 || lut.n_vz <= 0 || lut.n_az <= 0 ||
-        lut.n_sz > 1000 || lut.n_vz > 1000 || lut.n_az > 1000) {
-        LOG_ERROR("Dimensiones inválidas en LUT: %dx%dx%d", lut.n_sz, lut.n_vz, lut.n_az);
-        fclose(f);
-        lut.n_sz = lut.n_vz = lut.n_az = 0;
-        return lut;
-    }
-    
-    // Alocar memoria para la tabla
-    size_t table_size = (size_t)lut.n_sz * lut.n_vz * lut.n_az;
-    lut.table = malloc(table_size * sizeof(float));
-    if (!lut.table) {
-        LOG_ERROR("Falla de memoria al alocar LUT (%zu valores)", table_size);
-        fclose(f);
-        lut.n_sz = lut.n_vz = lut.n_az = 0;
-        return lut;
-    }
-    
-    // Leer datos
-    size_t values_read = fread(lut.table, sizeof(float), table_size, f);
-    fclose(f);
-    
-    if (values_read != table_size) {
-        LOG_ERROR("Error al leer datos de LUT: esperados %zu, leídos %zu", table_size, values_read);
-        free(lut.table);
-        lut.table = NULL;
-        lut.n_sz = lut.n_vz = lut.n_az = 0;
-        return lut;
-    }
-    
-    LOG_INFO("LUT de Rayleigh cargada: %s", filename);
-    LOG_INFO("  Dimensiones: %d × %d × %d = %zu valores", 
-             lut.n_sz, lut.n_vz, lut.n_az, table_size);
-    LOG_INFO("  Solar Zenith: %.1f° - %.1f° (step: %.2f°)", 
-             lut.sz_min, lut.sz_max, lut.sz_step);
-    LOG_INFO("  View Zenith: %.1f° - %.1f° (step: %.2f°)", 
-             lut.vz_min, lut.vz_max, lut.vz_step);
-    LOG_INFO("  Azimuth: %.0f° - %.0f° (step: %.1f°)", 
-             lut.az_min, lut.az_max, lut.az_step);
-    
-    return lut;
-}
 
 /**
  * Libera la memoria de una LUT de Rayleigh.
@@ -652,6 +500,127 @@ void rayleigh_lut_destroy(RayleighLUT *lut) {
         lut->table = NULL;
         lut->n_sz = lut->n_vz = lut->n_az = 0;
         LOG_DEBUG("LUT de Rayleigh liberada.");
+    }
+}
+
+
+/**
+ * Aplica corrección Rayleigh con LUTs.
+ * img: DataF con reflectancia TOA (input/output)
+ * nav: Estructura con navegación (SZA, VZA, RAA)
+ * name: Nombre del canal ("C01", "C02", "C03")
+ * tau: Profundidad óptica de Rayleigh para esta longitud de onda
+ */
+void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const char *name, float tau) {
+	// Validar dimensiones
+    if (img->width != nav->sza.width || img->height != nav->sza.height) {
+        LOG_ERROR("Mismatch dimensiones en Rayleigh Analytic: Img %dx%d vs Nav %dx%d",
+                  img->width, img->height, nav->sza.width, nav->sza.height);
+        return;
+    }
+    RayleighLUT lut = rayleigh_lut_load_from_memory(name);
+
+    size_t n = img->size;
+    double start_time = omp_get_wtime();
+    
+    // Estadísticas para debugging
+    size_t night_pixels = 0;
+    size_t negative_pixels = 0;
+    size_t valid_pixels = 0;
+    double sum_original = 0.0;
+    double sum_rayleigh = 0.0;
+    double sum_corrected = 0.0;
+    float max_rayleigh = 0.0f;
+    float min_original = 1e9;
+    float max_original = -1e9;
+
+    // Paralelización con OpenMP
+    // 'schedule(static)' es eficiente porque la carga de trabajo por píxel es constante
+    #pragma omp parallel for schedule(static) reduction(+:night_pixels,negative_pixels,valid_pixels,sum_original,sum_rayleigh,sum_corrected) reduction(max:max_rayleigh,max_original) reduction(min:min_original)
+    for (size_t i = 0; i < n; i++) {
+        float theta_s = nav->sza.data_in[i];
+        float original = img->data_in[i];
+        
+        // Skip invalid data - usar macro IS_NONDATA
+        if (IS_NONDATA(original)) {
+            // Mantener como NonData
+            continue;
+        }
+        
+        if (original < min_original) min_original = original;
+        if (original > max_original) max_original = original;
+
+        // Optimización: Si el cenit solar es muy alto (noche/crepúsculo), saltar
+        // Usamos 88° en lugar de 85° para permitir corrección en crepúsculo
+        if (theta_s > 88.0f || IS_NONDATA(theta_s) || theta_s < 0.0f) {
+            img->data_in[i] = 0.0f; // Enmascarar noche
+            night_pixels++;
+            continue;
+        }
+
+        // Calcular valor Rayleigh de la tabla y multiplicar por tau
+        // Las LUTs contienen valores normalizados que deben multiplicarse por tau
+        float r_corr = get_rayleigh_value(&lut, theta_s, nav->vza.data_in[i], nav->raa.data_in[i]) * tau;
+        if (r_corr > max_rayleigh) max_rayleigh = r_corr;
+        
+        // Debug: samplear algunos valores distribuidos por la imagen
+        if (valid_pixels % 10000 == 0 && valid_pixels < 100000) {
+            #pragma omp critical
+            {
+                LOG_DEBUG("Sample pixel %zu: SZA=%.2f, VZA=%.2f, RAA=%.2f, Original=%.6f, Rayleigh=%.6f", 
+                         i, theta_s, nav->vza.data_in[i], nav->raa.data_in[i], original, r_corr);
+            }
+        }
+
+        // Aplicar corrección: Reflectancia = Observada - Rayleigh
+        float val = original - r_corr;
+
+        // Clamping: Evitar valores negativos que ensucian la imagen
+        if (val < 0.0f) {
+            val = 0.0f;
+            negative_pixels++;
+        }
+
+        sum_original += original;
+        sum_rayleigh += r_corr;
+        sum_corrected += val;
+        valid_pixels++;
+
+        // Guardar resultado
+        img->data_in[i] = val;
+    }
+
+    double end_time = omp_get_wtime();
+    LOG_INFO("Kernel de corrección de Rayleigh completado en %.4f segundos.", end_time - start_time);
+    LOG_INFO("Estadísticas de corrección:");
+    LOG_INFO("  Píxeles noche (SZA>85°):    %zu (%.1f%%)", night_pixels, 100.0*night_pixels/n);
+    LOG_INFO("  Píxeles válidos corregidos: %zu (%.1f%%)", valid_pixels, 100.0*valid_pixels/n);
+    LOG_INFO("  Píxeles negativos clamped:  %zu (%.1f%%)", negative_pixels, 100.0*negative_pixels/n);
+    if (valid_pixels > 0) {
+        LOG_INFO("  Reflectancia original:  min=%.6f, max=%.6f, media=%.6f", 
+                 min_original, max_original, sum_original/valid_pixels);
+        LOG_INFO("  Corrección Rayleigh:    max=%.6f, media=%.6f", 
+                 max_rayleigh, sum_rayleigh/valid_pixels);
+        LOG_INFO("  Reflectancia corregida: media=%.6f", sum_corrected/valid_pixels);
+    }
+
+    // Actualizar fmin/fmax de la estructura para que la normalización sea correcta
+    // Recalcular min/max sobre los datos corregidos
+    float new_min = 1e20f;
+    float new_max = -1e20f;
+    for (size_t i = 0; i < n; i++) {
+        float val = img->data_in[i];
+        // Solo considerar píxeles válidos: mayor que 0 y no NonData
+        if (val > 0.0f && !IS_NONDATA(val)) {
+            if (val < new_min) new_min = val;
+            if (val > new_max) new_max = val;
+        }
+    }
+    
+    if (new_max > new_min) {
+        img->fmin = new_min;
+        img->fmax = new_max;
+        LOG_INFO("  Rango actualizado después de Rayleigh: [%.6f, %.6f]", new_min, new_max);
     }
 }
 

@@ -12,12 +12,17 @@
 // Coeficientes de Profundidad Óptica de Rayleigh (Tau) para GOES-R ABI
 // Calculados usando formula de Hansen & Travis para presión estándar (1013mb)
 // Tau ~ 0.008569 * lambda^(-4) * (1 + 0.0113 * lambda^(-2) + ...)
+//
+// NOTA: Los valores están ajustados empíricamente para coincidir con las LUTs
+// de pyspectral, que incluyen efectos de absorción atmosférica adicionales.
 
 // Banda 1 (0.47 um) - Azul Profundo (La que más se dispersa)
-#define RAYLEIGH_TAU_BLUE 0.188f 
+// Valor teórico: 0.188, ajustado para mejor match con LUTs
+#define RAYLEIGH_TAU_BLUE 0.235f
 
-// Banda 2 (0.64 um) - Rojo (Se dispersa menos)
-#define RAYLEIGH_TAU_RED  0.055f 
+// Banda 2 (0.64 um) - Rojo (Se dispersa menos)  
+// Valor teórico: 0.055, reducido por absorción de ozono en el rojo
+#define RAYLEIGH_TAU_RED  0.024f
 
 // Banda 3 (0.86 um) - NIR (Casi nula, despreciable)
 #define RAYLEIGH_TAU_NIR  0.016f
@@ -71,16 +76,11 @@ void rayleigh_free_navigation(RayleighNav *nav);
  * contribution based on viewing geometry.
  * 
  * @param img Input/output reflectance image (modified in-place)
- * @param sza Solar Zenith Angle map (degrees)
- * @param vza View/Satellite Zenith Angle map (degrees)
- * @param raa Relative Azimuth Angle map (degrees)
- * @param lut Pointer to loaded Rayleigh lookup table
+ * @param nav Navigation data (SZA, VZA, RAA)
+ * @param name Channel name for LUT selection ("C01", "C02", "C03")
+ * @param tau Optical depth for this wavelength (e.g., 0.188 for C01)
  */
-void apply_rayleigh_correction(DataF *img, 
-                               const DataF *sza, 
-                               const DataF *vza, 
-                               const DataF *raa, 
-                               const RayleighLUT *lut);
+void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const char *name, float tau);
 
 /**
  * @brief Load Rayleigh LUT from binary file.

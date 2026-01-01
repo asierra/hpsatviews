@@ -221,6 +221,9 @@ Genera un compuesto RGB a partir de combinaciones lineales de varias bandas.
 							`daynite` (predeterminado), `truecolor`, `night`, `ash`, `airmass`, `so2`, `custom`. 
 
 * `--rayleigh`              Aplica corrección atmosférica de Rayleigh (solo modos visibles diurnos).
+							Por defecto usa LUTs de pyspectral (más precisas).
+
+* `--ray-analytic`          Usa corrección Rayleigh analítica en lugar de LUTs (más ligera, menos precisa).
 
 * `-f, --full-res`          Usa el canal de mayor resolución como referencia (más detalle, más lento).
 							Por omisión, se usa el de menor resolución (más rápido, vistas menos grandes).

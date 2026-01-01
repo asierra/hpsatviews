@@ -83,6 +83,7 @@ int main(int argc, char *argv[]) {
         ap_add_str_opt(rgb_cmd, "mode m", "daynite");
         add_common_opts(rgb_cmd);
         ap_add_flag(rgb_cmd, "rayleigh");
+        ap_add_flag(rgb_cmd, "ray-analytic");
         ap_add_flag(rgb_cmd, "full-res f");
         ap_set_cmd_callback(rgb_cmd, cmd_rgb);
     }

@@ -93,6 +93,7 @@ bool rgb_parse_options(ArgParser *parser, RgbContext *ctx) {
     ctx->opts.apply_histogram = ap_found(parser, "histo");
     ctx->opts.force_geotiff = ap_found(parser, "geotiff");
     ctx->opts.apply_rayleigh = ap_found(parser, "rayleigh");
+    ctx->opts.rayleigh_analytic = ap_found(parser, "ray-analytic");
     ctx->opts.use_citylights = ap_found(parser, "citylights");
     ctx->opts.use_alpha = ap_found(parser, "alpha");
     ctx->opts.use_full_res = ap_found(parser, "full-res");
@@ -198,8 +199,8 @@ static bool compose_truecolor(RgbContext *ctx) {
     if (!ctx->comp_b.data_in || !ctx->comp_r.data_in)
         return false;
 
-    // 2. CORRECCIÓN RAYLEIGH (Analítica)
-    if (ctx->opts.apply_rayleigh) {
+    // 2. CORRECCIÓN RAYLEIGH
+    if (ctx->opts.apply_rayleigh || ctx->opts.rayleigh_analytic) {
         // Encontrar el archivo correcto para navegación
         const char *nav_file = NULL;
         for (int i = 0; i < ctx->channel_set->count; i++) {
@@ -211,9 +212,15 @@ static bool compose_truecolor(RgbContext *ctx) {
         RayleighNav nav = {0};
         // Cargar navegación ajustada al tamaño de la imagen azul (C01)
         if (rayleigh_load_navigation(nav_file, &nav, ctx->comp_b.width, ctx->comp_b.height)) {
+			if (ctx->opts.rayleigh_analytic) {
             LOG_INFO("Aplicando Rayleigh Analítico...");
             analytic_rayleigh_correction(&ctx->comp_b, &nav, RAYLEIGH_TAU_BLUE);
             analytic_rayleigh_correction(&ctx->comp_r, &nav, RAYLEIGH_TAU_RED);
+		} else {
+            LOG_INFO("Aplicando Rayleigh Luts...");
+            luts_rayleigh_correction(&ctx->comp_b, &nav, "C01", RAYLEIGH_TAU_BLUE);
+            luts_rayleigh_correction(&ctx->comp_r, &nav, "C02", RAYLEIGH_TAU_RED);
+		}
             rayleigh_free_navigation(&nav);
         } else {
             LOG_WARN("Falló carga de navegación, saltando Rayleigh.");

@@ -414,14 +414,10 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
             float dx = fx - tx;
             float dy = fy - ty;
 
-            if (dx < 0)
-                dx = 0;
-            if (dy < 0)
-                dy = 0;
-            if (dx > 1)
-                dx = 1;
-            if (dy > 1)
-                dy = 1;
+            if (dx < 0) dx = 0;
+            if (dy < 0) dy = 0;
+            if (dx > 1) dx = 1;
+            if (dy > 1) dy = 1;
 
             // Obtener valores mapeados de los 4 tiles vecinos
             unsigned char val_tl = lut[ty][tx][pixel_val];         // Top-Left

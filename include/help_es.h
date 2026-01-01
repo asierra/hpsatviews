@@ -60,6 +60,7 @@ static const char *HPSATVIEWS_HELP_RGB =
 "\n"
 "Opciones RGB:\n"
 "  --rayleigh      Corrección atmosférica (para truecolor/daynite).\n"
+"  --ray-analytic  Usa corrección Rayleigh analítica (en lugar de LUTs).\n"
 "  -f, --full-res  Usa la resolución nativa del canal más fino.\n"
 "\n"
 "El modo custom utiliza álgebra de bandas para cada canal. Se requieren\n"
