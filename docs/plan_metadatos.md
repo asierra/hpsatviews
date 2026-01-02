@@ -17,29 +17,46 @@ Permitir que **hpsatviews** exporte un archivo *sidecar* (`.json`) con informaci
 
 ### Objetivo
 
-Crear el contenedor interno que *viajará* a través del pipeline recolectando información relevante. Tal vez ya lo tenemos con estructuras como RgbContext en rgb.c y su equivalente en processing.c .
+Crear el contenedor interno que *viajará* a través del pipeline recolectando información relevante. Ya tenemos estructuras útiles como RgbContext en rgb.c, FilenameGeneratorInfo en filename_utils.c y ArgParser como se usa en processing.c para ejecutar el pipeline. Quizá todas estas estructuras se pueden integrar en un MetadataContext que el pipeline pueda usar para todas estas operaciones: pipeline monocanal (processing), pipeline rgb, generación automática de nombre y generación de metadatos.
 
 ### Contenedor de Metadatos (estructura global)
 
 * Debe persistir durante toda la ejecución del programa.
 * Actúa como repositorio único de metadatos científicos.
 
-#### Campos requeridos
+#### Principio de diseño
 
-##### 1. Identidad
+El contenedor de metadatos debe describir el **producto científico final**, 
+no el archivo de entrada ni el formato de salida.
+
+En particular:
+* La geometría corresponde a la imagen final (post-recorte y reproyección).
+* Las estadísticas radiométricas corresponden a los datos físicos reales,
+  antes de cualquier cuantización a 8 bits.
+* El procesamiento se describe como un **pipeline ordenado de pasos**,
+  no como una sola operación.
+
+### Campos requeridos del contenedor de metadatos
+
+El contenedor se organiza en bloques semánticos estables:
+
+1. file_info  
+2. identity  
+3. spatial  
+4. radiometry  
+5. processing
+
+#### 2. identity – Identidad de la escena
 
 * Satélite
 * Sensor
-* Canal / Banda(s)
-* Fecha y hora (formato **ISO 8601**)
+* Tipo de producto (`gray`, `pseudocolor`, `rgb`)
+* Modo (por ejemplo: `truecolor`, `ash`, `airmass`)
+* Canal o lista de canales
+* Intervalo temporal de observación (ISO 8601)
 
-##### 2. Física (Radiometría)
 
-* Unidad física (por ejemplo: `Kelvin`, `%`, `W/m²`)
-* Valor mínimo real (antes del escalado)
-* Valor máximo real (antes del escalado)
-
-##### 3. Geografía
+#### 3. Geografía
 
 * *Bounding Box* final del producto:
 
@@ -47,9 +64,37 @@ Crear el contenedor interno que *viajará* a través del pipeline recolectando i
   * Latitud máxima
   * Longitud mínima
   * Longitud máxima
-  * Proyección y geotransform. Todo eso ya lo manejamos.
+  * Proyección y geotransform (por ejemplo EPSG:4326)
+  * Resolución espacial del producto final
+  * Información del recorte aplicado (preset, explícito o disco completo)
 
-##### 4. Procesamiento
+Nota: el bounding box y la resolución corresponden siempre
+al producto final generado, no al archivo satelital original.
+
+
+#### 4. radiometry – Información radiométrica
+
+Debe distinguirse explícitamente entre:
+
+* Rango físico teórico de la magnitud
+* Estadísticas reales de la escena
+* Cuantización aplicada al producto visual
+
+Campos mínimos:
+
+* Magnitud física (ej. reflectance, brightness_temperature)
+* Unidad (ej. %, K)
+* input_range:
+  * valor mínimo físico teórico
+  * valor máximo físico teórico
+* scene_statistics:
+  * mínimo real de la escena (antes del escalado)
+  * máximo real de la escena (antes del escalado)
+* quantization:
+  * tipo (ej. uint8)
+  * rango final (ej. 0–255)
+
+#### 5. processing
 
 * Nombre del algoritmo(s) utilizado(s) (ej. `CLAHE`, `Linear`)
 * Parámetros clave:
@@ -57,7 +102,7 @@ Crear el contenedor interno que *viajará* a través del pipeline recolectando i
   * Gamma
   * Clip limit
   * Otros relevantes según el algoritmo
-
+  
 ---
 
 ## Fase 2: Interfaz de Usuario (CLI)
@@ -70,7 +115,7 @@ Permitir que el usuario solicite explícitamente la generación del archivo de m
 
 * Implementar:
 
-  * `--save-metadata` *(alternativa: `--export-stats`)*
+  * `--save-metadata` 
 * Esta bandera activa un **booleano** en la configuración global.
 
 ### Validación de dependencias
@@ -119,10 +164,12 @@ Acciones:
 
 ### Hook de Algoritmo (*Processor*)
 
-* Registrar:
+Registrar el pipeline completo de procesamiento como una secuencia ordenada.
 
-  * Algoritmo de mejora aplicado (`CLAHE`, histograma, lineal, etc.).
-  * Parámetros utilizados (gamma, tiles, clip limit, etc.).
+Cada paso debe incluir:
+* Nombre del paso
+* Parámetros relevantes
+* (Opcional) descripción o expresión algebraica
 
 ---
 
@@ -151,13 +198,19 @@ output.tif  →  output.json
 
   * Reciba el contenedor completamente poblado.
   * Escriba el archivo JSON en disco.
+  
+### Schema JSON
 
-#### Organización interna del JSON
+El archivo de metadatos debe seguir un schema estable con los bloques:
 
-* `file_info`
-* `spatial`
-* `radiometry`
-* `processing`
+* file_info
+* identity
+* spatial
+* radiometry
+* processing
+
+Este schema debe documentarse con un ejemplo real
+y considerarse parte de la interfaz pública de hpsatviews.
 
 #### Consideraciones
 
@@ -178,6 +231,10 @@ Consumir los metadatos generados para crear figuras científicas precisas.
 * Alternativamente:
 
   * Buscar automáticamente un JSON con el mismo nombre base que la imagen.
+
+La reconstrucción de la barra de color debe basarse exclusivamente
+en los campos radiométricos del JSON, y no en los valores cuantizados
+de la imagen (0–255).
 
 ### Barra de color virtual
 
