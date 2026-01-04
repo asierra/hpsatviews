@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "HPSatViews Metadata",
+  "type": "object",
+  "required": ["version", "satellite", "geometry", "radiometry"],
+  "properties": {
+    "version": { "type": "string" },
+    "satellite": { "type": "string" },
+    "command": { "type": "string", "enum": ["rgb", "gray", "pseudocolor"] },
+    "time_iso": { "type": "string", "format": "date-time" },
+    
+    "geometry": {
+      "type": "object",
+      "required": ["bbox"],
+      "properties": {
+        "projection": { "type": "string" },
+        "bbox": { 
+          "type": "array", 
+          "items": { "type": "number" },
+          "minItems": 4,
+          "maxItems": 4
+        }
+      }
+    },
+    
+    "radiometry": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["min_radiance", "max_radiance", "unit"],
+        "properties": {
+          "name": { "type": "string" },
+          "component": { "type": "string", "enum": ["red", "green", "blue"] },
+          "min_radiance": { "type": "number" },
+          "max_radiance": { "type": "number" },
+          "unit": { "type": "string" }
+        }
+      }
+    }
+  }
+}

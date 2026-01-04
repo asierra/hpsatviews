@@ -147,3 +147,12 @@ Sun Dec 28 07:11:51 PM CST 2025
 En pseudo y en general, leer primero el archivo para saber los maxmin
 y como alternativa, usar --minmax.
 
+
+Sun Jan  4 09:23:19 AM CST 2026
+
+Clearly document the behavior of your API in the header file. The user
+should not be required to have a look at the implementation in order
+to understand how the func‐ tions provided in the API work.  Salvo
+casos especiales, eliminar documentación excesiva en *.c y dejarla en
+*.h.
+
