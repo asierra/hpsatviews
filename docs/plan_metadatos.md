@@ -41,12 +41,13 @@ main.c
   └─> ArgParser parsed
       ├─> config_from_argparser(parser, &config)  // ProcessConfig inmutable
       ├─> meta = metadata_create()                 // MetadataContext opaco
-      │
+      │─> Cargar el o los canales NetCDF pues contienen información importante
+      |   para inicializar distintas variables, como los minmax intrínsecos de
+      |   los datos. Ya con el datanc de referencia podemos llenar los
+      |   metadatos básicos con metadata_from_nc.
       ├─> cmd_rgb()
       │    └─> run_rgb(&config, meta)              // Inyección de dependencias
-      │         ├─> metadata_add(meta, "satellite", "goes-16")
       │         ├─> metadata_add(meta, "mode", "truecolor")
-      │         ├─> Cargar canales
       │         ├─> metadata_add(meta, "radiometry", ...)
       │         ├─> Procesar RGB
       │         └─> metadata_add(meta, "geometry", ...)
@@ -81,8 +82,8 @@ MEJORA:
 |---------|-----------|--------|
 | `include/config.h` | Define `ProcessConfig` y feature flag | 1 |
 | `src/config_loader.c` | Parser ArgParser → ProcessConfig | 1 |
-| `include/metadatos.h` | API opaca para MetadataContext | 1 |
-| `src/metadatos.c` | Implementación + generación JSON | 1-2 |
+| `include/metadata.h` | API opaca para MetadataContext | 1 |
+| `src/metadata.c` | Implementación + generación JSON | 1-2 |
 | `tests/test_metadata.c` | Tests unitarios metadatos | 6 |
 | `tests/test_config.c` | Tests unitarios configuración | 6 |
 
@@ -166,14 +167,14 @@ typedef struct {
 ```
 
 ### 2. `MetadataContext` (Pattern: Opaque Handle)
-**Ubicación:** `metadatos.h` (declaración) y `metadatos.c` (definición) Estructura opaca que contiene lo que realmente sucedió y los resultados acumulados.
-* **Propósito:** Desacoplar la lógica científica de la librería de serialización (cJSON) y actuar como repositorio único para generar el nombre de archivo final.
+**Ubicación:** `metadata.h` (declaración) y `metadata.c` (definición) Estructura opaca que contiene lo que realmente sucedió y los resultados acumulados.
+* **Propósito:** Desacoplar la lógica científica de serialización y actuar como repositorio único para generar el nombre de archivo final.
 * **Fluent C:** Implementa el patrón Handle (typedef struct MetadataContext MetadataContext; en el header).
 * **Modern C (C11):** Utiliza macros _Generic para una API polimórfica simple que evita la proliferación de funciones con nombres distintos.
 
 
 ```c
-// En metadatos.h
+// En metadata.h
 #define metadata_add(CTX, KEY, VAL) \
     _Generic((VAL), \
         int:    metadata_add_int, \
@@ -199,7 +200,7 @@ Implementar un escritor JSON minimalista ("Write-Only") optimizado para C17.
         * Permite usar `json_write(w, "key", valor)` indistintamente para `int`, `double` o `string`.
     * Escritura directa a disco (Stream) para consumo de memoria insignificante.
 
-### C. Módulo de Metadatos (`metadatos.c`)
+### C. Módulo de Metadatos (`metadata.c`)
 Implementar el contenedor opaco y la lógica de negocio.
 * **Estrategia de Datos:** El `MetadataContext` acumulará estadísticas en estructuras C nativas (`struct`) durante el procesamiento.
 * **Serialización:** La función `metadata_save_json` usará la API simplificada `json_write` para volcar los datos al finalizar.
@@ -255,12 +256,12 @@ typedef struct {
 #### 3. Estrategia de Pipeline: "Setup Unificado, Ejecución Especializada"
 No fusionaremos rgb.c y processing.c en una sola función gigante (para mantener Separation of Concerns), pero unificaremos su Interfaz de Llamada.
 
-Nuevo Flujo de Control (en `main.c` o `hpsatviews.c`):
+Nuevo Flujo de Control (en `main.c`):
 
 1. Fase de Setup (Común):
 * ArgParser -> config_loader -> ProcessConfig (Llenado automático).
 * Creación de MetadataContext.
-
+* Carga de canales según las opciones y llenado con metadata_from_nc.
 2. Fase de Despacho (Branching):
 ```c
 if (strcmp(config.command_mode, "rgb") == 0) {
@@ -269,10 +270,9 @@ if (strcmp(config.command_mode, "rgb") == 0) {
 } 
 else {
     // processing_loop (monocanal) se adapta a la misma firma
-    run_monochannel(&config, meta); 
+    run_mono(&config, meta); 
 }
 ```
-
 3. Fase de Cierre (Común):
 * Generación de nombre de archivo (vía meta).
 * Guardado de JSON (vía meta).
@@ -284,7 +284,7 @@ else {
 
 ### 1. Nombre de Archivo Automático
 El `MetadataContext` tendrá un método `metadata_build_filename(ctx, extension)` que reemplaza a `generate_hpsv_filename`. Usará internamente:
-* Satélite (detectado del input file).
+* Satélite (detectado del input file en tiempo de lectura de datos).
 * Estrategia/Modo (del Config).
 * Fecha/Hora (leída del NetCDF y normalizada).
 
@@ -364,9 +364,7 @@ Estructura final del JSON a generar:
 **Escenario:** El producto "Ash" es una composición matemática compleja (Algebra):
 
 * Rojo: Diferencia (C15 - C13). Rango físico: -4.0 a 2.0 K.
-
 * Verde: Diferencia (C14 - C11). Rango físico: -4.0 a 5.0 K.
-
 * Azul: Canal C13 invertido. Rango físico: 243 a 303 K.
 
 * Punto Clave: El array `radiometry` tiene 3 elementos. Aquí el JSON brilla, porque describe qué significa cada color físicamente. Un científico puede leer esto y saber exactamente qué rango de temperatura representa el canal rojo, sin adivinar.
@@ -418,7 +416,6 @@ Adaptar las herramientas externas para usar este JSON.
 
 ### Barra de color virtual
 * Ignorar los valores de píxel (0–255) para la leyenda.
-
 * Construir la escala de colores usando min_radiance y max_radiance del JSON.
 
 ### Etiquetado automático
@@ -450,21 +447,15 @@ Realizar la refactorización sin romper la funcionalidad existente, permitiendo 
    - Función: `config_from_argparser(ArgParser *parser, ProcessConfig *cfg)`
    - **Validación:** Tests unitarios con valores conocidos
 
-2. `include/metadatos.h` + `src/metadatos.c`
+2. `include/metadata.h` + `src/metadata.c`
    - Implementar `MetadataContext` (opaque handle)
    - API básica: `metadata_create()`, `metadata_destroy()`, `metadata_add_string/int/double()`
-   - Stub para generación de JSON (sin cJSON todavía)
+   - Stub para generación de JSON
    - **Validación:** Compilar sin warnings, tests de memoria (valgrind)
-
-**Dependencias del Makefile:**
-```makefile
-SRCS += src/config_loader.c src/metadatos.c
-```
 
 #### SPRINT 2: Integración con JSON (Semana 3)
 **Archivos a MODIFICAR:**
-1. `src/metadatos.c`
-   - Integrar cJSON para generación real del JSON
+1. `src/metadata.c`
    - Implementar `metadata_write_json(ctx, filename)`
    - Implementar `metadata_build_filename(ctx, extension)`
    

@@ -2,6 +2,7 @@
 #define METADATA_H
 
 #include <stdbool.h>
+#include "datanc.h"
 
 // Handle opaco
 typedef struct MetadataContext MetadataContext;
@@ -9,6 +10,9 @@ typedef struct MetadataContext MetadataContext;
 // Ciclo de vida
 MetadataContext* metadata_create(void);
 void metadata_destroy(MetadataContext *ctx);
+
+// Extract metadata from DataNC
+void metadata_from_nc(MetadataContext *ctx, const DataNC *nc);
 
 // Setters específicos (Puentes para tu código actual)
 void metadata_set_satellite(MetadataContext *ctx, const char *sat);

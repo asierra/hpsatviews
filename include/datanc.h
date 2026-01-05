@@ -72,10 +72,9 @@ typedef enum {
 typedef struct {
   DataF fdata; // Used if the data is float
   DataB bdata; // Used if the data is byte
-  const char* varname;
   bool is_float; // True if fdata is valid, false if bdata is valid
-  //int year, mon, day, hour, min, sec;
   SatelliteID sat_id;
+  const char* varname;
   time_t timestamp;
   unsigned char band_id;
   float native_resolution_km; // Resolución nativa del sensor en km (0 si desconocida)

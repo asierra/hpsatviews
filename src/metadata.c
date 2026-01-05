@@ -16,6 +16,7 @@ typedef struct {
 struct MetadataContext {
     char satellite[32];
     char time_iso[32];
+  time_t timestamp;
     float bbox[4];
     bool has_bbox;
     
@@ -31,6 +32,25 @@ MetadataContext* metadata_create(void) {
 void metadata_destroy(MetadataContext *ctx) {
     free(ctx);
 }
+void metadata_from_nc(MetadataContext *ctx, const DataNC *nc) {
+    if (!ctx || !nc) return;
+
+    // 1. Copiar Timestamp (Copia de entero, muy rápido)
+    ctx->timestamp = nc->timestamp;
+    
+    // Si necesitas el string ISO también y ya lo tienes:
+    // strncpy(ctx->time_iso, nc->global_attr.time_coverage_start, ...);
+
+    // 2. Copiar Satélite (Copia de enum/entero)
+    // Usamos tu helper para convertir el ID a string oficial inmediatamente
+    // O guardamos el ID y lo convertimos al escribir el JSON.
+    const char* sat_name = get_sat_name(nc->sat_id);
+    metadata_set_satellite(ctx, sat_name);
+
+    // 3. Otros metadatos futuros
+    // Ej: Si DataNC tuviera "processing_level", lo copiamos aquí.
+}
+
 
 void metadata_set_satellite(MetadataContext *ctx, const char *sat) {
     if(ctx && sat) strncpy(ctx->satellite, sat, 31);
