@@ -15,6 +15,35 @@
 
 const char *VAR_NAME_RAD = "Rad";
 
+const SatelliteID detect_satellite_from_filename(const char* filename) {
+    if (!filename) return SAT_UNKNOWN;
+    
+    const char* sat_ptr = strstr(filename, "_G");
+    if (sat_ptr) {
+        if (strncmp(sat_ptr, "_G16", 4) == 0) return SAT_GOES16;
+        if (strncmp(sat_ptr, "_G17", 4) == 0) return SAT_GOES17;
+        if (strncmp(sat_ptr, "_G18", 4) == 0) return SAT_GOES18;
+        if (strncmp(sat_ptr, "_G19", 4) == 0) return SAT_GOES19;
+    }
+    // GOES-16
+    if (strstr(filename, "G16") || strstr(filename, "GOES16") || strstr(filename, "GOES-16")) {
+        return SAT_GOES16;
+    } 
+    // GOES-18 (West)
+    if (strstr(filename, "G18") || strstr(filename, "GOES18") || strstr(filename, "GOES-18")) {
+        return SAT_GOES18;
+    }
+    // GOES-17
+    if (strstr(filename, "G17") || strstr(filename, "GOES17") || strstr(filename, "GOES-17")) {
+        return SAT_GOES17;
+    }
+    // GOES-19
+    if (strstr(filename, "G19") || strstr(filename, "GOES19") || strstr(filename, "GOES-19")) {
+        return SAT_GOES19;
+    }
+    return SAT_UNKNOWN;
+}
+
 const char *detect_variable_from_filename(const char *filename) {
     if (filename == NULL)
         return NULL;
@@ -80,7 +109,9 @@ int load_nc_sf(const char *filename, DataNC *datanc) {
     }
     datanc->varname = varname;
     bool is_l1b = (varname == VAR_NAME_RAD);
-
+    
+	datanc->sat_id = detect_satellite_from_filename(filename);
+	
     int xid;
     if ((retval = nc_inq_dimid(ncid, "x", &xid)))
         ERR(retval);
@@ -158,15 +189,8 @@ int load_nc_sf(const char *filename, DataNC *datanc) {
     double tiempo;
     if ((retval = nc_get_var_double(ncid, time_varid, &tiempo)))
         ERR(retval);
-    long tt = (long)(tiempo);
-    time_t dt = 946728000 + tt;
-    struct tm ts = *gmtime(&dt);
-    datanc->year = ts.tm_year + 1900;
-    datanc->mon = ts.tm_mon + 1;
-    datanc->day = ts.tm_mday;
-    datanc->hour = ts.tm_hour;
-    datanc->min = ts.tm_min;
-    datanc->sec = ts.tm_sec;
+    // Conversión directa a UNIX Timestamp (time_t)
+    datanc->timestamp = (time_t)(946728000 + (long)tiempo);
 
     // Identificamos la banda, si existe
     int band_varid;

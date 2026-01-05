@@ -635,7 +635,7 @@ static bool generate_output_filename(RgbContext *ctx, const RgbStrategy *strateg
     }
 
     // Extraer nombre del satélite del archivo de entrada
-    char *satellite_name = extract_satellite_name(ctx->opts.input_file);
+    char *satellite_name = get_sat_name(ctx->channels[ctx->ref_channel_idx].sat_id);
 
     // Poblar la estructura de información para el nuevo generador de nombres
     // canónico Usamos el primer canal cargado como referencia para metadatos

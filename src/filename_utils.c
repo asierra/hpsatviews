@@ -12,6 +12,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
@@ -22,51 +23,16 @@
 // --- Funciones auxiliares estáticas ---
 
 /**
- * @brief Extrae el nombre del satélite del nombre de archivo (formato "GXX").
- * @param filename Nombre del archivo de entrada.
- * @return String duplicado con el nombre del satélite, o NULL si no se encuentra.
- */
-static char* extract_satellite_from_filename(const char* filename) {
-    if (!filename) return NULL;
-    
-    const char* sat_ptr = strstr(filename, "_G");
-    if (sat_ptr && strlen(sat_ptr) >= 4 && isdigit(sat_ptr[2]) && isdigit(sat_ptr[3])) {
-        char buffer[4];
-        snprintf(buffer, sizeof(buffer), "G%c%c", sat_ptr[2], sat_ptr[3]);
-        return strdup(buffer);
-    }
-    return strdup("GXX"); // Fallback
-}
-
-/**
- * @brief Convierte fecha/hora a día juliano.
- */
-static int date_to_julian(int year, int month, int day) {
-    int days_in_month[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-    // Leap year check
-    if ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)) {
-        days_in_month[2] = 29;
-    }
-    
-    int jday = day;
-    for (int m = 1; m < month; m++) {
-        jday += days_in_month[m];
-    }
-    return jday;
-}
-
-/**
  * @brief Formatea el timestamp desde metadatos DataNC (formato: YYYYJJJ_hhmm).
  */
 static void format_instant_from_datanc(const DataNC* datanc, char* buffer, size_t size) {
-    if (!datanc) {
+    if (!datanc || datanc->timestamp == 0) {
         snprintf(buffer, size, "NA");
         return;
     }
-    
-    int jday = date_to_julian(datanc->year, datanc->mon, datanc->day);
-    snprintf(buffer, size, "%04d%03d_%02d%02d", 
-             datanc->year, jday, datanc->hour, datanc->min);
+    struct tm tm_info;
+    gmtime_r(&datanc->timestamp, &tm_info);
+    strftime(buffer, size, "%Y%j_%H%M", &tm_info);
 }
 
 /**
@@ -389,14 +355,6 @@ char* generate_hpsv_filename(const FilenameGeneratorInfo* info) {
     return strdup(filename_buffer);
 }
 
-/**
- * @brief Extrae el nombre del satélite del nombre de archivo GOES.
- * @param filename Nombre del archivo (puede incluir ruta).
- * @return String duplicado con formato "goes-XX" o NULL si falla.
- */
-char* extract_satellite_name(const char* filename) {
-    return extract_satellite_from_filename(filename);
-}
 
 /**
  * @brief Genera un nombre de archivo de salida por defecto.

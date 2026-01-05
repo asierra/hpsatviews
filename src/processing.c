@@ -397,7 +397,7 @@ int run_processing(ArgParser *parser, bool is_pseudocolor) {
 
     // --- Generar nombre de archivo canónico si el usuario no proveyó uno ---
     if (!user_provided_output) {
-        char* satellite_name = extract_satellite_name(fnc01);
+        char* satellite_name = get_sat_name(c01.sat_id);
         // Si es modo expr, forzar band_id=0 para que el generador de nombres use _expr
         DataNC c01_for_name = c01;
         if (expr_mode) {

@@ -40,6 +40,29 @@ typedef struct {
 } DataB;
 
 typedef enum {
+    SAT_UNKNOWN = 0,
+    SAT_GOES16,
+    SAT_GOES17,
+    SAT_GOES18,
+    SAT_GOES19,
+} SatelliteID;
+
+static const char *SAT_NAMES[] = {
+    [SAT_UNKNOWN] = "unknown",
+    [SAT_GOES16]  = "G16",
+    [SAT_GOES17]  = "G17",
+    [SAT_GOES18]  = "G18",
+    [SAT_GOES19]  = "G19"
+};
+
+static const char* get_sat_name(SatelliteID id) {
+    if (id >= SAT_UNKNOWN && id <= SAT_GOES19) {
+        return SAT_NAMES[id];
+    }
+    return "unknown";
+}
+
+typedef enum {
   PROJ_GEOS = 0,   // GOES-R ABI Fixed Grid
   PROJ_LATLON = 1, // Equirrectangular / Plate Carrée (EPSG:4326)
   PROJ_UNKNOWN = 255
@@ -51,7 +74,9 @@ typedef struct {
   DataB bdata; // Used if the data is byte
   const char* varname;
   bool is_float; // True if fdata is valid, false if bdata is valid
-  int year, mon, day, hour, min, sec;
+  //int year, mon, day, hour, min, sec;
+  SatelliteID sat_id;
+  time_t timestamp;
   unsigned char band_id;
   float native_resolution_km; // Resolución nativa del sensor en km (0 si desconocida)
   
