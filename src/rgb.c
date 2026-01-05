@@ -21,6 +21,8 @@
 #include "truecolor.h"
 #include "writer_geotiff.h"
 #include "writer_png.h"
+#include "metadata.h"
+
 
 /**
  * @brief Inicializa el contexto RGB a sus valores por defecto.
@@ -218,8 +220,8 @@ static bool compose_truecolor(RgbContext *ctx) {
             analytic_rayleigh_correction(&ctx->comp_r, &nav, RAYLEIGH_TAU_RED);
 		} else {
             LOG_INFO("Aplicando Rayleigh Luts...");
-            luts_rayleigh_correction(&ctx->comp_b, &nav, "C01", RAYLEIGH_TAU_BLUE);
-            luts_rayleigh_correction(&ctx->comp_r, &nav, "C02", RAYLEIGH_TAU_RED);
+            luts_rayleigh_correction(&ctx->comp_b, &nav, 1, RAYLEIGH_TAU_BLUE);
+            luts_rayleigh_correction(&ctx->comp_r, &nav, 2, RAYLEIGH_TAU_RED);
 		}
             rayleigh_free_navigation(&nav);
         } else {
@@ -738,7 +740,7 @@ static bool apply_postprocessing(RgbContext *ctx) {
     return true;
 }
 
-static bool write_output(RgbContext *ctx) {
+static bool write_output(RgbContext *ctx) {	
     bool is_geotiff = ctx->opts.force_geotiff ||
                       (ctx->opts.output_filename && (strstr(ctx->opts.output_filename, ".tif") ||
                                                      strstr(ctx->opts.output_filename, ".tiff")));
@@ -760,6 +762,7 @@ static bool write_output(RgbContext *ctx) {
         writer_save_png(ctx->opts.output_filename, &ctx->final_image);
     }
 
+	
     LOG_INFO("Imagen guardada en: %s", ctx->opts.output_filename);
     return true;
 }
@@ -774,7 +777,17 @@ int run_rgb(ArgParser *parser) {
         LOG_ERROR("%s", ctx.error_msg);
         goto cleanup;
     }
-
+    // --- [METADATOS] 1. Inicialización ---
+    MetadataContext *meta = metadata_create();
+    // Inyectamos la configuración que acabamos de leer
+    metadata_add(meta, "command", "rgb");
+    metadata_add(meta, "mode", ctx.opts.mode ? ctx.opts.mode : "unknown");
+    metadata_add(meta, "gamma", ctx.opts.gamma);
+    metadata_add(meta, "clahe_applied", ctx.opts.apply_clahe);
+    if (ctx.opts.apply_clahe) {
+        metadata_add(meta, "clahe_limit", ctx.opts.clahe_clip_limit);
+    }
+    
     // Paso 2: Obtener estrategia
     const RgbStrategy *strategy = get_strategy_for_mode(ctx.opts.mode);
     if (!strategy) {
@@ -809,6 +822,11 @@ int run_rgb(ArgParser *parser) {
         LOG_ERROR("%s", ctx.error_msg);
         goto cleanup;
     }
+    // --- [METADATOS] 3. Extracción de Satélite y Hora (Corregido) ---
+     // A. Guardar instante
+	//metadata_set_time(meta, nc->global_attr.time_coverage_start);
+                // B. Extraer Satélite (platform_id)
+     //metadata_set_satellite(meta, nc->global_attr.platform_id);
 
     // Paso 4: Procesar geoespacial (navegación, clip, reproyección)
     if (!process_geospatial(&ctx, strategy)) {
@@ -895,14 +913,30 @@ int run_rgb(ArgParser *parser) {
     }
 
     // Paso 11: Escritura
+    // --- [METADATOS] 5. Guardar Sidecar ---
+    if (ctx.opts.output_filename) {
+        char json_path[512];
+        strncpy(json_path, ctx.opts.output_filename, sizeof(json_path) - 1);
+        json_path[511] = '\0';
+
+        // Cambiar extensión a .json
+        char *ext = strrchr(json_path, '.');
+        if (ext) *ext = '\0'; // Cortar extensión vieja
+        strncat(json_path, ".json", sizeof(json_path) - strlen(json_path) - 1);
+
+        LOG_INFO("Guardando metadatos en: %s", json_path);
+        metadata_save_json(meta, json_path);
+    }
     if (!write_output(&ctx)) {
         LOG_ERROR("Falla al guardar la imagen de salida.");
         goto cleanup;
     }
     status = 0; // ¡Éxito!
+	
 
 cleanup:
     rgb_context_destroy(&ctx);
+    metadata_destroy(meta);
     if (custom_channels) {
         // 1. Liberar cada cadena individual ("C13", "C14", etc.)
         for (int i = 0; custom_channels[i] != NULL; i++) {

@@ -80,7 +80,7 @@ void rayleigh_free_navigation(RayleighNav *nav);
  * @param name Channel name for LUT selection ("C01", "C02", "C03")
  * @param tau Optical depth for this wavelength (e.g., 0.188 for C01)
  */
-void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const char *name, float tau);
+void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t channel, float tau);
 
 /**
  * @brief Load Rayleigh LUT from binary file.

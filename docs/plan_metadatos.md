@@ -188,13 +188,22 @@ typedef struct {
 ### A. Módulo de Configuración (`config_loader.c`)
 Crear un cargador centralizado que convierta `ArgParser` en `ProcessConfig`.
 * **Acción:** Mover la lógica de parseo dispersa en `rgb.c` y `processing.c` a este nuevo módulo.
-* **Validación:** Usar `static_assert` (C11) para validar tamaños de buffers, estructuras de canales y asunciones de tipos en tiempo de compilación ("Fail Fast").
+* **Validación:** Usar `static_assert` (C11) para validar tamaños de buffers y asunciones de tipos en tiempo de compilación.
 
-### B. Módulo de Metadatos (`metadatos.c`)
-Implementar el contenedor opaco y la lógica de JSON.
-* **Absorción de Lógica:** Integrar la lógica de `filename_utils.c` dentro de este módulo. El `MetadataContext` será responsable de generar el nombre de archivo basado en los datos acumulados (satélite detectado, hora real del scan, etc.).
-* **Lifetimes:** Implementar constructores y destructores claros (`metadata_create`, `metadata_destroy`).
-* **Vendoring:** Incluir `cJSON.c` y `cJSON.h` en el árbol de fuentes (`src/vendor/` o `src/`) para evitar dependencias externas y facilitar la compilación.
+### B. Módulo de Escritura JSON (`writer_json.c`)
+Implementar un escritor JSON minimalista ("Write-Only") optimizado para C17.
+* **Objetivo:** Reemplazar librerías pesadas para facilitar la compilación en clústeres.
+* **Características:**
+    * Cero dependencias (solo `<stdio.h>`).
+    * **Modern C (C11/C17):** Implementación de una API polimórfica mediante macros `_Generic`.
+        * Permite usar `json_write(w, "key", valor)` indistintamente para `int`, `double` o `string`.
+    * Escritura directa a disco (Stream) para consumo de memoria insignificante.
+
+### C. Módulo de Metadatos (`metadatos.c`)
+Implementar el contenedor opaco y la lógica de negocio.
+* **Estrategia de Datos:** El `MetadataContext` acumulará estadísticas en estructuras C nativas (`struct`) durante el procesamiento.
+* **Serialización:** La función `metadata_save_json` usará la API simplificada `json_write` para volcar los datos al finalizar.
+* **Generación de Nombres:** Absorbe la lógica de `filename_utils.c`.
 
 ---
 
@@ -282,34 +291,6 @@ El `MetadataContext` tendrá un método `metadata_build_filename(ctx, extension)
 ### 2. JSON Sidecar
 Estructura final del JSON a generar:
 
-```json
-{
-  "processing_tool": "hpsatviews",
-  "version": "1.0",
-  "command": "rgb",
-  "mode": "truecolor",
-  "satellite": "goes-16",
-  "input_file": "OR_ABI-L2-CMIPF-...",
-  "time_iso": "2024-05-10T12:00:00Z",
-  "geometry": {
-    "projection": "geographics",
-    "bbox": [-110.0, 30.0, -80.0, 10.0] 
-  },
-  "radiometry": [
-    {
-      "name": "C01",
-      "min_radiance": 0.0,
-      "max_radiance": 612.5,
-      "unit": "W/m^2/sr/um"
-    }
-  ],
-  "enhancements": {
-    "gamma": 1.4,
-    "clahe": true
-  }
-}
-```
-
 #### 1. Caso: Escala de Grises Invertida (Canal IR)
 **Escenario:** Canal 13 (Infrarrojo limpio). En meteorología, solemos invertirlo: las nubes frías (valores bajos de Kelvin) se ven blancas (píxel 255), y el suelo caliente (valores altos) se ve negro.
 
@@ -320,6 +301,7 @@ Estructura final del JSON a generar:
   "processing_tool": "hpsatviews",
   "version": "1.0",
   "command": "gray",
+  "input_file": "OR_ABI-L2-CMIPF-...",
   "mode": "channel_13",
   "satellite": "goes-16",
   "time_iso": "2025-01-04T16:30:00Z",

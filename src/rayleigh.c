@@ -391,27 +391,27 @@ static inline float get_rayleigh_value(const RayleighLUT *lut, float s, float v,
  * @param name Nombre descriptivo para logs (ej: "C01")
  * @return Estructura RayleighLUT cargada (table será NULL si falla)
  */
-static RayleighLUT rayleigh_lut_load_from_memory(const char *name) {
+static RayleighLUT rayleigh_lut_load_from_memory(const uint8_t channel) {
     RayleighLUT lut = {0};
     const unsigned char *data;
     unsigned int data_len;
     // Determinar qué LUT embebida usar
-    if (strcmp(name, "C01") == 0) {
+    if (channel == 1) {
         data = rayleigh_lut_C01_bin;
         data_len = rayleigh_lut_C01_bin_len;
-    } else if (strcmp(name, "C02") == 0) {
+    } else if (channel == 2) {
         data = rayleigh_lut_C02_bin;
         data_len = rayleigh_lut_C02_bin_len;
-    } else if (strcmp(name, "C03") == 0) {
+    } else if (channel == 3) {
         data = rayleigh_lut_C03_bin;
         data_len = rayleigh_lut_C03_bin_len;
     } else {
-        LOG_ERROR("Nombre de LUT no reconocido %s", name);
+        LOG_ERROR("Canal de LUT no reconocido %d", channel);
         return lut;
     }
     
     if (!data || data_len < 48) {
-        LOG_ERROR("Datos embebidos inválidos para LUT %s", name);
+        LOG_ERROR("Datos embebidos inválidos para LUT %d", channel);
         return lut;
     }
     
@@ -435,7 +435,7 @@ static RayleighLUT rayleigh_lut_load_from_memory(const char *name) {
     // Validar dimensiones
     if (lut.n_sz <= 0 || lut.n_vz <= 0 || lut.n_az <= 0 ||
         lut.n_sz > 1000 || lut.n_vz > 1000 || lut.n_az > 1000) {
-        LOG_ERROR("Dimensiones inválidas en LUT %s: %dx%dx%d", name, lut.n_sz, lut.n_vz, lut.n_az);
+        LOG_ERROR("Dimensiones inválidas en LUT %d: %dx%dx%d", channel, lut.n_sz, lut.n_vz, lut.n_az);
         lut.n_sz = lut.n_vz = lut.n_az = 0;
         return lut;
     }
@@ -445,15 +445,15 @@ static RayleighLUT rayleigh_lut_load_from_memory(const char *name) {
     size_t expected_size = 48 + table_size * sizeof(float);
     
     if (data_len != expected_size) {
-        LOG_ERROR("Tamaño de datos embebidos incorrecto para LUT %s: esperado %zu, obtenido %u", 
-                  name, expected_size, data_len);
+        LOG_ERROR("Tamaño de datos embebidos incorrecto para LUT %d: esperado %zu, obtenido %u", 
+                  channel, expected_size, data_len);
         lut.n_sz = lut.n_vz = lut.n_az = 0;
         return lut;
     }
     
     lut.table = malloc(table_size * sizeof(float));
     if (!lut.table) {
-        LOG_ERROR("Falla de memoria al alocar LUT %s (%zu valores)", name, table_size);
+        LOG_ERROR("Falla de memoria al alocar LUT %d (%zu valores)", channel, table_size);
         lut.n_sz = lut.n_vz = lut.n_az = 0;
         return lut;
     }
@@ -473,7 +473,7 @@ static RayleighLUT rayleigh_lut_load_from_memory(const char *name) {
     }
     float mean_val = (float)(sum / table_size);
     
-    LOG_INFO("LUT de Rayleigh %s cargada desde datos embebidos", name);
+    LOG_INFO("LUT de Rayleigh %d cargada desde datos embebidos", channel);
     LOG_INFO("  Dimensiones: %d × %d × %d = %zu valores", 
              lut.n_sz, lut.n_vz, lut.n_az, table_size);
     LOG_INFO("  Solar Zenith: %.1f° - %.1f° (step: %.2f°)", 
@@ -511,14 +511,14 @@ void rayleigh_lut_destroy(RayleighLUT *lut) {
  * name: Nombre del canal ("C01", "C02", "C03")
  * tau: Profundidad óptica de Rayleigh para esta longitud de onda
  */
-void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const char *name, float tau) {
+void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t channel, float tau) {
 	// Validar dimensiones
     if (img->width != nav->sza.width || img->height != nav->sza.height) {
         LOG_ERROR("Mismatch dimensiones en Rayleigh Analytic: Img %dx%d vs Nav %dx%d",
                   img->width, img->height, nav->sza.width, nav->sza.height);
         return;
     }
-    RayleighLUT lut = rayleigh_lut_load_from_memory(name);
+    RayleighLUT lut = rayleigh_lut_load_from_memory(channel);
 
     size_t n = img->size;
     double start_time = omp_get_wtime();
