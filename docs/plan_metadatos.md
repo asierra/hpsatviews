@@ -6,6 +6,119 @@ Refactorizar **hpsatviews** para exportar un archivo *sidecar* (`.json`) con inf
 
 ---
 
+## Diagrama de Flujo de Datos
+
+### Estado Actual (Legacy)
+```
+main.c
+  └─> ArgParser parsed
+      ├─> cmd_rgb(parser)
+      │    └─> run_rgb(parser)
+      │         ├─> rgb_parse_options(parser, &ctx)  // Crea RgbOptions dentro de ctx
+      │         ├─> Cargar canales (DataNC)
+      │         ├─> Procesar RGB (composer)
+      │         ├─> generate_hpsv_filename(FilenameGeneratorInfo)  // Estructura temporal
+      │         └─> save_png(filename)
+      │
+      └─> cmd_gray(parser)
+           └─> run_processing(parser, false)
+                ├─> Parsear opciones manualmente (variables locales)
+                ├─> Cargar canal NetCDF
+                ├─> Procesar escala de grises
+                ├─> generate_hpsv_filename(FilenameGeneratorInfo)
+                └─> save_png(filename)
+
+PROBLEMA: 
+- Cada comando parsea opciones de forma diferente
+- FilenameGeneratorInfo es una estructura "throw-away"
+- No hay metadatos exportables
+- RgbOptions y parsing manual en processing.c son redundantes
+```
+
+### Estado Objetivo (v2.0)
+```
+main.c
+  └─> ArgParser parsed
+      ├─> config_from_argparser(parser, &config)  // ProcessConfig inmutable
+      ├─> meta = metadata_create()                 // MetadataContext opaco
+      │
+      ├─> cmd_rgb()
+      │    └─> run_rgb(&config, meta)              // Inyección de dependencias
+      │         ├─> metadata_add(meta, "satellite", "goes-16")
+      │         ├─> metadata_add(meta, "mode", "truecolor")
+      │         ├─> Cargar canales
+      │         ├─> metadata_add(meta, "radiometry", ...)
+      │         ├─> Procesar RGB
+      │         └─> metadata_add(meta, "geometry", ...)
+      │
+      └─> cmd_gray()
+           └─> run_processing(&config, meta)       // Misma firma que RGB
+                └─> (Flujo análogo)
+      
+      // FASE COMÚN DE CIERRE
+      ├─> output_filename = metadata_build_filename(meta, ".png")
+      ├─> save_png(output_filename, image)
+      ├─> json_filename = metadata_build_filename(meta, ".json")
+      ├─> metadata_write_json(meta, json_filename)
+      └─> metadata_destroy(meta)
+
+MEJORA:
+✓ Interfaz unificada (config + meta)
+✓ Separación clara: config = input, meta = output
+✓ Metadata acumula TODO lo necesario (nombre archivo + JSON)
+✓ FilenameGeneratorInfo eliminado
+✓ RgbOptions eliminado (reemplazado por ProcessConfig)
+```
+
+---
+
+---
+
+## Resumen de Archivos Impactados
+
+### Archivos Nuevos (6)
+| Archivo | Propósito | Sprint |
+|---------|-----------|--------|
+| `include/config.h` | Define `ProcessConfig` y feature flag | 1 |
+| `src/config_loader.c` | Parser ArgParser → ProcessConfig | 1 |
+| `include/metadatos.h` | API opaca para MetadataContext | 1 |
+| `src/metadatos.c` | Implementación + generación JSON | 1-2 |
+| `tests/test_metadata.c` | Tests unitarios metadatos | 6 |
+| `tests/test_config.c` | Tests unitarios configuración | 6 |
+
+### Archivos a Modificar (7)
+| Archivo | Cambios Principales | Sprint |
+|---------|---------------------|--------|
+| `src/main.c` | Agregar dispatching con feature flag | 3-4 |
+| `include/rgb.h` | Adelgazar RgbContext, eliminar RgbOptions | 3 |
+| `src/rgb.c` | Implementar run_rgb_v2(), inyectar dependencias | 3 |
+| `include/processing.h` | Nueva firma run_processing_v2() | 4 |
+| `src/processing.c` | Refactorizar con nuevos contextos | 4 |
+| `Makefile` | Agregar nuevos .c a SRCS, remover filename_utils.c | 1, 5 |
+| `README.md` | Documentar JSON sidecar | 6 |
+
+### Archivos a Eliminar (2)
+| Archivo | Motivo | Sprint |
+|---------|--------|--------|
+| `src/filename_utils.c` | Lógica absorbida en metadatos.c | 5 |
+| `include/filename_utils.h` | Header obsoleto | 5 |
+
+### Archivos No Modificados (Reutilizables sin cambios)
+- `src/channelset.c` - Gestión de sets de canales
+- `src/datanc.c` - Estructura de datos NetCDF y arrays de floats y de bytes
+- `src/reader_nc.c` - Lectura NetCDF
+- `src/image.c` - Manipulación de imágenes y estructura de datos ubytes
+- `src/reprojection.c` - Reproyección geográfica
+- `src/truecolor.c` - Algoritmos de true color
+- `src/rayleigh.c` - Corrección Rayleigh
+- `src/gray.c` - Generación escala de grises
+- `src/palette.c` - Manejo de paletas CPT
+- `src/writer_png.c` / `writer_geotiff.c` - Escritura de imágenes
+
+**Total:** 6 nuevos + 7 modificados + 2 eliminados = **15 archivos afectados** (de ~40 totales)
+
+---
+
 ## Fase 1: Definición de la Arquitectura Core (Modern C)
 
 ### Objetivo
@@ -26,7 +139,20 @@ typedef struct {
     float gamma;
     bool apply_clahe;
     float clahe_clip_limit;
+    int clahe_tiles_x;          // [NUEVO]
+    int clahe_tiles_y;          // [NUEVO]
     bool apply_histogram;
+    bool apply_rayleigh;        // [NUEVO]
+    
+    // Opciones de composición
+    int scale;                  // [NUEVO]
+    bool use_alpha;             // [NUEVO]
+    bool use_citylights;        // [NUEVO]
+
+    // Álgebra de Bandas (Custom)
+    bool is_custom_mode;        // [NUEVO]
+    void *custom_combos;        // [NUEVO] Puntero a LinearCombo[3]
+    float *custom_ranges;       // [NUEVO] Puntero a float[6]
     
     // Geometría solicitada
     bool has_clip;
@@ -68,6 +194,7 @@ Crear un cargador centralizado que convierta `ArgParser` en `ProcessConfig`.
 Implementar el contenedor opaco y la lógica de JSON.
 * **Absorción de Lógica:** Integrar la lógica de `filename_utils.c` dentro de este módulo. El `MetadataContext` será responsable de generar el nombre de archivo basado en los datos acumulados (satélite detectado, hora real del scan, etc.).
 * **Lifetimes:** Implementar constructores y destructores claros (`metadata_create`, `metadata_destroy`).
+* **Vendoring:** Incluir `cJSON.c` y `cJSON.h` en el árbol de fuentes (`src/vendor/` o `src/`) para evitar dependencias externas y facilitar la compilación.
 
 ---
 
@@ -315,7 +442,304 @@ Adaptar las herramientas externas para usar este JSON.
 ### Etiquetado automático
 * Generar etiquetas dinámicamente: Temperature [K] (CLAHE enhanced).
 
-## Fase 6: Verificación y Testing
+## Fase 6: Estrategia de Migración Incremental ("Strangler Fig Pattern")
+
+### Objetivo
+Realizar la refactorización sin romper la funcionalidad existente, permitiendo reversión rápida y validación continua durante el desarrollo.
+
+### 6.1 Preparación (Branch y Feature Flags)
+
+**Acción:**
+1. Crear rama de desarrollo: `git checkout -b feature/metadata-refactor`
+2. Agregar feature flag en `include/config.h` (nuevo archivo):
+```c
+// Feature flag: cuando esté listo, cambiar a 1
+#ifndef HPSV_USE_NEW_PIPELINE
+#define HPSV_USE_NEW_PIPELINE 0
+#endif
+```
+
+### 6.2 Orden de Implementación (Bottom-Up)
+
+#### SPRINT 1: Fundamentos (Semana 1-2)
+**Archivos a CREAR:**
+1. `include/config.h` + `src/config_loader.c`
+   - Implementar `ProcessConfig` struct
+   - Función: `config_from_argparser(ArgParser *parser, ProcessConfig *cfg)`
+   - **Validación:** Tests unitarios con valores conocidos
+
+2. `include/metadatos.h` + `src/metadatos.c`
+   - Implementar `MetadataContext` (opaque handle)
+   - API básica: `metadata_create()`, `metadata_destroy()`, `metadata_add_string/int/double()`
+   - Stub para generación de JSON (sin cJSON todavía)
+   - **Validación:** Compilar sin warnings, tests de memoria (valgrind)
+
+**Dependencias del Makefile:**
+```makefile
+SRCS += src/config_loader.c src/metadatos.c
+```
+
+#### SPRINT 2: Integración con JSON (Semana 3)
+**Archivos a MODIFICAR:**
+1. `src/metadatos.c`
+   - Integrar cJSON para generación real del JSON
+   - Implementar `metadata_write_json(ctx, filename)`
+   - Implementar `metadata_build_filename(ctx, extension)`
+   
+2. **Absorber lógica de `filename_utils.c`:**
+   - Mover funciones estáticas a `metadatos.c`:
+     - `extract_satellite_from_filename()`
+     - `format_instant_from_datanc()`
+     - `date_to_julian()`
+   - `FilenameGeneratorInfo` → **DEPRECATED** (marcar con comentario)
+   
+**Validación:**
+- Crear programa de prueba standalone que genere un JSON sin tocar el pipeline principal
+- Verificar schema con validador JSON externo
+
+#### SPRINT 3: Refactorización de RGB (Semana 4-5)
+**Archivos a MODIFICAR:**
+
+1. `include/rgb.h`:
+   - Adelgazar `RgbContext`:
+```c
+typedef struct {
+    // INYECCIÓN DE DEPENDENCIAS (NUEVO)
+    const ProcessConfig *config;
+    MetadataContext *meta;
+    
+    // MANTENER:
+    ChannelSet *channel_set;
+    DataNC channels[17];
+    DataF nav_lat, nav_lon;
+    DataF comp_r, comp_g, comp_b;
+    ImageData final_image, alpha_mask;
+    
+    // REMOVER:
+    // RgbOptions opts;  ← Ya no es necesario
+} RgbContext;
+```
+
+2. `src/rgb.c`:
+   - Cambiar firma de `run_rgb()`:
+```c
+#if HPSV_USE_NEW_PIPELINE
+int run_rgb_v2(const ProcessConfig *config, MetadataContext *meta);
+#else
+int run_rgb(ArgParser *parser);  // Versión legacy
+#endif
+```
+   - Implementar `run_rgb_v2()` duplicando lógica pero usando nuevos contextos
+   - Durante procesamiento, llamar `metadata_add()` para estadísticas
+
+3. `src/main.c`:
+   - En `cmd_rgb()`, agregar switch:
+```c
+int cmd_rgb(char* cmd_name, ArgParser* cmd_parser) {
+#if HPSV_USE_NEW_PIPELINE
+    ProcessConfig cfg = {0};
+    config_from_argparser(cmd_parser, &cfg);
+    MetadataContext *meta = metadata_create();
+    int result = run_rgb_v2(&cfg, meta);
+    metadata_write_json(meta, "output.json");
+    metadata_destroy(meta);
+    return result;
+#else
+    return run_rgb(cmd_parser);  // Legacy
+#endif
+}
+```
+
+**Validación:**
+- Compilar con `HPSV_USE_NEW_PIPELINE=0` (debe funcionar igual que antes)
+- Compilar con `HPSV_USE_NEW_PIPELINE=1` (probar nueva ruta)
+- Comparar salidas PNG bit-a-bit: `cmp old.png new.png`
+
+#### SPRINT 4: Refactorización de Processing (Semana 6)
+**Archivos a MODIFICAR:**
+
+1. `include/processing.h`:
+```c
+#if HPSV_USE_NEW_PIPELINE
+int run_processing_v2(const ProcessConfig *config, MetadataContext *meta);
+#else
+int run_processing(ArgParser *parser, bool is_pseudocolor);
+#endif
+```
+
+2. `src/processing.c`:
+   - Crear `run_processing_v2()` análogo al refactor de RGB
+   - Las funciones `process_clip_coords()`, `strinstr()` pueden mantenerse sin cambios
+
+3. `src/main.c`:
+   - Actualizar `cmd_gray()` y `cmd_pseudocolor()` con feature flag
+
+**Validación:**
+- Tests end-to-end con sample_data/:
+  - `hpsv gray sample_data/OR_ABI-L2-CMIPC-M6C13_*.nc`
+  - `hpsv pseudocolor --cpt phase.cpt sample_data/OR_ABI-L2-CMIPC-M6C13_*.nc`
+
+#### SPRINT 5: Eliminación de Legacy (Semana 7)
+**Archivos a ELIMINAR/MODIFICAR:**
+
+1. `src/filename_utils.c` + `include/filename_utils.h`:
+   - **ELIMINAR** (funcionalidad absorbida en `metadatos.c`)
+   - Actualizar Makefile para remover de SRCS
+
+2. `include/rgb.h`:
+   - **ELIMINAR** `RgbOptions` struct (ahora usa `ProcessConfig`)
+
+3. `src/main.c`, `src/rgb.c`, `src/processing.c`:
+   - Remover todos los `#if HPSV_USE_NEW_PIPELINE` blocks
+   - Eliminar funciones `_v2` (renombrar a nombres originales)
+   - Eliminar funciones legacy
+
+**Validación:**
+- Ejecutar suite completa de tests
+- Probar con todos los modos: rgb, gray, pseudocolor
+- Probar con todas las opciones: --clip, --gamma, --clahe, --geotiff
+
+#### SPRINT 6: Testing y Documentación (Semana 8)
+**Archivos a CREAR/MODIFICAR:**
+
+1. `tests/test_metadata.c` (nuevo):
+   - Tests unitarios para `MetadataContext`
+   - Tests de serialización JSON
+
+2. `tests/test_config.c` (nuevo):
+   - Tests de `ProcessConfig` parsing
+
+3. `docs/MIGRATION_V2.md` (nuevo):
+   - Documentar cambios en la API interna
+   - Ejemplos de código viejo vs nuevo
+
+4. `README.md`:
+   - Agregar sección sobre archivo JSON sidecar
+   - Ejemplos de uso con mapdrawer
+
+5. `CHANGELOG.md` (nuevo):
+   - Documentar breaking changes (si los hay)
+
+### 6.3 Verificación y Rollback
+
+**Punto de No-Retorno:** Sprint 5 (eliminación de legacy)
+
+**Criterios para Avanzar a Sprint 5:**
+- [ ] Todos los tests pasan con `HPSV_USE_NEW_PIPELINE=1`
+- [ ] Validación visual: 10 productos generados idénticos a versión legacy
+- [ ] Validación cuantitativa: JSON contiene metadatos correctos
+- [ ] Performance: No hay degradación >5% en tiempo de ejecución
+- [ ] Memoria: No hay leaks detectados con valgrind
+
+**Plan de Rollback:**
+```bash
+# Si algo sale mal en Sprint 3-4:
+git stash  # Guardar cambios locales
+git checkout main
+make clean && make
+
+# Si hay que revertir después de merge:
+git revert <commit-hash-del-merge>
+```
+
+### 6.4 Checklist de Validación por Sprint
+
+#### Sprint 1: Fundamentos
+```bash
+# Compilación
+make clean && make
+./bin/hpsv --version  # Debe funcionar sin cambios
+
+# Tests unitarios (crear con Check framework o similar)
+./tests/test_config_basic
+./tests/test_metadata_lifecycle
+
+# Validación de memoria
+valgrind --leak-check=full ./tests/test_metadata_lifecycle
+```
+
+#### Sprint 2: JSON
+```bash
+# Generar JSON de prueba sin pipeline
+./tests/test_json_generation
+cat test_output.json | jq .  # Validar sintaxis
+
+# Validar contra schema
+jsonschema -i test_output.json docs/hpsatviews.schema.json
+```
+
+#### Sprint 3: RGB
+```bash
+# Probar ambas rutas (legacy y nueva)
+make clean && make  # HPSV_USE_NEW_PIPELINE=0
+./bin/hpsv rgb sample_data/OR_ABI-L2-CMIPC-M6C02_*.nc -o legacy.png
+
+make clean && make DEBUG=1 CFLAGS+=-DHPSV_USE_NEW_PIPELINE=1
+./bin/hpsv rgb sample_data/OR_ABI-L2-CMIPC-M6C02_*.nc -o new.png
+
+# Comparar bit a bit
+cmp legacy.png new.png && echo "✓ IDENTICOS" || echo "✗ DIFIEREN"
+md5sum legacy.png new.png
+
+# Validar JSON generado
+test -f new.json && jq . new.json || echo "✗ JSON no generado"
+```
+
+#### Sprint 4: Processing
+```bash
+# Gray
+./bin/hpsv gray sample_data/OR_ABI-L2-CMIPC-M6C13_*.nc -o test_gray.png
+test -f test_gray.json && echo "✓ JSON creado"
+
+# Pseudocolor
+./bin/hpsv pseudocolor --cpt assets/phase.cpt sample_data/OR_ABI-L2-CMIPC-M6C13_*.nc -o test_pseudo.png
+test -f test_pseudo.json && echo "✓ JSON creado"
+
+# Con opciones complejas
+./bin/hpsv gray sample_data/OR_ABI-L2-CMIPC-M6C13_*.nc \
+  --clip -100,25,-90,15 --gamma 1.5 --clahe --geotiff -o complex.tif
+jq '.enhancements.gamma, .enhancements.clahe, .geometry.bbox' complex.json
+```
+
+#### Sprint 5: Eliminación Legacy
+```bash
+# Debe compilar SIN warnings
+make clean && make 2>&1 | tee build.log
+grep -i "warning\|error" build.log && echo "✗ HAY WARNINGS" || echo "✓ LIMPIO"
+
+# Test de regresión completo
+./reproduction/run_demo.sh  # Script que prueba todos los modos
+diff -r output/ reproduction/expected_output/ && echo "✓ REGRESION PASS"
+```
+
+#### Sprint 6: Testing Final
+```bash
+# Suite completa
+cd tests && ./run_all_tests.sh
+
+# Performance benchmark
+time ./bin/hpsv rgb sample_data/OR_ABI-L2-CMIPC-M6C02_*.nc -o perf.png
+# Comparar con versión legacy (debe ser similar ±5%)
+
+# Integración con mapdrawer (si disponible)
+./bin/hpsv rgb sample_data/*.nc -o map.png
+python3 mapdrawer.py map.json  # Generar mapa con barra de color
+```
+
+### 6.5 Matriz de Riesgos y Contingencias
+
+| Riesgo | Probabilidad | Impacto | Mitigación | Contingencia |
+|--------|--------------|---------|------------|--------------|
+| Romper compatibilidad PNG | Media | Alto | Comparación bit-a-bit en Sprint 3 | Revertir sprint, debugging detallado |
+| Memory leaks en MetadataContext | Media | Medio | Valgrind continuo, tests de stress | Agregar reference counting |
+| Performance degradation | Baja | Medio | Profiling con gprof/perf | Optimizar hot paths, cache config |
+| cJSON parsing errors | Baja | Alto | Tests con datos malformados | Agregar validación defensiva |
+| Filename generation bugs | Alta | Bajo | Tests unitarios exhaustivos Sprint 2 | Mantener fallback a timestamp simple |
+| Makefile dependency hell | Media | Medio | Clean builds frecuentes | Regenerar .d files con make clean |
+
+---
+
+## Fase 7: Verificación y Testing
 
 ### Prueba de Consistencia (Modern C)
 
@@ -328,9 +752,148 @@ Adaptar las herramientas externas para usar este JSON.
 
 * Confirmar en el JSON que geometry.bbox corresponde a las coordenadas de México y no al disco completo.
 
-## Prueba de Integración
+### Prueba de Integración
 
 * Flujo completo: hpsatviews → JSON → mapdrawer.
 
 * Validar visualmente la barra de colores y la leyenda generada.
 
+---
+
+## Apéndice A: Cronograma Visual
+
+```
+Sprint 1: Fundamentos [████████░░░░░░░░] Semana 1-2
+  ↳ config.h, metadatos.h (estructuras base)
+  
+Sprint 2: JSON [░░░░░░██████░░░░░░] Semana 3
+  ↳ Integración cJSON, absorber filename_utils
+  
+Sprint 3: RGB [░░░░░░░░░░████████] Semana 4-5
+  ↳ Refactor rgb.c, feature flags
+  
+Sprint 4: Processing [░░░░░░░░░░░░░███] Semana 6
+  ↳ Refactor processing.c (gray/pseudo)
+  
+Sprint 5: Cleanup [░░░░░░░░░░░░░░██] Semana 7
+  ↳ Eliminar legacy, unificar código
+  
+Sprint 6: Testing [░░░░░░░░░░░░░░░█] Semana 8
+  ↳ Documentación, tests finales
+```
+
+## Apéndice B: Guía Rápida de Comandos
+
+### Durante Desarrollo
+```bash
+# Compilar con pipeline antiguo (seguro)
+make clean && make
+
+# Compilar con pipeline nuevo (experimental)
+make clean && make CFLAGS+=-DHPSV_USE_NEW_PIPELINE=1
+
+# Tests de memoria
+valgrind --leak-check=full --show-leak-kinds=all ./bin/hpsv rgb sample_data/*.nc
+
+# Comparar outputs
+diff <(md5sum legacy.png) <(md5sum new.png)
+
+# Validar JSON
+jq empty output.json && echo "✓ JSON válido" || echo "✗ JSON inválido"
+```
+
+### Después de Sprint 5 (Legacy Eliminado)
+```bash
+# Build normal
+make clean && make
+
+# Tests completos
+make test  # (agregar target al Makefile)
+
+# Instalar versión nueva
+sudo make install
+```
+
+## Apéndice C: Patrones de Código C Moderno Utilizados
+
+### 1. Designated Initializers (C99)
+```c
+ProcessConfig cfg = {
+    .gamma = 1.0,
+    .do_reprojection = false,
+    .clip_coords = {-100.0, 25.0, -90.0, 15.0},
+};
+```
+
+### 2. Generic Macros (C11)
+```c
+#define metadata_add(CTX, KEY, VAL) \
+    _Generic((VAL), \
+        int: metadata_add_int, \
+        double: metadata_add_double, \
+        char*: metadata_add_string \
+    )(CTX, KEY, VAL)
+```
+
+### 3. Opaque Pointers
+```c
+// Header (metadatos.h)
+typedef struct MetadataContext MetadataContext;
+
+// Implementation (metadatos.c)
+struct MetadataContext {
+    cJSON *root;
+    char buffer[1024];
+};
+```
+
+### 4. Goto Error Handling
+```c
+int process_image(const char *file) {
+    DataNC *data = NULL;
+    ImageData *img = NULL;
+    int status = -1;
+    
+    data = load_nc(file);
+    if (!data) goto cleanup;
+    
+    img = create_image(data);
+    if (!img) goto cleanup;
+    
+    status = 0;  // Success
+    
+cleanup:
+    if (data) datanc_destroy(data);
+    if (img) image_destroy(img);
+    return status;
+}
+```
+
+### 5. Static Assertions (C11)
+```c
+_Static_assert(sizeof(float) == 4, "Require 32-bit floats");
+_Static_assert(MAX_CHANNELS == 16, "Channel array size mismatch");
+```
+
+---
+
+## Resumen Ejecutivo
+
+**Objetivo:** Modernizar hpsatviews para generar JSON sidecar con metadatos radiométricos/geoespaciales.
+
+**Estrategia:** Strangler Fig Pattern con feature flags (desarrollo paralelo, eliminación gradual de legacy).
+
+**Impacto:** 15 archivos afectados de ~40 totales (37.5% del código base).
+
+**Duración:** 8 semanas (2 meses).
+
+**Riesgos Principales:** Compatibilidad PNG, memory leaks, performance.
+
+**Punto de No-Retorno:** Sprint 5 (después de validar Sprints 3-4).
+
+**Beneficios:**
+- ✅ Exportación automática de metadatos científicos
+- ✅ Arquitectura más mantenible (separación config/metadata)
+- ✅ Eliminación de estructuras redundantes (RgbOptions, FilenameGeneratorInfo)
+- ✅ Base para futuras extensiones (más formatos, validaciones)
+- ✅ Integración con herramientas de visualización (mapdrawer)
