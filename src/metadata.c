@@ -1,3 +1,11 @@
+/*
+ * Módulo de Metadatos - Gestión y serialización
+ * Sprint 1-2: Implementación base + JSON
+ */
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200112L
+#endif
+
 #include "metadata.h"
 #include "writer_json.h"
 #include "datanc.h"
@@ -5,6 +13,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
+#include <math.h>
 
 #define MAX_KV 32
 #define MAX_CHANNELS 16
@@ -45,6 +54,21 @@ struct MetadataContext {
     int count;
 };
 
+static const char *SAT_NAMES[] = {
+    [SAT_UNKNOWN] = "unknown",
+    [SAT_GOES16]  = "G16",
+    [SAT_GOES17]  = "G17",
+    [SAT_GOES18]  = "G18",
+    [SAT_GOES19]  = "G19"
+};
+
+static const char* get_sat_name(SatelliteID id) {
+    if (id >= SAT_UNKNOWN && id <= SAT_GOES19) {
+        return SAT_NAMES[id];
+    }
+    return "unknown";
+}
+
 MetadataContext* metadata_create(void) {
     MetadataContext *ctx = calloc(1, sizeof(MetadataContext));
     if (ctx) {
@@ -63,9 +87,10 @@ void metadata_from_nc(MetadataContext *ctx, const DataNC *nc) {
 
     // 1. Copiar Timestamp y convertir a ISO 8601
     ctx->timestamp = nc->timestamp;
-    struct tm *tm_info = gmtime(&nc->timestamp);
-    if (tm_info) {
-        strftime(ctx->time_iso, sizeof(ctx->time_iso), "%Y-%m-%dT%H:%M:%SZ", tm_info);
+    if (nc->timestamp > 0) {
+        struct tm tm_info;
+        gmtime_r(&nc->timestamp, &tm_info);
+        strftime(ctx->time_iso, sizeof(ctx->time_iso), "%Y-%m-%dT%H:%M:%SZ", &tm_info);
     }
 
     // 2. Copiar Satélite
@@ -101,6 +126,11 @@ void metadata_set_satellite(MetadataContext *ctx, const char *sat_name) {
     strncpy(ctx->satellite, sat_name, sizeof(ctx->satellite) - 1);
 }
 
+void metadata_set_command(MetadataContext *ctx, const char *command) {
+    if (!ctx || !command) return;
+    strncpy(ctx->command, command, sizeof(ctx->command) - 1);
+}
+
 void metadata_set_geometry(MetadataContext *ctx, float x1, float y1, float x2, float y2) {
     if(!ctx) return;
     ctx->bbox[0] = x1; ctx->bbox[1] = y1;
@@ -132,23 +162,139 @@ void metadata_add_bool(MetadataContext *c, const char *k, bool v) {
     c->extra_fields[c->count-1].type = 3;
 }
 
+/**
+ * Formatea timestamp en formato YYYYJJJ_hhmm (año juliano).
+ * Absorbe funcionalidad de filename_utils.c
+ */
+static void format_timestamp_julian(time_t timestamp, char* buffer, size_t size) {
+    if (timestamp == 0) {
+        snprintf(buffer, size, "NA");
+        return;
+    }
+    struct tm tm_info;
+    gmtime_r(&timestamp, &tm_info);
+    strftime(buffer, size, "%Y%j_%H%M", &tm_info);
+}
+
+/**
+ * Construye la cadena de operaciones aplicadas (ej: "clahe__geo__inv").
+ * Retorna true si se agregó alguna operación.
+ */
+static bool build_ops_string(const MetadataContext *ctx, char* buffer, size_t size) {
+    buffer[0] = '\0';
+    
+    const char* ops_list[10];
+    int op_count = 0;
+    char gamma_str[16];
+    
+    // Buscar las operaciones en extra_fields
+    bool has_gamma = false, has_clahe = false, has_histo = false;
+    bool has_rayleigh = false, has_invert = false;
+    float gamma_val = 1.0f;
+    
+    for (int i = 0; i < ctx->count; i++) {
+        const KeyVal *kv = &ctx->extra_fields[i];
+        if (strcmp(kv->key, "gamma") == 0 && kv->type == 0) {
+            gamma_val = (float)kv->val_d;
+            if (fabsf(gamma_val - 1.0f) > 0.01f) has_gamma = true;
+        } else if (strcmp(kv->key, "clahe") == 0 && kv->type == 3) {
+            has_clahe = (kv->val_d != 0.0);
+        } else if (strcmp(kv->key, "histogram") == 0 && kv->type == 3) {
+            has_histo = (kv->val_d != 0.0);
+        } else if (strcmp(kv->key, "rayleigh") == 0 && kv->type == 3) {
+            has_rayleigh = (kv->val_d != 0.0);
+        } else if (strcmp(kv->key, "invert") == 0 && kv->type == 3) {
+            has_invert = (kv->val_d != 0.0);
+        }
+    }
+    
+    // Construir lista de operaciones en orden
+    if (has_invert) ops_list[op_count++] = "inv";
+    if (has_rayleigh) ops_list[op_count++] = "ray";
+    if (has_histo) ops_list[op_count++] = "histo";
+    if (has_clahe) ops_list[op_count++] = "clahe";
+    if (has_gamma) {
+        snprintf(gamma_str, sizeof(gamma_str), "g%.1f", gamma_val);
+        // Reemplazar punto por 'p' (ej: "g1.5" -> "g1p5")
+        for (char *p = gamma_str; *p; ++p) {
+            if (*p == '.') *p = 'p';
+        }
+        ops_list[op_count++] = gamma_str;
+    }
+    if (ctx->has_bbox) ops_list[op_count++] = "clip";
+    
+    // Buscar "reprojection" o "geographics" en extra_fields
+    for (int i = 0; i < ctx->count; i++) {
+        if ((strcmp(ctx->extra_fields[i].key, "reprojection") == 0 ||
+             strcmp(ctx->extra_fields[i].key, "geographics") == 0) &&
+            ctx->extra_fields[i].type == 3 && ctx->extra_fields[i].val_d != 0.0) {
+            ops_list[op_count++] = "geo";
+            break;
+        }
+    }
+    
+    if (op_count == 0) {
+        return false;
+    }
+    
+    // Construir la cadena final separada por "__"
+    size_t current_len = 0;
+    for (int i = 0; i < op_count; i++) {
+        size_t op_len = strlen(ops_list[i]);
+        if (current_len + op_len + (i > 0 ? 2 : 0) + 1 < size) {
+            if (i > 0) {
+                strcat(buffer, "__");
+                current_len += 2;
+            }
+            strcat(buffer, ops_list[i]);
+            current_len += op_len;
+        }
+    }
+    return (op_count > 0);
+}
+
 char* metadata_build_filename(const MetadataContext *ctx, const char *extension) {
     if (!ctx || !extension) return NULL;
     
-    // Formato: hpsatviews_SATELLITE_YYYYMMDD_HHMMSS.ext
-    char *filename = malloc(256);
+    // Formato: hpsv_<SAT>_<YYYYJJJ_hhmm>_<TIPO>_<BANDAS>[_<OPS>].<ext>
+    char *filename = malloc(512);
     if (!filename) return NULL;
     
-    struct tm *tm_info = gmtime(&ctx->timestamp);
-    char date_str[32] = "unknown";
-    if (tm_info) {
-        strftime(date_str, sizeof(date_str), "%Y%m%d_%H%M%S", tm_info);
+    // 1. Satélite
+    const char *sat = ctx->satellite[0] ? ctx->satellite : "GXX";
+    
+    // 2. Timestamp (formato juliano)
+    char instant[20];
+    format_timestamp_julian(ctx->timestamp, instant, sizeof(instant));
+    
+    // 3. Tipo de producto (basado en command)
+    const char *type = "output";
+    if (ctx->command[0]) {
+        if (strcmp(ctx->command, "gray") == 0) type = "gray";
+        else if (strcmp(ctx->command, "pseudocolor") == 0) type = "pseudo";
+        else if (strcmp(ctx->command, "rgb") == 0) type = "rgb";
+        else type = ctx->command;
     }
     
-    const char *sat = ctx->satellite[0] ? ctx->satellite : "unknown";
-    const char *cmd = ctx->command[0] ? ctx->command : "output";
+    // 4. Bandas (simplificado: usar el primer canal)
+    char bands[32] = "NA";
+    if (ctx->channel_count > 0 && ctx->channels[0].valid) {
+        strncpy(bands, ctx->channels[0].name, sizeof(bands) - 1);
+    }
     
-    snprintf(filename, 256, "hpsatviews_%s_%s_%s%s", sat, cmd, date_str, extension);
+    // 5. Operaciones aplicadas
+    char ops[128] = "";
+    bool has_ops = build_ops_string(ctx, ops, sizeof(ops));
+    
+    // 6. Construir nombre final
+    if (has_ops) {
+        snprintf(filename, 512, "hpsv_%s_%s_%s_%s_%s%s",
+                 sat, instant, type, bands, ops, extension);
+    } else {
+        snprintf(filename, 512, "hpsv_%s_%s_%s_%s%s",
+                 sat, instant, type, bands, extension);
+    }
+    
     return filename;
 }
 

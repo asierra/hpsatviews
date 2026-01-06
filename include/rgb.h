@@ -11,6 +11,8 @@
 #include "channelset.h"
 #include "datanc.h"
 #include "image.h"
+#include "config.h"
+#include "metadata.h"
 
 // Forward declarations
 typedef struct ArgParser ArgParser;
@@ -120,8 +122,8 @@ void rgb_context_init(RgbContext *ctx);
 void rgb_context_destroy(RgbContext *ctx);
 bool rgb_parse_options(ArgParser *parser, RgbContext *ctx);
 
-// Función principal
-int run_rgb(ArgParser *parser);
+// Función principal con inyección de dependencias
+int run_rgb(const ProcessConfig *cfg, MetadataContext *meta);
 
 // Funciones de composición RGB
 ImageData create_multiband_rgb(const DataF* r_ch, const DataF* g_ch, const DataF* b_ch,

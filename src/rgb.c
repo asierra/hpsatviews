@@ -5,6 +5,7 @@
 
 #include "args.h"
 #include "clip_loader.h"
+#include "config.h"
 #include "datanc.h"
 #include "daynight_mask.h"
 #include "filename_utils.h"
@@ -627,43 +628,6 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
     return true;
 }
 
-static bool generate_output_filename(RgbContext *ctx, const RgbStrategy *strategy) {
-    (void)strategy;                  // Evita warning de parámetro no usado
-    if (ctx->opts.output_filename) { // Nombre provisto por el usuario (o
-                                     // expandido por patrón)
-        return true;
-    }
-
-    // Extraer nombre del satélite del archivo de entrada
-    char *satellite_name = get_sat_name(ctx->channels[ctx->ref_channel_idx].sat_id);
-
-    // Poblar la estructura de información para el nuevo generador de nombres
-    // canónico Usamos el primer canal cargado como referencia para metadatos
-    FilenameGeneratorInfo info = {.datanc = &ctx->channels[ctx->ref_channel_idx],
-                                  .satellite_name = satellite_name,
-                                  .command = "rgb",
-                                  .mode = ctx->opts.mode,
-                                  .apply_rayleigh = ctx->opts.apply_rayleigh,
-                                  .apply_histogram = ctx->opts.apply_histogram,
-                                  .apply_clahe = ctx->opts.apply_clahe,
-                                  .gamma = ctx->opts.gamma,
-                                  .has_clip = ctx->opts.has_clip,
-                                  .do_reprojection = ctx->opts.do_reprojection,
-                                  .force_geotiff = ctx->opts.force_geotiff};
-
-    ctx->opts.output_filename = generate_hpsv_filename(&info);
-    free(satellite_name);
-
-    if (!ctx->opts.output_filename) {
-        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
-                 "Falla al generar nombre de archivo de salida.");
-        return false;
-    }
-
-    ctx->opts.output_generated = true;
-    return true;
-}
-
 static bool apply_postprocessing(RgbContext *ctx) {
     // daynite es un caso exclusivo especial
     if (strcmp(ctx->opts.mode, "daynite") == 0) {
@@ -767,132 +731,193 @@ static bool write_output(RgbContext *ctx) {
     return true;
 }
 
-int run_rgb(ArgParser *parser) {
-    RgbContext ctx;
-    rgb_context_init(&ctx);
-    int status = 1; // Error por defecto
+// ============================================================================
+// INTERFAZ UNIFICADA - Inyección de Dependencias
+// ============================================================================
 
-    // Paso 1: Parsear opciones
-    if (!rgb_parse_options(parser, &ctx)) {
-        LOG_ERROR("%s", ctx.error_msg);
-        goto cleanup;
+/**
+ * @brief Convierte ProcessConfig a RgbContext para reutilizar funciones existentes.
+ * 
+ * Esta función actúa como adaptador entre la nueva interfaz (ProcessConfig)
+ * y la implementación interna (RgbContext).
+ */
+static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
+    rgb_context_init(ctx);
+    
+    // Copiar opciones básicas
+    ctx->opts.input_file = cfg->input_file;
+    ctx->opts.mode = cfg->strategy ? cfg->strategy : "daynite";
+    ctx->opts.gamma = cfg->gamma;
+    ctx->opts.scale = cfg->scale;
+    
+    // Opciones booleanas
+    ctx->opts.do_reprojection = cfg->do_reprojection;
+    ctx->opts.apply_histogram = cfg->apply_histogram;
+    ctx->opts.force_geotiff = cfg->force_geotiff;
+    ctx->opts.apply_rayleigh = cfg->apply_rayleigh;
+    ctx->opts.rayleigh_analytic = cfg->rayleigh_analytic;
+    ctx->opts.use_citylights = cfg->use_citylights;
+    ctx->opts.use_alpha = cfg->use_alpha;
+    ctx->opts.use_full_res = cfg->use_full_res;
+    
+    // CLAHE
+    ctx->opts.apply_clahe = cfg->apply_clahe;
+    if (cfg->apply_clahe) {
+        ctx->opts.clahe_tiles_x = cfg->clahe_tiles_x;
+        ctx->opts.clahe_tiles_y = cfg->clahe_tiles_y;
+        ctx->opts.clahe_clip_limit = cfg->clahe_clip_limit;
     }
-    // --- [METADATOS] 1. Inicialización ---
-    MetadataContext *meta = metadata_create();
-    // Inyectamos la configuración que acabamos de leer
+    
+    // Clip
+    ctx->opts.has_clip = cfg->has_clip;
+    if (cfg->has_clip) {
+        for (int i = 0; i < 4; i++) {
+            ctx->opts.clip_coords[i] = cfg->clip_coords[i];
+        }
+    }
+    
+    // Custom mode
+    ctx->opts.expr = cfg->custom_expr;
+    ctx->opts.minmax = cfg->custom_minmax;
+    
+    // Output filename
+    if (cfg->output_path_override) {
+        ctx->opts.output_filename = (char *)cfg->output_path_override;
+        ctx->opts.output_generated = false;
+    }
+    
+    // Detectar producto L2
+    const char *basename_input = strrchr(cfg->input_file, '/');
+    basename_input = basename_input ? basename_input + 1 : cfg->input_file;
+    ctx->opts.is_l2_product = (strstr(basename_input, "CMIP") != NULL);
+}
+
+/**
+ * @brief Procesamiento RGB con inyección de dependencias.
+ * 
+ * Esta versión implementa el patrón de Inyección de Dependencias:
+ * - config: Entrada inmutable (lo que el usuario solicitó)
+ * - meta: Salida mutable (lo que realmente ocurrió)
+ * 
+ * @param cfg Configuración inmutable del proceso
+ * @param meta Contexto de metadatos para acumular información
+ * @return 0 en éxito, != 0 en error
+ */
+int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
+    if (!cfg || !meta) {
+        LOG_ERROR("run_rgb: parámetros NULL");
+        return 1;
+    }
+    
+    LOG_INFO("Procesando RGB: %s", cfg->input_file);
+    
+    RgbContext ctx;
+    config_to_rgb_context(cfg, &ctx);
+    int status = 1;
+    char **custom_channels = NULL;
+    
+    // Registrar metadatos básicos
     metadata_add(meta, "command", "rgb");
     metadata_add(meta, "mode", ctx.opts.mode ? ctx.opts.mode : "unknown");
     metadata_add(meta, "gamma", ctx.opts.gamma);
-    metadata_add(meta, "clahe_applied", ctx.opts.apply_clahe);
+    metadata_add(meta, "apply_clahe", ctx.opts.apply_clahe);
+    metadata_add(meta, "apply_rayleigh", ctx.opts.apply_rayleigh);
+    metadata_add(meta, "apply_histogram", ctx.opts.apply_histogram);
+    metadata_add(meta, "do_reprojection", ctx.opts.do_reprojection);
+    
     if (ctx.opts.apply_clahe) {
         metadata_add(meta, "clahe_limit", ctx.opts.clahe_clip_limit);
     }
     
-    // Paso 2: Obtener estrategia
+    // Obtener estrategia
     const RgbStrategy *strategy = get_strategy_for_mode(ctx.opts.mode);
     if (!strategy) {
         LOG_ERROR("Modo '%s' no reconocido.", ctx.opts.mode);
         goto cleanup;
     }
     LOG_INFO("Modo seleccionado: %s - %s", strategy->mode_name, strategy->description);
-
+    
     const char **req_channels = NULL;
-    char **custom_channels = NULL;
     if (strcmp(ctx.opts.mode, "custom") == 0) {
         if (!ctx.opts.expr) {
-            LOG_ERROR("El modo 'custom' requiere especificar una fórmula con --expr");
+            LOG_ERROR("El modo 'custom' requiere especificar --expr");
             goto cleanup;
         }
         int count = get_unique_channels_rgb(ctx.opts.expr, &custom_channels);
-
-        if (count == 0 || custom_channels == NULL) {
-            LOG_ERROR("No se detectaron bandas válidas (C01-C16) en la expresión: %s",
-                      ctx.opts.expr);
+        if (count == 0 || !custom_channels) {
+            LOG_ERROR("No se detectaron bandas válidas en: %s", ctx.opts.expr);
             goto cleanup;
         }
-
-        LOG_INFO("Modo Custom: Se requieren %d bandas únicas para la fórmula.", count);
+        LOG_INFO("Modo Custom: Se requieren %d bandas", count);
         req_channels = (const char **)custom_channels;
     } else {
         req_channels = (const char **)strategy->req_channels;
     }
-
-    // Paso 3: Cargar canales
+    
+    // Cargar canales
     if (!load_channels(&ctx, req_channels)) {
         LOG_ERROR("%s", ctx.error_msg);
         goto cleanup;
     }
-    // --- [METADATOS] 3. Extracción de Satélite y Hora (Corregido) ---
-     // A. Guardar instante
-	//metadata_set_time(meta, nc->global_attr.time_coverage_start);
-                // B. Extraer Satélite (platform_id)
-     //metadata_set_satellite(meta, nc->global_attr.platform_id);
-
-    // Paso 4: Procesar geoespacial (navegación, clip, reproyección)
+    
+    // Procesar geoespacial
     if (!process_geospatial(&ctx, strategy)) {
         LOG_ERROR("%s", ctx.error_msg);
         goto cleanup;
     }
-
-    // Paso 5: Generar nombre de salida
-    if (!generate_output_filename(&ctx, strategy)) {
-        LOG_ERROR("No se pudo generar el nombre de archivo de salida.");
-        goto cleanup;
-    }
-
-    // Paso 6: Composición (corazón de la estrategia)
+    
+    // Composición
     LOG_INFO("Generando compuesto '%s'...", strategy->mode_name);
     if (!strategy->composer_func(&ctx)) {
-        LOG_ERROR("Falla al generar el compuesto RGB para el modo '%s'.", strategy->mode_name);
+        LOG_ERROR("Falla al generar compuesto RGB");
         goto cleanup;
     }
-
-    // Paso 7: Si hace falta, preprocesar DataF
+    
+    // Preprocesar DataF
     if (ctx.comp_r.data_in && ctx.comp_g.data_in && ctx.comp_b.data_in) {
         if (ctx.opts.gamma > 0.0f && fabsf(ctx.opts.gamma - 1.0f) > 1e-6) {
-            LOG_INFO("Aplicando Gamma %.2f a canales flotantes...", ctx.opts.gamma);
+            LOG_INFO("Aplicando Gamma %.2f", ctx.opts.gamma);
             dataf_apply_gamma(&ctx.comp_r, ctx.opts.gamma);
             dataf_apply_gamma(&ctx.comp_g, ctx.opts.gamma);
             dataf_apply_gamma(&ctx.comp_b, ctx.opts.gamma);
-
-            // Resetear gamma en opciones para que no se aplique de nuevo
             ctx.opts.gamma = 1.0f;
         }
-
-        // Paso 8: Renderizar a imagen
-        ctx.final_image =
-            create_multiband_rgb(&ctx.comp_r, &ctx.comp_g, &ctx.comp_b, ctx.min_r, ctx.max_r,
-                                 ctx.min_g, ctx.max_g, ctx.min_b, ctx.max_b);
+        
+        // Renderizar a imagen
+        ctx.final_image = create_multiband_rgb(&ctx.comp_r, &ctx.comp_g, &ctx.comp_b,
+                                                ctx.min_r, ctx.max_r,
+                                                ctx.min_g, ctx.max_g,
+                                                ctx.min_b, ctx.max_b);
     }
-
+    
     if (ctx.final_image.data == NULL) {
-        LOG_ERROR("Falla al generar la imagen RGB para el modo '%s'.", strategy->mode_name);
+        LOG_ERROR("Falla al generar imagen RGB");
         goto cleanup;
     }
-
-    // Paso 9: Reproyección (si fue solicitada)
+    
+    // Reproyección
     if (ctx.opts.do_reprojection) {
         if (!ctx.has_navigation) {
-            LOG_ERROR("La reproyección fue solicitada pero no se pudo cargar la "
-                      "navegación.");
+            LOG_ERROR("Navegación requerida para reproyección");
             goto cleanup;
         }
-
-        LOG_INFO("Iniciando reproyección de imagen RGB a coordenadas geográficas...");
-        ImageData reprojected =
-            reproject_image_to_geographics(&ctx.final_image, &ctx.nav_lat, &ctx.nav_lon,
-                                           ctx.channels[ctx.ref_channel_idx].native_resolution_km,
-                                           ctx.opts.has_clip ? ctx.opts.clip_coords : NULL);
-
+        
+        LOG_INFO("Iniciando reproyección...");
+        ImageData reprojected = reproject_image_to_geographics(
+            &ctx.final_image, &ctx.nav_lat, &ctx.nav_lon,
+            ctx.channels[ctx.ref_channel_idx].native_resolution_km,
+            ctx.opts.has_clip ? ctx.opts.clip_coords : NULL
+        );
+        
         if (reprojected.data == NULL) {
-            LOG_ERROR("Falla durante la reproyección de la imagen RGB.");
+            LOG_ERROR("Falla durante reproyección");
             goto cleanup;
         }
-
+        
         image_destroy(&ctx.final_image);
         ctx.final_image = reprojected;
-
-        // Actualizar límites geográficos para GeoTIFF
+        
+        // Actualizar límites
         if (ctx.opts.has_clip) {
             ctx.final_lon_min = ctx.opts.clip_coords[0];
             ctx.final_lat_max = ctx.opts.clip_coords[1];
@@ -905,44 +930,33 @@ int run_rgb(ArgParser *parser) {
             ctx.final_lat_max = ctx.nav_lat.fmax;
         }
     }
-
-    // Paso 10: Post-procesamiento (histogram, CLAHE, scale, alpha)
+    
+    // Post-procesamiento
     if (!apply_postprocessing(&ctx)) {
-        LOG_ERROR("Falla en la etapa de post-procesamiento.");
+        LOG_ERROR("Falla en post-procesamiento");
         goto cleanup;
     }
-
-    // Paso 11: Escritura
-    // --- [METADATOS] 5. Guardar Sidecar ---
-    if (ctx.opts.output_filename) {
-        char json_path[512];
-        strncpy(json_path, ctx.opts.output_filename, sizeof(json_path) - 1);
-        json_path[511] = '\0';
-
-        // Cambiar extensión a .json
-        char *ext = strrchr(json_path, '.');
-        if (ext) *ext = '\0'; // Cortar extensión vieja
-        strncat(json_path, ".json", sizeof(json_path) - strlen(json_path) - 1);
-
-        LOG_INFO("Guardando metadatos en: %s", json_path);
-        metadata_save_json(meta, json_path);
-    }
+    
+    // Escritura
     if (!write_output(&ctx)) {
-        LOG_ERROR("Falla al guardar la imagen de salida.");
+        LOG_ERROR("Falla al guardar imagen");
         goto cleanup;
     }
-    status = 0; // ¡Éxito!
-	
+    
+    // Actualizar metadatos finales
+    metadata_add(meta, "output_file", ctx.opts.output_filename);
+    metadata_add(meta, "output_width", (int)ctx.final_image.width);
+    metadata_add(meta, "output_height", (int)ctx.final_image.height);
+    
+    LOG_INFO("✅ Imagen RGB guardada: %s", ctx.opts.output_filename);
+    status = 0;
 
 cleanup:
     rgb_context_destroy(&ctx);
-    metadata_destroy(meta);
     if (custom_channels) {
-        // 1. Liberar cada cadena individual ("C13", "C14", etc.)
         for (int i = 0; custom_channels[i] != NULL; i++) {
             free(custom_channels[i]);
         }
-        // 2. Liberar el arreglo de punteros principal
         free(custom_channels);
     }
     return status;

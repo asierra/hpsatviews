@@ -11,7 +11,9 @@
 
 #include "version.h"
 #include "args.h"
+#include "config.h"
 #include "logger.h"
+#include "metadata.h"
 #include "rgb.h"
 #include "processing.h"
 #include "clip_loader.h"
@@ -28,18 +30,142 @@
 
 // --- Callbacks para los comandos ---
 int cmd_rgb(char* cmd_name, ArgParser* cmd_parser) {
-	(void)cmd_name;
-    return run_rgb(cmd_parser);
+    (void)cmd_name;
+    
+    ProcessConfig cfg = {0};
+    cfg.command = "rgb";
+    
+    if (!config_from_argparser(cmd_parser, &cfg)) {
+        LOG_ERROR("Error al parsear configuración");
+        config_destroy(&cfg);
+        return 1;
+    }
+    
+    if (!config_validate(&cfg)) {
+        LOG_ERROR("Configuración inválida");
+        config_destroy(&cfg);
+        return 1;
+    }
+    
+    MetadataContext *meta = metadata_create();
+    if (!meta) {
+        LOG_ERROR("Error al crear contexto de metadatos");
+        config_destroy(&cfg);
+        return 1;
+    }
+    
+    int result = run_rgb(&cfg, meta);
+    
+    // Guardar JSON sidecar si se especificó salida
+    if (result == 0 && cfg.output_path_override) {
+        char json_path[512];
+        snprintf(json_path, sizeof(json_path), "%s", cfg.output_path_override);
+        
+        // Cambiar extensión a .json
+        char *ext = strrchr(json_path, '.');
+        if (ext) *ext = '\0';
+        strncat(json_path, ".json", sizeof(json_path) - strlen(json_path) - 1);
+        
+        LOG_INFO("Guardando metadatos en: %s", json_path);
+        metadata_save_json(meta, json_path);
+    }
+    
+    metadata_destroy(meta);
+    config_destroy(&cfg);
+    
+    return result;
 }
 
 int cmd_pseudocolor(char* cmd_name, ArgParser* cmd_parser) {
-	(void)cmd_name;
-    return run_processing(cmd_parser, true); // true = is_pseudocolor
+    (void)cmd_name;
+    
+    ProcessConfig cfg = {0};
+    cfg.command = "pseudocolor";
+    
+    if (!config_from_argparser(cmd_parser, &cfg)) {
+        LOG_ERROR("Error al parsear configuración");
+        config_destroy(&cfg);
+        return 1;
+    }
+    
+    if (!config_validate(&cfg)) {
+        LOG_ERROR("Configuración inválida");
+        config_destroy(&cfg);
+        return 1;
+    }
+    
+    MetadataContext *meta = metadata_create();
+    if (!meta) {
+        LOG_ERROR("Error al crear contexto de metadatos");
+        config_destroy(&cfg);
+        return 1;
+    }
+    
+    int result = run_processing(&cfg, meta);
+    
+    // Guardar JSON sidecar si se especificó salida
+    if (result == 0 && cfg.output_path_override) {
+        char json_path[512];
+        snprintf(json_path, sizeof(json_path), "%s", cfg.output_path_override);
+        
+        char *ext = strrchr(json_path, '.');
+        if (ext) *ext = '\0';
+        strncat(json_path, ".json", sizeof(json_path) - strlen(json_path) - 1);
+        
+        LOG_INFO("Guardando metadatos en: %s", json_path);
+        metadata_save_json(meta, json_path);
+    }
+    
+    metadata_destroy(meta);
+    config_destroy(&cfg);
+    
+    return result;
 }
 
 int cmd_gray(char* cmd_name, ArgParser* cmd_parser) {
-	(void)cmd_name;
-    return run_processing(cmd_parser, false); // false = is_pseudocolor
+    (void)cmd_name;
+    
+    ProcessConfig cfg = {0};
+    cfg.command = "gray";
+    
+    if (!config_from_argparser(cmd_parser, &cfg)) {
+        LOG_ERROR("Error al parsear configuración");
+        config_destroy(&cfg);
+        return 1;
+    }
+    
+    if (!config_validate(&cfg)) {
+        LOG_ERROR("Configuración inválida");
+        config_destroy(&cfg);
+        return 1;
+    }
+    
+    MetadataContext *meta = metadata_create();
+    if (!meta) {
+        LOG_ERROR("Error al crear contexto de metadatos");
+        config_destroy(&cfg);
+        return 1;
+    }
+    
+    int result = run_processing(&cfg, meta);
+    
+    // Guardar JSON sidecar si se especificó salida
+    if (result == 0 && cfg.output_path_override) {
+        char json_path[512];
+        snprintf(json_path, sizeof(json_path), "%s", cfg.output_path_override);
+        
+        char *ext = strrchr(json_path, '.');
+        if (ext) *ext = '\0';
+        strncat(json_path, ".json", sizeof(json_path) - strlen(json_path) - 1);
+        
+        LOG_INFO("Guardando metadatos en: %s", json_path);
+        metadata_save_json(meta, json_path);
+    }
+    
+    metadata_destroy(meta);
+    config_destroy(&cfg);
+    
+    return result;
 }
 
 // --- Función helper para opciones comunes ---

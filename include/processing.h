@@ -7,6 +7,14 @@
 #ifndef HPSATVIEWS_PROCESSING_H_
 #define HPSATVIEWS_PROCESSING_H_
 
-#include "args.h"
-int run_processing(ArgParser *parser, bool is_pseudocolor);
+#include <stdbool.h>
+#include "config.h"
+#include "metadata.h"
+
+/**
+ * Procesamiento de un solo canal (gray y pseudocolor).
+ * Usa ProcessConfig (inmutable) y MetadataContext (mutable).
+ */
+int run_processing(const ProcessConfig *cfg, MetadataContext *meta);
+
 #endif /* HPSATVIEWS_PROCESSING_H_ */

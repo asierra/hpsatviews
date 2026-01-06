@@ -37,6 +37,7 @@ void metadata_add_bool(MetadataContext *ctx, const char *key, bool value);
     _Generic((VAL), \
         bool:         metadata_add_bool, \
         int:          metadata_add_int, \
+        float:        metadata_add_dbl, \
         double:       metadata_add_dbl, \
         char*:        metadata_add_str, \
         const char*:  metadata_add_str \
@@ -48,6 +49,11 @@ void metadata_add_bool(MetadataContext *ctx, const char *key, bool value);
  * Establece el satélite.
  */
 void metadata_set_satellite(MetadataContext *ctx, const char *sat_name);
+
+/**
+ * Establece el comando/modo de procesamiento.
+ */
+void metadata_set_command(MetadataContext *ctx, const char *command);
 
 /**
  * Registra la geometría final de la imagen.

@@ -48,21 +48,6 @@ typedef enum {
     SAT_GOES19,
 } SatelliteID;
 
-static const char *SAT_NAMES[] = {
-    [SAT_UNKNOWN] = "unknown",
-    [SAT_GOES16]  = "G16",
-    [SAT_GOES17]  = "G17",
-    [SAT_GOES18]  = "G18",
-    [SAT_GOES19]  = "G19"
-};
-
-static const char* get_sat_name(SatelliteID id) {
-    if (id >= SAT_UNKNOWN && id <= SAT_GOES19) {
-        return SAT_NAMES[id];
-    }
-    return "unknown";
-}
-
 typedef enum {
   PROJ_GEOS = 0,   // GOES-R ABI Fixed Grid
   PROJ_LATLON = 1, // Equirrectangular / Plate Carrée (EPSG:4326)
