@@ -248,7 +248,48 @@ Rayleigh y realce de contraste.
 
 Para modo `custom` ver **Álgebra de bandas**.
 
-### 4.7 Convenciones de salida
+### 4.7 Archivo JSON sidecar
+
+`hpsv` genera automáticamente un archivo JSON con metadatos del procesamiento junto a cada imagen de salida. Este archivo contiene información radiométrica, geoespacial y de procesamiento útil para trazabilidad y análisis posterior.
+
+**Convención de nombres:**
+* Si la imagen es `salida.png`, el JSON será `salida.json`
+* El JSON se genera automáticamente, sin necesidad de opciones adicionales
+
+**Contenido del JSON:**
+
+```json
+{
+  "tool": "hpsatviews",
+  "version": "2.0",
+  "command": "rgb",
+  "mode": "truecolor",
+  "satellite": "GOES-16",
+  "timestamp": "2024-08-07T18:01:17Z",
+  "channels": ["C01", "C02", "C03"],
+  "processing": {
+    "gamma": 1.0,
+    "clahe_applied": true,
+    "rayleigh_corrected": true
+  },
+  "geometry": {
+    "projection": "geographics",
+    "bounds": [-110.5, 15.0, -90.0, 30.0]
+  },
+  "output": {
+    "filename": "salida.png",
+    "width": 2000,
+    "height": 1500
+  }
+}
+```
+
+**Casos de uso:**
+* **Reproducibilidad:** Documentación exacta de parámetros usados
+* **Integración:** Automatización de flujos de visualización (ej. mapdrawer)
+* **Trazabilidad:** Auditoría de procesamiento para publicaciones científicas
+
+### 4.8 Convenciones de salida
 
 Si no se especifica la opción `-o` o `--out`, se genera un nombre determinista basado en los metadatos del archivo "ancla", las bandas y las operaciones aplicadas:
 
@@ -258,9 +299,10 @@ Ejemplo:
   ```bash
   hpsv gray OR_ABI-L1b-RadF-M6C13_G16_s20242190300217.nc
   # → hpsv_G16_2024219_0300_gray_C13.png
+  # → hpsv_G16_2024219_0300_gray_C13.json (metadatos)
   ```
   
-### 4.8 Álgebra de bandas y composiciones personalizadas
+### 4.9 Álgebra de bandas y composiciones personalizadas
 
 `hpsv` permite definir combinaciones lineales de bandas al vuelo para generar composiciones RGB o imágenes monocanal complejas sin necesidad de generar archivos intermedios.
 
