@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <math.h>
+#include <time.h>
 
 extern float NonData;
 

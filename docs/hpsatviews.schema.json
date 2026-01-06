@@ -1,41 +1,83 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "HPSatViews Metadata",
+  "title": "HPSatViews Metadata Sidecar v1.0",
+  "description": "Metadatos físicos y geoespaciales para visualización científica",
   "type": "object",
-  "required": ["version", "satellite", "geometry", "radiometry"],
+  "required": [
+    "tool",
+    "version",
+    "satellite",
+    "timestamp_iso",
+    "geometry",
+    "channels"
+  ],
   "properties": {
-    "version": { "type": "string" },
-    "satellite": { "type": "string" },
-    "command": { "type": "string", "enum": ["rgb", "gray", "pseudocolor"] },
-    "time_iso": { "type": "string", "format": "date-time" },
-    
+    "tool": {
+      "type": "string",
+      "const": "hpsatviews"
+    },
+    "version": {
+      "type": "string"
+    },
+    "command": {
+      "type": "string",
+      "enum": ["rgb", "gray", "pseudocolor", "composite"]
+    },
+    "satellite": {
+      "type": "string",
+      "description": "Nombre oficial del satélite (ej: goes-16)"
+    },
+    "timestamp_iso": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Fecha/Hora de inicio del escaneo en UTC (ISO 8601)"
+    },
     "geometry": {
       "type": "object",
       "required": ["bbox"],
       "properties": {
-        "projection": { "type": "string" },
-        "bbox": { 
-          "type": "array", 
+        "projection": {
+          "type": "string",
+          "default": "geographics"
+        },
+        "bbox": {
+          "type": "array",
+          "description": "[lon_min, lat_max, lon_max, lat_min]",
           "items": { "type": "number" },
           "minItems": 4,
           "maxItems": 4
         }
       }
     },
-    
-    "radiometry": {
+    "channels": {
       "type": "array",
+      "description": "Lista de canales o componentes y sus magnitudes físicas",
       "items": {
         "type": "object",
-        "required": ["min_radiance", "max_radiance", "unit"],
+        "required": ["name", "quantity", "min", "max"],
         "properties": {
-          "name": { "type": "string" },
-          "component": { "type": "string", "enum": ["red", "green", "blue"] },
-          "min_radiance": { "type": "number" },
-          "max_radiance": { "type": "number" },
+          "name": { 
+            "type": "string", 
+            "description": "Nombre del canal (C13) o componente (Red, Green)" 
+          },
+          "quantity": {
+            "type": "string",
+            "enum": ["reflectance", "brightness_temperature", "raw_counts", "index"],
+            "description": "Magnitud física representada"
+          },
+          "min": { "type": "number" },
+          "max": { "type": "number" },
           "unit": { "type": "string" }
         }
+      }
+    },
+    "enhancements": {
+      "type": "object",
+      "properties": {
+        "gamma": { "type": "number" },
+        "clahe": { "type": "boolean" }
       }
     }
   }
 }
+

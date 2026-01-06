@@ -81,7 +81,7 @@ MEJORA:
 | Archivo | Propósito | Sprint |
 |---------|-----------|--------|
 | `include/config.h` | Define `ProcessConfig` y feature flag | 1 |
-| `src/config_loader.c` | Parser ArgParser → ProcessConfig | 1 |
+| `src/config.c` | Parser ArgParser → ProcessConfig | 1 |
 | `include/metadata.h` | API opaca para MetadataContext | 1 |
 | `src/metadata.c` | Implementación + generación JSON | 1-2 |
 | `tests/test_metadata.c` | Tests unitarios metadatos | 6 |
@@ -184,6 +184,16 @@ typedef struct {
     )(CTX, KEY, VAL)
 ```
 
+Considerar que DataNC (`datanc.h`) ya guarda mucha información sobre cada archivo netCDF que lee, como sat_id, varname, proyección, geometría, datos físicos, etc. Por eso la función `metadata_from_nc`.
+
+### 3. Módulo `writer_json` (C17 Minimalista)
+Implementar un escritor JSON "Write-Only" para evitar dependencias externas pesadas.
+* **Ubicación:** `writer_json.h|c`
+* **Características:**
+    * Cero dependencias (solo `<stdio.h>`).
+    * **API Polimórfica (C17):** Uso de macros `_Generic` para una API limpia: `json_write(w, "key", valor)`.
+    * Escritura directa a disco (stream) para consumo de memoria insignificante.
+
 ## Fase 2: Implementación de Módulos Base
 
 ### A. Módulo de Configuración (`config_loader.c`)
@@ -209,6 +219,31 @@ Implementar el contenedor opaco y la lógica de negocio.
 ---
 
 ## Fase 3: Refactorización de Pipelines (Inyección de Dependencias)
+
+### Paso 1: Inyección en `run_rgb` (`rgb.c`)
+* Instanciar `MetadataContext` localmente dentro de `run_rgb`.
+* Conectar datos existentes:
+    * **Configuración:** Copiar manualmente desde `RgbOptions` (gamma, clahe).
+    * **Geometría:** Capturar `final_lon_min`, etc., después de la reproyección.
+    * **Magnitudes Físicas:** Inferir rangos físicos (Kelvin/Reflectancia) basados en el comando o modo (`truecolor`, `ash`).
+* **Resultado:** Generación del primer `.json` funcional junto al `.png`.
+
+### Paso 2: Adaptación de `reader_nc.c`
+* Actualizar el lector para poblar los nuevos campos `timestamp` y `sat_id` de `DataNC` al momento de la lectura. Ya están.
+* Asegurar que la conversión física (Radiancia -> Reflectancia/Temperatura) esté correcta para que los metadatos sean precisos.
+
+### Paso 3: Arquitectura Unificada (Refactorización)
+
+Una vez que el JSON se genera correctamente, procedemos a limpiar la deuda técnica y unificar la configuración.
+
+### 1. `ProcessConfig` (Configuration Object)
+**Ubicación:** `config.h` y `config_loader.c`
+* Estructura inmutable que centraliza *lo que el usuario pidió*.
+* `config_loader.c` encapsula toda la lógica de `ArgParser`, eliminando el código de parseo disperso en `rgb.c` y `processing.c`.
+
+### 2. Migración Completa de Pipelines
+* Refactorizar `run_rgb` para aceptar `const ProcessConfig *` y `MetadataContext *` inyectados desde `main`.
+* Eliminar estructuras legadas como `FilenameGeneratorInfo` (la lógica de nombres pasa a `metadatos.c`).
 
 ### Refactorización de `rgb.c` y `processing.c`
 Modificar las funciones principales (`run_rgb`, `processing_loop`) para aceptar los nuevos contextos en lugar de argumentos sueltos o estructuras ad-hoc.
@@ -407,6 +442,42 @@ Estructura final del JSON a generar:
   "enhancements": {
     "gamma": 1.0,
     "description": "EUMETSAT Ash Recipe"
+  }
+}
+```
+
+NOTA: Como desde el principio convertimos la radiometría a magnitudes físicas en load_nc_sf (reflectancia, temperatura de brillo), se renombra `radiometry` a `channels` y se añade `quantity` para inferencia automática en visualización. Ejemplo final:
+
+```json
+{
+  "tool": "hpsatviews",
+  "version": "2.0",
+  "command": "rgb",
+  "satellite": "goes-16",
+  "timestamp_iso": "2024-05-10T12:00:15Z",
+  "geometry": {
+    "projection": "geographics",
+    "bbox": [-110.5, 30.0, -90.0, 15.0]
+  },
+  "channels": [
+    {
+      "name": "C02",
+      "quantity": "reflectance",        
+      "min": 0.0,
+      "max": 1.15,
+      "unit": "unitless" 
+    },
+    {
+      "name": "C13",
+      "quantity": "brightness_temperature", 
+      "min": 185.2,
+      "max": 310.5,
+      "unit": "K"
+    }
+  ],
+  "enhancements": {
+    "gamma": 1.0,
+    "clahe": true
   }
 }
 ```

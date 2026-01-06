@@ -23,14 +23,17 @@ void json_write_bool(JsonWriter* w, const char* key, bool val);
 
 void json_write_float_array(JsonWriter* w, const char* key, const float* vals, int count);
 
-// --- La Magia de C17: Macro Polimórfica ---
+// Para escribir en arrays sin clave (elementos de array)
+void json_array_item_begin_object(JsonWriter* w);
+void json_array_item_string(JsonWriter* w, const char* val);
+
+// --- La Magia de C11: Macro Polimórfica ---
 // El compilador sustituye 'json_write' por la función específica según el tipo de VAL.
 #define json_write(W, KEY, VAL) \
     _Generic((VAL), \
-        _Bool:       json_write_bool,   \
+        bool:        json_write_bool,   \
         int:         json_write_int,    \
         double:      json_write_double, \
-        float:       json_write_double, \
         char*:       json_write_string, \
         const char*: json_write_string  \
     )(W, KEY, VAL)

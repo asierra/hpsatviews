@@ -111,7 +111,7 @@ void json_write_string(JsonWriter* w, const char* key, const char* val) {
 
 void json_write_double(JsonWriter* w, const char* key, double val) {
     write_key(w, key);
-    fprintf(w->fp, "%.4f", val);
+    fprintf(w->fp, "%.6g", val);
 }
 
 void json_write_int(JsonWriter* w, const char* key, int val) {
@@ -128,7 +128,21 @@ void json_write_float_array(JsonWriter* w, const char* key, const float* vals, i
     write_key(w, key);
     fprintf(w->fp, "[");
     for (int i = 0; i < count; i++) {
-        fprintf(w->fp, "%.4f%s", vals[i], (i < count - 1) ? ", " : "");
+        fprintf(w->fp, "%.6g%s", vals[i], (i < count - 1) ? ", " : "");
     }
     fprintf(w->fp, "]");
+}
+
+// --- Funciones para Array Items (sin clave) ---
+
+void json_array_item_begin_object(JsonWriter* w) {
+    check_comma(w);
+    fprintf(w->fp, "{");
+    w->depth++;
+    if (w->depth < MAX_DEPTH) w->needs_comma[w->depth] = false;
+}
+
+void json_array_item_string(JsonWriter* w, const char* val) {
+    check_comma(w);
+    print_escaped_string(w->fp, val ? val : "");
 }
