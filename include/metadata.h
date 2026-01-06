@@ -2,7 +2,7 @@
 #define HPSATVIEWS_METADATA_H_
 
 #include <stdbool.h>
-#include "datanc.h"  // Necesitamos DataNC completo
+#include "datanc.h" 
 
 /**
  * Handle opaco para el contexto de metadatos.
@@ -44,11 +44,6 @@ void metadata_add_bool(MetadataContext *ctx, const char *key, bool value);
     )(CTX, KEY, VAL)
 
 // --- Funciones Específicas de Dominio ---
-
-/**
- * Establece el satélite.
- */
-void metadata_set_satellite(MetadataContext *ctx, const char *sat_name);
 
 /**
  * Establece el comando/modo de procesamiento.

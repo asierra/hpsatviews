@@ -9,6 +9,7 @@
 #include "metadata.h"
 #include "writer_json.h"
 #include "datanc.h"
+#include "logger.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -38,7 +39,7 @@ struct MetadataContext {
     char tool[32];
     char version[16];
     char command[32];
-    char satellite[32];
+    const char *satellite;
     char time_iso[32];
     time_t timestamp;
     
@@ -84,7 +85,8 @@ void metadata_destroy(MetadataContext *ctx) {
 
 void metadata_from_nc(MetadataContext *ctx, const DataNC *nc) {
     if (!ctx || !nc) return;
-
+	
+	LOG_DEBUG("Alimentando metadata de DataNC");
     // 1. Copiar Timestamp y convertir a ISO 8601
     ctx->timestamp = nc->timestamp;
     if (nc->timestamp > 0) {
@@ -94,8 +96,10 @@ void metadata_from_nc(MetadataContext *ctx, const DataNC *nc) {
     }
 
     // 2. Copiar Satélite
-    const char* sat_name = get_sat_name(nc->sat_id);
-    metadata_set_satellite(ctx, sat_name);
+//    const char* sat_name = get_sat_name(nc->sat_id);
+  //  metadata_set_satellite(ctx, sat_name);
+	ctx->satellite = get_sat_name(nc->sat_id);
+  LOG_DEBUG("Satélite ID %d nombre %s", nc->sat_id, ctx->satellite);
 
     // 3. Agregar información del canal
     if (ctx->channel_count < MAX_CHANNELS && nc->varname) {
@@ -118,12 +122,6 @@ void metadata_from_nc(MetadataContext *ctx, const DataNC *nc) {
         ch->valid = true;
         ctx->channel_count++;
     }
-}
-
-
-void metadata_set_satellite(MetadataContext *ctx, const char *sat_name) {
-    if (!ctx || !sat_name) return;
-    strncpy(ctx->satellite, sat_name, sizeof(ctx->satellite) - 1);
 }
 
 void metadata_set_command(MetadataContext *ctx, const char *command) {
@@ -306,7 +304,7 @@ int metadata_save_json(MetadataContext *ctx, const char *filename) {
     json_write(w, "tool", ctx->tool[0] ? ctx->tool : "hpsatviews");
     json_write(w, "version", "1.0");  // TODO: usar HPSV_VERSION_STRING
     if (ctx->command[0]) json_write(w, "command", ctx->command);
-    if (ctx->satellite[0]) json_write(w, "satellite", ctx->satellite);
+    if (ctx->satellite) json_write(w, "satellite", ctx->satellite);
     if (ctx->time_iso[0]) json_write(w, "timestamp_iso", ctx->time_iso);
 
     // Geometría

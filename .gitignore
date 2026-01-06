@@ -39,6 +39,7 @@ hpsatviews
 *~
 *.tif
 *.xml
+*.json
 
 *.bin
 bin/

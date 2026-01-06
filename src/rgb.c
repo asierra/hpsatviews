@@ -722,7 +722,7 @@ static bool write_output(RgbContext *ctx) {
         write_geotiff_rgb(ctx->opts.output_filename, &ctx->final_image, &meta_out,
                           ctx->crop_x_offset, ctx->crop_y_offset);
     } else {
-        LOG_INFO("Guardando como PNG...");
+        LOG_INFO("Guardando como PNG... %s", ctx->opts.output_filename);
         writer_save_png(ctx->opts.output_filename, &ctx->final_image);
     }
 
@@ -777,8 +777,10 @@ static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
     }
     
     // Custom mode
-    ctx->opts.expr = cfg->custom_expr;
-    ctx->opts.minmax = cfg->custom_minmax;
+    // Cast para silenciar el warning -Wdiscarded-qualifiers. La solución ideal
+    // es cambiar el tipo de 'expr' y 'minmax' en RgbOptions a 'const char*'.
+    ctx->opts.expr = (char *)cfg->custom_expr;
+    ctx->opts.minmax = (char *)cfg->custom_minmax;
     
     // Output filename
     if (cfg->output_path_override) {
@@ -859,6 +861,9 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         LOG_ERROR("%s", ctx.error_msg);
         goto cleanup;
     }
+
+    // Extraer metadatos del canal de referencia (satélite, timestamp, geometría nativa)
+    metadata_from_nc(meta, &ctx.channels[ctx.ref_channel_idx]);
     
     // Procesar geoespacial
     if (!process_geospatial(&ctx, strategy)) {
