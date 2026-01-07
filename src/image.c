@@ -72,17 +72,6 @@ ImageData copy_image(ImageData orig) {
     return imout;
 }
 
-/**
- * @brief Crops an image to a specified rectangular region.
- * @param src Pointer to the source image data.
- * @param x The starting x-coordinate of the crop rectangle.
- * @param y The starting y-coordinate of the crop rectangle.
- * @param width The width of the crop rectangle.
- * @param height The height of the crop rectangle.
- * @return A new ImageData structure containing the cropped image.
- *         The caller is responsible for freeing this new image.
- *         Returns an empty image on failure.
- */
 ImageData image_crop(const ImageData *src, unsigned int x, unsigned int y, unsigned int width,
                      unsigned int height) {
     // Sanity checks
@@ -322,13 +311,6 @@ static void calculate_cdf_mapping(unsigned int *hist, unsigned char *map_lut, in
     }
 }
 
-/**
- * @brief Aplica CLAHE (Contrast Limited Adaptive Histogram Equalization).
- * @param im Imagen a procesar (modificada in-place).
- * @param tiles_x Número de tiles horizontales (típicamente 8).
- * @param tiles_y Número de tiles verticales (típicamente 8).
- * @param clip_limit Factor de recorte (típicamente 2.0-4.0, mayor = más contraste).
- */
 void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit) {
     if (im.data == NULL || tiles_x < 1 || tiles_y < 1 || im.bpp < 1) {
         LOG_ERROR("Parámetros inválidos para CLAHE");

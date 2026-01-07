@@ -14,19 +14,6 @@
 #include "palette.h"
 #include "logger.h"
 
-/**
- * @brief Genera una imagen de pseudocolor nocturno a partir de datos de temperatura de brillo.
- *
- * Esta función toma datos de temperatura de brillo en Kelvin (banda 13 de GOES),
- * los mapea a una paleta de colores (definida en paleta.h) y opcionalmente los mezcla
- * con una imagen de fondo (como luces de ciudad) para crear una visualización nocturna.
- *
- * @param temp_data Puntero a la estructura DataF con los datos de temperatura.
- * @param fondo Puntero opcional a una imagen de fondo (ImageData). Si es NULL, no se usa fondo.
- * @return Una estructura ImageData con la imagen RGB resultante. Si falla, la imagen
- *         devuelta tendrá ancho y alto cero. El llamador es responsable de liberar
- *         la memoria de la imagen con image_destroy().
- */
 ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* fondo) {
   if (!temp_data || !temp_data->data_in) {
     LOG_ERROR("Datos de temperatura inválidos para create_nocturnal_pseudocolor.");

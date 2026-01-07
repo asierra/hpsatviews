@@ -117,12 +117,36 @@ typedef struct {
     bool needs_navigation;           // Si requiere navla/navlo
 } RgbStrategy;
 
-// Funciones del ciclo de vida del contexto
+/**
+ * @brief Inicializa el contexto RGB a sus valores por defecto.
+ * Limpia la memoria y establece los valores predeterminados para las opciones.
+ * @param ctx Puntero al contexto a inicializar.
+ */
 void rgb_context_init(RgbContext *ctx);
+
+/**
+ * @brief Libera toda la memoria dinámica contenida en el contexto RGB.
+ * Es seguro llamar a esta función incluso si algunos punteros son NULL.
+ * @param ctx Puntero al contexto a destruir.
+ */
 void rgb_context_destroy(RgbContext *ctx);
+
+/**
+ * @brief Parsea los argumentos de la línea de comandos y puebla la estructura RgbOptions.
+ * Centraliza toda la lógica de parsing de argumentos para el comando 'rgb'.
+ * @param parser El parser de argumentos inicializado.
+ * @param ctx El contexto RGB donde se guardarán las opciones y los mensajes de error.
+ * @return true si el parsing fue exitoso, false en caso de error.
+ */
 bool rgb_parse_options(ArgParser *parser, RgbContext *ctx);
 
-// Función principal con inyección de dependencias
+/**
+ * @brief Procesamiento RGB con inyección de dependencias.
+ * 
+ * @param cfg Configuración inmutable del proceso (entrada).
+ * @param meta Contexto de metadatos para acumular información (salida).
+ * @return 0 en éxito, != 0 en error.
+ */
 int run_rgb(const ProcessConfig *cfg, MetadataContext *meta);
 
 // Funciones de composición RGB

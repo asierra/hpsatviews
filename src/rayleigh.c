@@ -489,11 +489,6 @@ static RayleighLUT rayleigh_lut_load_from_memory(const uint8_t channel) {
 }
 
 
-/**
- * Libera la memoria de una LUT de Rayleigh.
- * 
- * @param lut Puntero a la estructura RayleighLUT a liberar
- */
 void rayleigh_lut_destroy(RayleighLUT *lut) {
     if (lut && lut->table) {
         free(lut->table);
@@ -504,13 +499,6 @@ void rayleigh_lut_destroy(RayleighLUT *lut) {
 }
 
 
-/**
- * Aplica corrección Rayleigh con LUTs.
- * img: DataF con reflectancia TOA (input/output)
- * nav: Estructura con navegación (SZA, VZA, RAA)
- * name: Nombre del canal ("C01", "C02", "C03")
- * tau: Profundidad óptica de Rayleigh para esta longitud de onda
- */
 void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t channel, float tau) {
 	// Validar dimensiones
     if (img->width != nav->sza.width || img->height != nav->sza.height) {
@@ -623,4 +611,3 @@ void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t 
         LOG_INFO("  Rango actualizado después de Rayleigh: [%.6f, %.6f]", new_min, new_max);
     }
 }
-

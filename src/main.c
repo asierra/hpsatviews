@@ -27,12 +27,52 @@
 // Ruta por defecto (se puede definir en un header global o pasar como macro -D)
 #define RUTA_CLIPS "/usr/local/share/lanot/docs/recortes_coordenadas.csv"
 
-// --- Callbacks para los comandos ---
-int cmd_rgb(char *cmd_name, ArgParser *cmd_parser) {
-    (void)cmd_name;
+// Tipo de función para los runners de procesamiento (run_rgb, run_processing)
+typedef int (*ProcessingFunc)(const ProcessConfig *, MetadataContext *);
 
+// --- Helper: Guardar JSON sidecar ---
+static void save_sidecar_json(const ProcessConfig *cfg, MetadataContext *meta, ArgParser *parser) {
+    if (!ap_found(parser, "json")) {
+        return;
+    }
+
+    char json_path_buffer[1024];
+    const char *final_json_path = NULL;
+    char *generated_path = NULL;
+
+    if (cfg->output_path_override) {
+        // Usar la ruta de salida como base, reemplazando la extensión
+        strncpy(json_path_buffer, cfg->output_path_override, sizeof(json_path_buffer) - 1);
+        json_path_buffer[sizeof(json_path_buffer) - 1] = '\0';
+
+        char *last_dot = strrchr(json_path_buffer, '.');
+        char *last_slash = strrchr(json_path_buffer, '/');
+
+        // Solo quitar extensión si el punto está después del último separador de directorios
+        if (last_dot && (!last_slash || last_dot > last_slash)) {
+            *last_dot = '\0';
+        }
+        
+        // Concatenar .json de forma segura
+        strncat(json_path_buffer, ".json", sizeof(json_path_buffer) - strlen(json_path_buffer) - 1);
+        final_json_path = json_path_buffer;
+    } else {
+        // Generar nombre automático desde metadatos
+        generated_path = metadata_build_filename(meta, ".json");
+        final_json_path = generated_path;
+    }
+
+    if (final_json_path) {
+        LOG_INFO("Guardando metadatos en: %s", final_json_path);
+        metadata_save_json(meta, final_json_path);
+    }
+    free(generated_path);
+}
+
+// --- Helper: Manejador genérico de comandos ---
+static int generic_cmd_handler(const char *cmd_mode, ArgParser *cmd_parser, ProcessingFunc run_func) {
     ProcessConfig cfg = {0};
-    cfg.command = "rgb";
+    cfg.command = cmd_mode;
 
     if (!config_from_argparser(cmd_parser, &cfg)) {
         LOG_ERROR("Error al parsear configuración");
@@ -53,152 +93,34 @@ int cmd_rgb(char *cmd_name, ArgParser *cmd_parser) {
         return 1;
     }
 
-    int result = run_rgb(&cfg, meta);
+    // Ejecutar la función de procesamiento específica (run_rgb o run_processing)
+    int result = run_func(&cfg, meta);
 
-    // Guardar JSON sidecar si se especificó --json
-    if (result == 0 && ap_found(cmd_parser, "json")) {
-        char json_path_buffer[512];
-        char *generated_path = NULL;
-        const char *final_json_path = NULL;
-
-        if (cfg.output_path_override) {
-            // Si se usó --out, crear un archivo sidecar con el mismo nombre base
-            snprintf(json_path_buffer, sizeof(json_path_buffer), "%s", cfg.output_path_override);
-            char *ext = strrchr(json_path_buffer, '.');
-            if (ext) *ext = '\0';
-            strncat(json_path_buffer, ".json", sizeof(json_path_buffer) - strlen(json_path_buffer) - 1);
-            final_json_path = json_path_buffer;
-        } else {
-            // Si no se usó --out, generar un nombre de archivo desde los metadatos
-            generated_path = metadata_build_filename(meta, ".json");
-            final_json_path = generated_path;
-        }
-
-        if (final_json_path) {
-            LOG_INFO("Guardando metadatos en: %s", final_json_path);
-            metadata_save_json(meta, final_json_path);
-        }
-        free(generated_path); // Es seguro llamar a free(NULL)
+    if (result == 0) {
+        save_sidecar_json(&cfg, meta, cmd_parser);
     }
 
     metadata_destroy(meta);
     config_destroy(&cfg);
 
     return result;
+}
+
+// --- Callbacks para los comandos ---
+
+int cmd_rgb(char *cmd_name, ArgParser *cmd_parser) {
+    (void)cmd_name;
+    return generic_cmd_handler("rgb", cmd_parser, run_rgb);
 }
 
 int cmd_pseudocolor(char *cmd_name, ArgParser *cmd_parser) {
     (void)cmd_name;
-
-    ProcessConfig cfg = {0};
-    cfg.command = "pseudocolor";
-
-    if (!config_from_argparser(cmd_parser, &cfg)) {
-        LOG_ERROR("Error al parsear configuración");
-        config_destroy(&cfg);
-        return 1;
-    }
-
-    if (!config_validate(&cfg)) {
-        LOG_ERROR("Configuración inválida");
-        config_destroy(&cfg);
-        return 1;
-    }
-
-    MetadataContext *meta = metadata_create();
-    if (!meta) {
-        LOG_ERROR("Error al crear contexto de metadatos");
-        config_destroy(&cfg);
-        return 1;
-    }
-
-    int result = run_processing(&cfg, meta);
-
-    // Guardar JSON sidecar si se especificó --json
-    if (result == 0 && ap_found(cmd_parser, "json")) {
-        char json_path_buffer[512];
-        char *generated_path = NULL;
-        const char *final_json_path = NULL;
-
-        if (cfg.output_path_override) {
-            snprintf(json_path_buffer, sizeof(json_path_buffer), "%s", cfg.output_path_override);
-            char *ext = strrchr(json_path_buffer, '.');
-            if (ext) *ext = '\0';
-            strncat(json_path_buffer, ".json", sizeof(json_path_buffer) - strlen(json_path_buffer) - 1);
-            final_json_path = json_path_buffer;
-        } else {
-            generated_path = metadata_build_filename(meta, ".json");
-            final_json_path = generated_path;
-        }
-
-        if (final_json_path) {
-            LOG_INFO("Guardando metadatos en: %s", final_json_path);
-            metadata_save_json(meta, final_json_path);
-        }
-        free(generated_path);
-    }
-
-    metadata_destroy(meta);
-    config_destroy(&cfg);
-
-    return result;
+    return generic_cmd_handler("pseudocolor", cmd_parser, run_processing);
 }
 
 int cmd_gray(char *cmd_name, ArgParser *cmd_parser) {
     (void)cmd_name;
-
-    ProcessConfig cfg = {0};
-    cfg.command = "gray";
-
-    if (!config_from_argparser(cmd_parser, &cfg)) {
-        LOG_ERROR("Error al parsear configuración");
-        config_destroy(&cfg);
-        return 1;
-    }
-
-    if (!config_validate(&cfg)) {
-        LOG_ERROR("Configuración inválida");
-        config_destroy(&cfg);
-        return 1;
-    }
-
-    MetadataContext *meta = metadata_create();
-    if (!meta) {
-        LOG_ERROR("Error al crear contexto de metadatos");
-        config_destroy(&cfg);
-        return 1;
-    }
-
-    int result = run_processing(&cfg, meta);
-
-    // Guardar JSON sidecar si se especificó --json
-    if (result == 0 && ap_found(cmd_parser, "json")) {
-        char json_path_buffer[512];
-        char *generated_path = NULL;
-        const char *final_json_path = NULL;
-
-        if (cfg.output_path_override) {
-            snprintf(json_path_buffer, sizeof(json_path_buffer), "%s", cfg.output_path_override);
-            char *ext = strrchr(json_path_buffer, '.');
-            if (ext) *ext = '\0';
-            strncat(json_path_buffer, ".json", sizeof(json_path_buffer) - strlen(json_path_buffer) - 1);
-            final_json_path = json_path_buffer;
-        } else {
-            generated_path = metadata_build_filename(meta, ".json");
-            final_json_path = generated_path;
-        }
-
-        if (final_json_path) {
-            LOG_INFO("Guardando metadatos en: %s", final_json_path);
-            metadata_save_json(meta, final_json_path);
-        }
-        free(generated_path);
-    }
-
-    metadata_destroy(meta);
-    config_destroy(&cfg);
-
-    return result;
+    return generic_cmd_handler("gray", cmd_parser, run_processing);
 }
 
 // --- Función helper para opciones comunes ---
@@ -214,25 +136,34 @@ static void add_common_opts(ArgParser *cmd_parser) {
     ap_add_flag(cmd_parser, "alpha a");
     ap_add_flag(cmd_parser, "geographics r");
     ap_add_flag(cmd_parser, "full-res f");
-    ap_add_flag(cmd_parser, "verbose v"); // TODO: Mover a opciones globales
     ap_add_flag(cmd_parser, "json j");
     ap_add_str_opt(cmd_parser, "expr e", NULL);
     ap_add_str_opt(cmd_parser, "minmax", "0.0,255.0");
 }
 
 int main(int argc, char *argv[]) {
-    // Verificar --list-clips antes de parsear (para salir rápido)
+    // Verificar argumentos globales antes de parsear
+    bool verbose_mode = false;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--list-clips") == 0) {
             printf("Recortes geográficos disponibles:\n\n");
             listar_clips_disponibles(RUTA_CLIPS);
             return 0;
         }
+        if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0) {
+            verbose_mode = true;
+        }
     }
 
     ArgParser *parser = ap_new_parser();
     ap_set_helptext(parser, HPSATVIEWS_HELP);
     ap_set_version(parser, HPSV_VERSION_STRING);
+
+#ifdef DEBUG_MODE
+    logger_init(LOG_DEBUG);
+#else
+    logger_init(verbose_mode ? LOG_DEBUG : LOG_INFO);
+#endif
 
     // --- Comando 'rgb' ---
     ArgParser *rgb_cmd = ap_new_cmd(parser, "rgb");
@@ -273,27 +204,8 @@ int main(int argc, char *argv[]) {
     }
 
     ArgParser *active_cmd = ap_get_cmd_parser(parser);
-    if (active_cmd) {
-#ifdef DEBUG_MODE
-        LogLevel log_level = LOG_DEBUG;
-#else
-        LogLevel log_level = ap_found(active_cmd, "verbose") ? LOG_DEBUG : LOG_INFO;
-#endif
-        logger_init(log_level);
-        LOG_DEBUG("Logger inicializado en modo %s.",
-#ifdef DEBUG_MODE
-                  "debug (compilación)"
-#else
-                  ap_found(active_cmd, "verbose") ? "verboso" : "normal"
-#endif
-        );
-    } else {
-        // No command was run, maybe just 'help' or 'version'
-#ifdef DEBUG_MODE
-        logger_init(LOG_DEBUG);
-#else
-        logger_init(LOG_INFO);
-#endif
+    if (!active_cmd) {
+        // Si no se ejecutó ningún comando (ej. solo se llamó al binario), mostrar versión
         puts(HPSV_VERSION_STRING);
     }
 

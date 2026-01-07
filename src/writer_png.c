@@ -192,12 +192,10 @@ int writer_save_png(const char *filename, const ImageData *image) {
 
 /* --- Funciones antiguas, mantenidas por compatibilidad pero marcadas como obsoletas --- */
 
-/** @deprecated Usar writer_save_png_palette en su lugar. */
 int write_image_png_palette(const char *filename, ImageData *image, ColorArray *palette) {
     return writer_save_png_palette(filename, image, palette);
 }
 
-/** @deprecated Usar writer_save_png en su lugar. */
 int write_image_png(const char *filename, ImageData *image) {
     return writer_save_png(filename, image);
 }

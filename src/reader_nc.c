@@ -565,25 +565,6 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
     return 0;
 }
 
-/**
- * @brief Crea mallas de navegación (lat/lon) para una cuadrícula geográfica ya
- * existente.
- *
- * En lugar de calcular desde coordenadas geostacionarias, esta función genera
- * las mallas de latitud y longitud por interpolación lineal simple, basándose
- * en los límites geográficos conocidos de la cuadrícula. Es mucho más eficiente
- * para datos ya reproyectados.
- *
- * @param navla Puntero a la estructura DataF para la latitud de salida.
- * @param navlo Puntero a la estructura DataF para la longitud de salida.
- * @param width Ancho de la cuadrícula geográfica.
- * @param height Alto de la cuadrícula geográfica.
- * @param lon_min Longitud mínima.
- * @param lon_max Longitud máxima.
- * @param lat_min Latitud mínima.
- * @param lat_max Latitud máxima.
- * @return 0 en éxito.
- */
 int create_navigation_from_reprojected_bounds(DataF *navla, DataF *navlo, size_t width,
                                               size_t height, float lon_min, float lon_max,
                                               float lat_min, float lat_max) {
@@ -805,19 +786,6 @@ static void compute_satellite_view_angles(float pixel_lat, float pixel_lon, floa
         *vaa_out = vaa;
 }
 
-/**
- * @brief Calcula mapas de geometría solar (SZA y SAA) para toda la imagen.
- *
- * Esta función procesa píxel por píxel usando las coordenadas geográficas
- * precalculadas y los metadatos temporales del archivo NetCDF.
- *
- * @param filename Ruta al archivo NetCDF GOES L1b
- * @param navla Malla de latitudes (ya calculada)
- * @param navlo Malla de longitudes (ya calculada)
- * @param sza Estructura DataF de salida para Solar Zenith Angle
- * @param saa Estructura DataF de salida para Solar Azimuth Angle
- * @return 0 en éxito, ERRCODE en error
- */
 int compute_solar_angles_nc(const char *filename, const DataF *navla, const DataF *navlo,
                             DataF *sza, DataF *saa) {
     int ncid, retval;
@@ -890,20 +858,6 @@ int compute_solar_angles_nc(const char *filename, const DataF *navla, const Data
     return 0;
 }
 
-/**
- * @brief Calcula mapas de geometría del satélite (VZA y VAA) para toda la
- * imagen.
- *
- * Para satélites geoestacionarios GOES, calcula los ángulos de visión desde
- * el satélite hacia cada píxel.
- *
- * @param filename Ruta al archivo NetCDF GOES L1b
- * @param navla Malla de latitudes (ya calculada)
- * @param navlo Malla de longitudes (ya calculada)
- * @param vza Estructura DataF de salida para View Zenith Angle
- * @param vaa Estructura DataF de salida para View Azimuth Angle
- * @return 0 en éxito, ERRCODE en error
- */
 int compute_satellite_angles_nc(const char *filename, const DataF *navla, const DataF *navlo,
                                 DataF *vza, DataF *vaa) {
     int ncid, varid, retval;
@@ -962,16 +916,6 @@ int compute_satellite_angles_nc(const char *filename, const DataF *navla, const 
     return 0;
 }
 
-/**
- * @brief Calcula el azimut relativo entre el sol y el satélite.
- *
- * El azimut relativo (RAA) es la diferencia angular entre el azimut solar
- * y el azimut de visión del satélite, normalizado al rango [0, 180].
- *
- * @param saa Mapa de Solar Azimuth Angle (entrada)
- * @param vaa Mapa de View Azimuth Angle (entrada)
- * @param raa Mapa de Relative Azimuth Angle (salida)
- */
 void compute_relative_azimuth(const DataF *saa, const DataF *vaa, DataF *raa) {
     *raa = dataf_create(saa->width, saa->height);
 

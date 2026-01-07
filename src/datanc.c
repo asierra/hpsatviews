@@ -57,17 +57,6 @@ void dataf_destroy(DataF *data) {
     }
 }
 
-/**
- * @brief Creates a deep copy of a DataF structure.
- * 
- * This function allocates new memory for both the structure and its data buffer,
- * then copies the content from the source. The caller is responsible for freeing
- * the returned pointer using dataf_destroy().
- * 
- * @param data A pointer to the constant DataF structure to be copied.
- * @return A pointer to the newly created DataF copy, or NULL if memory
- *         allocation fails or the source is NULL.
- */
 DataF dataf_copy(const DataF *data) {
     if (data == NULL || data->data_in == NULL || data->size == 0) {
         return dataf_create(0, 0); // Return an empty but valid DataF
@@ -88,16 +77,6 @@ DataF dataf_copy(const DataF *data) {
     return copy;
 }
 
-/**
- * @brief Fills the data buffer of a DataF structure with a specific value.
- * 
- * This function iterates through the entire data_in buffer and sets each
- * element to the provided floating-point value. It is parallelized with OpenMP
- * for efficiency on large datasets.
- * 
- * @param data A pointer to the DataF structure to be filled.
- * @param value The float value to fill the buffer with.
- */
 void dataf_fill(DataF *data, float value) {
     if (data == NULL || data->data_in == NULL || data->size == 0) {
 		LOG_DEBUG("Trying to fill a NULL DataF.");
@@ -110,20 +89,6 @@ void dataf_fill(DataF *data, float value) {
     }
 }
 
-/**
- * @brief Crops a rectangular region from a DataF structure.
- * 
- * Creates a new DataF containing only the specified rectangular region from the source.
- * The cropped region is defined by a starting position (x_start, y_start) and dimensions
- * (width, height). Coordinates are clamped to the source boundaries.
- * 
- * @param data A pointer to the source DataF structure to crop from.
- * @param x_start The starting column (x coordinate) of the crop region.
- * @param y_start The starting row (y coordinate) of the crop region.
- * @param width The width of the crop region.
- * @param height The height of the crop region.
- * @return A new DataF structure containing the cropped region, or an empty DataF on failure.
- */
 DataF dataf_crop(const DataF *data, unsigned int x_start, unsigned int y_start, 
                  unsigned int width, unsigned int height) {
     if (data == NULL || data->data_in == NULL || data->size == 0) {
@@ -346,13 +311,6 @@ DataF datanc_get_float_base(DataNC *datanc) {
     return dataf_create(0, 0);
 }
 
-/**
- * @brief Performs an arithmetic operation between two DataF structures.
- * @param a The first operand.
- * @param b The second operand.
- * @param op The operation to perform (OP_ADD, OP_SUB, OP_MUL, OP_DIV).
- * @return A new DataF structure with the result. Returns an empty DataF on error.
- */
 DataF dataf_op_dataf(const DataF* a, const DataF* b, Operation op) {
     if (a->width != b->width || a->height != b->height) {
 		LOG_ERROR("Dimensions of DataF operators must be the same.");
@@ -397,15 +355,6 @@ DataF dataf_op_dataf(const DataF* a, const DataF* b, Operation op) {
     return result;
 }
 
-/**
- * @brief Performs an arithmetic operation between a DataF and a scalar.
- * @param a The DataF operand.
- * @param scalar The float scalar operand.
- * @param op The operation to perform.
- * @param scalar_first If true, the operation is scalar OP data (e.g., 1 - data).
- *                     If false, it's data OP scalar (e.g., data - 1).
- * @return A new DataF structure with the result.
- */
 DataF dataf_op_scalar(const DataF* a, float scalar, Operation op, bool scalar_first) {
     DataF result = dataf_create(a->width, a->height);
     if (result.data_in == NULL) return result;
@@ -455,10 +404,6 @@ DataF dataf_op_scalar(const DataF* a, float scalar, Operation op, bool scalar_fi
     return result;
 }
 
-/**
- * @brief Inverts the sign of all values in a DataF structure in-place.
- * @param a Pointer to the DataF structure to modify.
- */
 void dataf_invert(DataF* a) {
     if (a == NULL || a->data_in == NULL) return;
 
@@ -476,12 +421,6 @@ void dataf_invert(DataF* a) {
 }
 
 
-/**
- * @brief Aplica corrección gamma a nivel de datos flotantes.
- * Formula: pixel = pixel^(1/gamma)
- * @param data apuntador a la estructura DataF.
- * @param gamma Valor de gamma (ej. 2.0 para raíz cuadrada).
- */
 void dataf_apply_gamma(DataF *data, float gamma) {
     if (data == NULL || data->data_in == NULL || gamma <= 0.0f) {
         return;

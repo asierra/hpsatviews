@@ -14,10 +14,6 @@
 #include "rgb.h"
 
 
-/**
- * @brief Genera SOLO el canal verde sintético.
- * Formula CIMSS: Green = 0.45*Red + 0.10*NIR + 0.45*Blue
- */
 DataF create_truecolor_synthetic_green(const DataF *c_blue, const DataF *c_red, const DataF *c_nir) {
     // Validar dimensiones
     if (c_blue->width != c_red->width || c_blue->height != c_red->height) {

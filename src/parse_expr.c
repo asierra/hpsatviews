@@ -124,10 +124,6 @@ int extract_required_channels(const LinearCombo* combo, char** channels_out) {
     return unique_count;
 }
 
-/**
- * Evalúa una combinación lineal de bandas usando los canales cargados.
- * Implementa: result = coeff1*band1 + coeff2*band2 + ... + bias
- */
 DataF evaluate_linear_combo(const LinearCombo* combo, const DataNC* channels) {
     if (!combo || !channels || combo->num_terms == 0) {
         DataF empty = {0};
@@ -165,13 +161,6 @@ DataF evaluate_linear_combo(const LinearCombo* combo, const DataNC* channels) {
 }
 
 
-/**
- * Analiza una expresión compleja (ej: "2*C13; C14-C15; C01") y genera 
- * una lista de strings con los canales únicos requeridos (ej: "C01", "C13", "C14", "C15").
- * * @param full_expr La cadena completa de --expr
- * @param channels_out Puntero a un arreglo de strings (char***) que será asignado.
- * @return Número de canales encontrados.
- */
 int get_unique_channels_rgb(const char *full_expr, char ***channels_out) {
     if (!full_expr) return 0;
 

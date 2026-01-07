@@ -308,12 +308,6 @@ char* expand_filename_pattern(const char* pattern, const char* input_filename) {
     return current;
 }
 
-/**
- * @brief Genera un nombre de archivo estandarizado y descriptivo basado en los parámetros de procesamiento.
- * 
- * Usa metadatos de DataNC (fecha/hora, banda) en lugar de parsear el nombre de archivo.
- * Formato: hpsv_<SAT>_<YYYYJJJ_hhmm>_<TIPO>_<BANDAS>[_<OPS>].<ext>
- */
 char* generate_hpsv_filename(const FilenameGeneratorInfo* info) {
     if (!info || !info->command) {
         LOG_ERROR("Información insuficiente para generar nombre de archivo.");
@@ -356,10 +350,6 @@ char* generate_hpsv_filename(const FilenameGeneratorInfo* info) {
 }
 
 
-/**
- * @brief Genera un nombre de archivo de salida por defecto.
- * @deprecated Esta función es obsoleta y será eliminada. Usar generate_hpsv_filename en su lugar.
- */
 char* generate_default_output_filename(const char* input_file_path, const char* processing_mode, const char* output_extension) {
     (void)input_file_path;
     (void)processing_mode;

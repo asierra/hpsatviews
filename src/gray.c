@@ -69,15 +69,6 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha, const
   return imout;
 }
 
-/**
- * @brief Crea imagen en escala de grises usando un rango personalizado.
- * @param c01 Datos flotantes de entrada.
- * @param invert_value Invertir valores (blanco<->negro).
- * @param use_alpha Añadir canal alfa para NonData.
- * @param min_val Valor mínimo del rango para normalización.
- * @param max_val Valor máximo del rango para normalización.
- * @return Imagen creada (debe liberarse con image_destroy).
- */
 ImageData create_single_gray_range(DataF c01, bool invert_value, bool use_alpha,
                                    float min_val, float max_val) {
   unsigned int bpp = use_alpha ? 2 : 1;

@@ -25,11 +25,6 @@
 #include "metadata.h"
 
 
-/**
- * @brief Inicializa el contexto RGB a sus valores por defecto.
- * Limpia la memoria y establece los valores predeterminados para las opciones.
- * @param ctx Puntero al contexto a inicializar.
- */
 void rgb_context_init(RgbContext *ctx) {
     memset(ctx, 0, sizeof(RgbContext));
     // Inicializar defaults de opciones
@@ -40,11 +35,6 @@ void rgb_context_init(RgbContext *ctx) {
     ctx->opts.scale = 1;
 }
 
-/**
- * @brief Libera toda la memoria dinámica contenida en el contexto RGB.
- * Es seguro llamar a esta función incluso si algunos punteros son NULL.
- * @param ctx Puntero al contexto a destruir.
- */
 void rgb_context_destroy(RgbContext *ctx) {
     if (!ctx)
         return;
@@ -72,15 +62,6 @@ void rgb_context_destroy(RgbContext *ctx) {
     }
 }
 
-/**
- * @brief Parsea los argumentos de la línea de comandos y puebla la estructura
- * RgbOptions. Centraliza toda la lógica de parsing de argumentos para el
- * comando 'rgb'.
- * @param parser El parser de argumentos inicializado.
- * @param ctx El contexto RGB donde se guardarán las opciones y los mensajes de
- * error.
- * @return true si el parsing fue exitoso, false en caso de error.
- */
 bool rgb_parse_options(ArgParser *parser, RgbContext *ctx) {
     // Validar archivo de entrada
     if (!ap_has_args(parser)) {
@@ -794,17 +775,6 @@ static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
     ctx->opts.is_l2_product = (strstr(basename_input, "CMIP") != NULL);
 }
 
-/**
- * @brief Procesamiento RGB con inyección de dependencias.
- * 
- * Esta versión implementa el patrón de Inyección de Dependencias:
- * - config: Entrada inmutable (lo que el usuario solicitó)
- * - meta: Salida mutable (lo que realmente ocurrió)
- * 
- * @param cfg Configuración inmutable del proceso
- * @param meta Contexto de metadatos para acumular información
- * @return 0 en éxito, != 0 en error
- */
 int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     if (!cfg || !meta) {
         LOG_ERROR("run_rgb: parámetros NULL");

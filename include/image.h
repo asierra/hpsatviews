@@ -37,46 +37,86 @@ static inline void color_array_destroy(ColorArray *array) {
     free(array);
 }
 
-// Constructor: creates a new ImageData structure with allocated memory
-// Returns initialized ImageData on success, or ImageData with NULL data on failure
+/**
+ * @brief Creates a new ImageData structure with allocated memory.
+ * @param width Image width.
+ * @param height Image height.
+ * @param bpp Bytes per pixel (1=Gray, 2=Gray+Alpha, 3=RGB, 4=RGBA).
+ * @return Initialized ImageData (data is NULL on failure).
+ */
 ImageData image_create(unsigned int width, unsigned int height, unsigned int bpp);
 
-// Destructor: safely frees memory allocated for ImageData
-// Safe to call with NULL data pointer
+/**
+ * @brief Safely frees memory allocated for ImageData.
+ * @param image Pointer to the image to destroy.
+ */
 void image_destroy(ImageData *image);
 
-// Creates a new image from an original image.
+/**
+ * @brief Creates a deep copy of an image.
+ */
 ImageData copy_image(ImageData orig);
 
-// Crops an image to a specified rectangle.
+/**
+ * @brief Crops an image to a specified rectangular region.
+ */
 ImageData image_crop(const ImageData* src, unsigned int x, unsigned int y, unsigned int width, unsigned int height);
 
-// Both images must be RGB and of the same size
+/**
+ * @brief Blends a foreground image over a background using a mask.
+ * Both images must be RGB and of the same size.
+ */
 ImageData blend_images(ImageData bg, ImageData fg, ImageData mask);
 
-// Apply histogram enhacement to image
+/**
+ * @brief Applies global histogram equalization to the image.
+ */
 void image_apply_histogram(ImageData im);
 
-// Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
-// tiles_x, tiles_y: number of tiles (typically 8x8)
-// clip_limit: contrast limit factor (typically 2.0-4.0, higher = more contrast)
+/**
+ * @brief Applies CLAHE (Contrast Limited Adaptive Histogram Equalization).
+ * @param im Image to process (modified in-place).
+ * @param tiles_x Number of horizontal tiles (typically 8).
+ * @param tiles_y Number of vertical tiles (typically 8).
+ * @param clip_limit Contrast limit factor (typically 2.0-4.0, higher = more contrast).
+ */
 void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit);
 
-// Resample image using bilinear interpolation for upsampling (factor > 1)
+/**
+ * @brief Resamples image using bilinear interpolation (upsampling).
+ * @param src Source image.
+ * @param factor Upsampling factor (> 1).
+ * @return New upsampled image.
+ */
 ImageData image_upsample_bilinear(const ImageData* src, int factor);
 
-// Resample image using box filter for downsampling (factor > 1, reduces size by 1/factor)
+/**
+ * @brief Resamples image using box filter (downsampling).
+ * @param src Source image.
+ * @param factor Downsampling factor (> 1).
+ * @return New downsampled image.
+ */
 ImageData image_downsample_boxfilter(const ImageData* src, int factor);
 
-// Create alpha mask from DataF (1 = valid data, 0 = NonData)
-// Note: Requires datanc.h to be included before calling
+/**
+ * @brief Creates an alpha mask from DataF (255 = valid data, 0 = NonData).
+ * @param data Pointer to DataF structure.
+ * @return Single channel image (mask).
+ */
 ImageData image_create_alpha_mask_from_dataf(const void* data);
 
-// Add alpha channel to image using a mask (converts bpp 1->2 or 3->4)
+/**
+ * @brief Adds an alpha channel to an image using a mask.
+ * Converts bpp 1->2 or 3->4.
+ */
 ImageData image_add_alpha_channel(const ImageData* src, const ImageData* alpha_mask);
 
-// Expand indexed image (bpp=1 or bpp=2) to RGB (bpp=3) or RGBA (bpp=4) using palette
-// If src has bpp=2 (indexed+alpha), output will be RGBA; otherwise RGB
+/**
+ * @brief Expands an indexed image (bpp=1 or 2) to RGB/RGBA using a palette.
+ * @param src Source indexed image.
+ * @param palette Color array to map indices to colors.
+ * @return Expanded RGB(A) image.
+ */
 ImageData image_expand_palette(const ImageData* src, const ColorArray* palette);
 
 #endif /* HPSATVIEWS_IMAGE_H_ */

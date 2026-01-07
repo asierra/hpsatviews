@@ -40,17 +40,6 @@ bool strinstr(const char *main_str, const char *sub) {
 // PIPELINE v2.0: Implementación usando ProcessConfig + MetadataContext
 // ============================================================================
 
-/**
- * @brief Procesamiento de un solo canal (gray y pseudocolor).
- * 
- * Versión unificada que implementa inyección de dependencias:
- * - cfg: Entrada inmutable (lo que el usuario solicitó)
- * - meta: Salida mutable (lo que realmente ocurrió)
- * 
- * @param cfg Configuración inmutable del proceso
- * @param meta Contexto de metadatos para acumular información
- * @return 0 en éxito, != 0 en error
- */
 int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     if (!cfg || !meta) {
         LOG_ERROR("run_processing: parámetros NULL");
@@ -446,4 +435,3 @@ cleanup:
     
     return status;
 }
-

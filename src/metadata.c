@@ -84,9 +84,7 @@ void metadata_destroy(MetadataContext *ctx) {
 }
 
 void metadata_from_nc(MetadataContext *ctx, const DataNC *nc) {
-    if (!ctx || !nc) return;
-	
-	LOG_DEBUG("Alimentando metadata de DataNC");
+    if (!ctx || !nc) return;	
     // 1. Copiar Timestamp y convertir a ISO 8601
     ctx->timestamp = nc->timestamp;
     if (nc->timestamp > 0) {
@@ -96,10 +94,8 @@ void metadata_from_nc(MetadataContext *ctx, const DataNC *nc) {
     }
 
     // 2. Copiar Satélite
-//    const char* sat_name = get_sat_name(nc->sat_id);
-  //  metadata_set_satellite(ctx, sat_name);
 	ctx->satellite = get_sat_name(nc->sat_id);
-  LOG_DEBUG("Satélite ID %d nombre %s", nc->sat_id, ctx->satellite);
+	LOG_DEBUG("Satélite ID %d nombre %s", nc->sat_id, ctx->satellite);
 
     // 3. Agregar información del canal
     if (ctx->channel_count < MAX_CHANNELS && nc->varname) {

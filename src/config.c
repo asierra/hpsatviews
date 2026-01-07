@@ -134,15 +134,6 @@ static char* config_parse_output(ArgParser* parser, const char* input_file) {
     return strdup(user_out);
 }
 
-/**
- * Convierte un ArgParser en un ProcessConfig inmutable.
- * Esta función centraliza toda la lógica de parseo de argumentos que
- * anteriormente estaba dispersa en rgb.c y processing.c.
- * 
- * @param parser ArgParser ya inicializado y parseado
- * @param cfg ProcessConfig a llenar (debe estar inicializado a 0)
- * @return true si el parseo fue exitoso, false en caso de error
- */
 bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
     if (!parser || !cfg) {
         LOG_ERROR("config_from_argparser: parámetros NULL");
@@ -284,14 +275,6 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
     return true;
 }
 
-/**
- * Valida la configuración generada.
- * Verifica que los valores estén en rangos razonables y que no haya
- * combinaciones de opciones incompatibles.
- * 
- * @param cfg Puntero a la configuración a validar
- * @return true si es válida, false si hay errores lógicos
- */
 bool config_validate(const ProcessConfig* cfg) {
     if (!cfg) {
         return false;
@@ -366,12 +349,6 @@ bool config_validate(const ProcessConfig* cfg) {
     return true;
 }
 
-/**
- * Imprime la configuración actual para debug.
- * Útil para diagnóstico y verificación de que el parseo fue correcto.
- * 
- * @param cfg Puntero a la configuración a imprimir
- */
 void config_print_debug(const ProcessConfig* cfg) {
     if (!cfg) {
         LOG_DEBUG("config_print_debug: cfg es NULL");
@@ -428,12 +405,6 @@ void config_print_debug(const ProcessConfig* cfg) {
     LOG_DEBUG("=====================");
 }
 
-/**
- * Libera la memoria asociada a un ProcessConfig.
- * Solo libera los campos que fueron alojados dinámicamente.
- * 
- * @param cfg Puntero a la configuración a liberar
- */
 void config_destroy(ProcessConfig* cfg) {
     if (!cfg) {
         return;

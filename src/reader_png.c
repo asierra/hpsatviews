@@ -19,16 +19,6 @@
 #include "image.h"
 #include "logger.h"
 
-/**
- * @brief Lee un archivo PNG y lo carga en una estructura ImageData.
- * 
- * Esta función maneja diferentes tipos de color y profundidades de bit,
- * convirtiéndolos a un formato estándar RGB (3 canales) o RGBA (4 canales) de 8 bits.
- * 
- * @param filename La ruta al archivo PNG.
- * @return Una estructura ImageData con los datos de la imagen. Si falla,
- *         la estructura devuelta tendrá su puntero `data` a NULL.
- */
 ImageData reader_load_png(const char *filename) {
   FILE *fp = fopen(filename, "rb");
   if (!fp) {

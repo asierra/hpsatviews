@@ -261,7 +261,7 @@ Para modo `custom` ver **Álgebra de bandas**.
 ```json
 {
   "tool": "hpsatviews",
-  "version": "2.0",
+  "version": "1.0",
   "command": "rgb",
   "mode": "truecolor",
   "satellite": "GOES-16",

@@ -80,29 +80,69 @@ typedef struct {
   } proj_info;
 } DataNC;
 
-// Constructor: creates a new DataF structure with allocated memory
-// Returns initialized DataF on success, or DataF with NULL data_in on failure
+/**
+ * @brief Creates a new DataF structure with allocated memory.
+ * @param width Width of the grid.
+ * @param height Height of the grid.
+ * @return Initialized DataF on success, or DataF with NULL data_in on failure.
+ */
 DataF dataf_create(unsigned int width, unsigned int height);
 
-// Destructor: safely frees memory allocated for DataF
-// Safe to call with NULL data_in pointer
+/**
+ * @brief Safely frees memory allocated for DataF.
+ * Safe to call with NULL data_in pointer.
+ * @param data Pointer to the DataF structure to destroy.
+ */
 void dataf_destroy(DataF *data);
 
+/**
+ * @brief Creates a deep copy of a DataF structure.
+ * @param data Pointer to the source DataF.
+ * @return A new DataF copy.
+ */
 DataF dataf_copy(const DataF *data);
 
+/**
+ * @brief Fills the data buffer of a DataF structure with a specific value.
+ * @param data Pointer to the DataF structure.
+ * @param value The value to fill with.
+ */
 void dataf_fill(DataF *data, float value);
 
-// Crops a rectangular region from a DataF structure
+/**
+ * @brief Crops a rectangular region from a DataF structure.
+ * @param data Source DataF.
+ * @param x_start Starting x coordinate.
+ * @param y_start Starting y coordinate.
+ * @param width Width of the crop.
+ * @param height Height of the crop.
+ * @return A new DataF containing the cropped region.
+ */
 DataF dataf_crop(const DataF *data, unsigned int x_start, unsigned int y_start, 
                  unsigned int width, unsigned int height);
 
-// Simple downsampling selecting points.
+/**
+ * @brief Simple downsampling by selecting points (nearest neighbor-ish).
+ * @param datanc_big Source high-res data.
+ * @param factor Downsampling factor (integer).
+ * @return Downsampled DataF.
+ */
 DataF downsample_simple(DataF datanc_big, int factor);
 
-// Downsampling using Box Filter algorithm for float data.
+/**
+ * @brief Downsampling using Box Filter algorithm (averaging) for float data.
+ * @param datanc_big Source high-res data.
+ * @param factor Downsampling factor.
+ * @return Downsampled DataF.
+ */
 DataF downsample_boxfilter(DataF datanc_big, int factor);
 
-// Upsampling using bilinear algorithm for float data.
+/**
+ * @brief Upsampling using bilinear interpolation for float data.
+ * @param datanc_big Source low-res data.
+ * @param factor Upsampling factor.
+ * @return Upsampled DataF.
+ */
 DataF upsample_bilinear(DataF datanc_big, int factor);
 
 // --- Funciones para DataB ---
@@ -110,8 +150,25 @@ DataB datab_create(unsigned int width, unsigned int height);
 void datab_destroy(DataB *data);
 
 // --- Funciones de operaciones aritméticas para DataF ---
+
+/**
+ * @brief Performs an arithmetic operation between two DataF structures.
+ * @param a First operand.
+ * @param b Second operand.
+ * @param op Operation (ADD, SUB, MUL, DIV).
+ * @return Resulting DataF.
+ */
 DataF dataf_op_dataf(const DataF* a, const DataF* b, Operation op);
+
+/**
+ * @brief Performs an arithmetic operation between a DataF and a scalar.
+ */
 DataF dataf_op_scalar(const DataF* a, float scalar, Operation op, bool scalar_first);
+
+/**
+ * @brief Inverts the sign of all values in a DataF structure in-place.
+ * @param a Pointer to the DataF structure to modify.
+ */
 void dataf_invert(DataF* a);
 
 // --- Funciones de utilidad para DataNC ---
