@@ -378,11 +378,7 @@ static bool compose_custom(RgbContext *ctx) {
 }
 
 static const RgbStrategy STRATEGIES[] = {
-    {"truecolor",
-     {"C01", "C02", "C03", NULL},
-     compose_truecolor,
-     "True Color RGB (natural)",
-     false},
+    {"truecolor", {"C01", "C02", "C03", NULL}, compose_truecolor, "True Color RGB (natural)", false},
     {"night", {"C13", NULL}, compose_night, "Nocturnal IR with temperature pseudocolor", false},
     {"ash", {"C11", "C13", "C14", "C15", NULL}, compose_ash, "Volcanic Ash RGB", false},
     {"airmass", {"C08", "C10", "C12", "C13", NULL}, compose_airmass, "Air Mass RGB", false},
@@ -393,6 +389,8 @@ static const RgbStrategy STRATEGIES[] = {
 };
 
 static const RgbStrategy *get_strategy_for_mode(const char *mode) {
+	if (strcmp("default", mode) == 0)
+		return &STRATEGIES[5];
     for (int i = 0; STRATEGIES[i].mode_name != NULL; i++) {
         if (strcmp(STRATEGIES[i].mode_name, mode) == 0) {
             return &STRATEGIES[i];

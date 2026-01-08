@@ -6,15 +6,14 @@ OUTDIR=/data/output/abi/vistas
 OUTDIR=./
 
 # Get the latest L1b C01 file from DATADIR
-NC_C01_FILE=$DATADIR/OR_ABI-L1b-RadF-M6C01_G19_s20253551600217_e20253551609526_c20253551609562.nc
+NC_C01_FILE=$(ls -t "$DATADIR"/*C01*.nc 2>/dev/null | head -n 1)
 
 # Run default composite
-echo "Generating True Color composite"
-../bin/hpsv_debug rgb -m truecolor -v --out $OUTDIR/{YYYY}.{MM}.{DD}.{hh}.{mm}.{SAT}.{CH}.png \
-    "$NC_C01_FILE"
+echo "Generating True Color/Night composite"
+../bin/hpsv rgb -v --out $OUTDIR/{YYYY}.{MM}.{DD}.{hh}.{mm}.{SAT}.{CH}.png \
+    "$NC_C01_FILE" 
 
-#echo "Proyecting True Color composite"
-#../bin/hpsv rgb -m truecolor -v --out $OUTDIR/{YYYY}.{MM}.{DD}.{hh}.{mm}.{SAT}.{CH}_geo.png \
-#    "$NC_C01_FILE" -r
-#    
-#echo "✅ Composite test finished."
+echo "Proyecting True Color/Night composite"
+../bin/hpsv rgb -v --out $OUTDIR/{YYYY}.{MM}.{DD}.{hh}.{mm}.{SAT}.{CH}_geo.png \
+    "$NC_C01_FILE" -r
+
