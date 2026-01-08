@@ -198,8 +198,8 @@ static bool compose_truecolor(RgbContext *ctx) {
         if (rayleigh_load_navigation(nav_file, &nav, ctx->comp_b.width, ctx->comp_b.height)) {
 			if (ctx->opts.rayleigh_analytic) {
             LOG_INFO("Aplicando Rayleigh Analítico...");
-            analytic_rayleigh_correction(&ctx->comp_b, &nav, RAYLEIGH_TAU_BLUE);
-            analytic_rayleigh_correction(&ctx->comp_r, &nav, RAYLEIGH_TAU_RED);
+            analytic_rayleigh_correction(&ctx->comp_b, &nav, 0.47);
+            analytic_rayleigh_correction(&ctx->comp_r, &nav, 0.64);
 		} else {
             LOG_INFO("Aplicando Rayleigh Luts...");
             luts_rayleigh_correction(&ctx->comp_b, &nav, 1, RAYLEIGH_TAU_BLUE);

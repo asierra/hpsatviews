@@ -41,8 +41,8 @@ typedef struct {
  * @param nav Estructura con la navegación (SZA, VZA, RAA)
  * @param tau Coeficiente de profundidad óptica de la banda (ej. 0.061 para azul)
  */
-void analytic_rayleigh_correction(DataF *img, const RayleighNav *nav, float tau);
-
+//void analytic_rayleigh_correction(DataF *img, const RayleighNav *nav, float tau);
+void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lambda_um);
 
 /**
  * @brief Carga y calcula toda la geometría necesaria para la corrección Rayleigh.

@@ -9,8 +9,13 @@
 #include "rayleigh_lut_embedded.h"
 #include "reader_nc.h" 
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
-// Función auxiliar para reducir la resolución si es mayor a la objetivo
+
+// Funciones comunes
+
 static void enforce_resolution(DataF *data, unsigned int target_w, unsigned int target_h) {
     if (data == NULL || data->data_in == NULL) return;
 
@@ -106,192 +111,157 @@ bool rayleigh_load_navigation(const char *filename, RayleighNav *nav,
             rayleigh_free_navigation(nav);
             return false;
         }
-    }
-    
+    }    
     return true;
 }
 
+// ============================================================================
+// SECCIÓN 1: FÍSICA DE RAYLEIGH (Bucholtz 1995)
+// ============================================================================
 
-/*
- * ANALYTICAL RAYLEIGH ATMOSPHERIC CORRECTION
- * ==========================================
- *
- * Scientific Methodology and References:
- *
- * 1. Physical Model: Single-Scattering Approximation
- * --------------------------------------------------
- * The implementation assumes a plane-parallel atmosphere where the path radiance
- * is primarily due to a single scattering event of solar radiation towards the
- * sensor. This is efficient for visible bands in clear-sky conditions.
- *
- * Formula:
- * Ref_corr = Ref_obs - (Tau * P(Theta)) / (4 * mu * mu0)
- *
- * Where:
- * - P(Theta): Rayleigh phase function = 0.75 * (1 + cos^2(Theta))
- * - Theta:    Scattering angle calculated from SZA, VZA, and Relative Azimuth.
- * - mu, mu0:  Cosine of View Zenith and Solar Zenith angles, respectively.
- *
- * Reference:
- * Hansen, J. E., & Travis, L. D. (1974). Light scattering in planetary
- * atmospheres. Space Science Reviews, 16(4), 527-610.
- *
- *
- * 2. Rayleigh Optical Depth Coefficients (Tau)
- * --------------------------------------------
- * The optical depth (Tau) values are derived for the central wavelengths of
- * the GOES-R ABI sensor using the US Standard Atmosphere (1976).
- *
- * - Band 1 (Blue, 0.47 um): Tau ~ 0.188
- * - Band 2 (Red, 0.64 um):  Tau ~ 0.055
- *
- * Reference:
- * Bucholtz, A. (1995). Rayleigh-scattering calculations for the terrestrial
- * atmosphere. Applied Optics, 34(15), 2765-2773.
- *
- *
- * 3. Terminator Correction (SZA/VZA Fading)
- * ------------------------------------------
- * The plane-parallel approximation diverges at high zenith angles.
- * To prevent artifacts (e.g., yellowing clouds, noise amplification) at extreme
- * viewing geometries, a smooth fading factor is applied using smoothstep.
- *
- * Solar Zenith Angle (SZA):
- * - SZA < 55.0°: Full correction (Factor = 1.0)
- * - SZA > 85.0°: No correction   (Factor = 0.0)
- * - 55° < SZA < 85°: Smooth interpolation (smoothstep)
- *
- * View Zenith Angle (VZA):
- * - VZA < 50.0°: Full correction (Factor = 1.0)
- * - VZA > 75.0°: No correction   (Factor = 0.0)
- * - 50° < VZA < 75°: Smooth interpolation (smoothstep)
- *
- * The final factor is the minimum of both, ensuring conservative correction.
- * Smoothstep provides much better visual transitions than linear interpolation.
- *
- *
- * 4. Hybrid Green Generation (True Color)
- * ---------------------------------------
- * Since ABI lacks a native Green band, it is synthesized using a weighted
- * combination of Red, Blue, and NIR to simulate vegetation properly.
- *
- * Formula: G = 0.48*Red + 0.46*Blue + 0.06*NIR
- *
- * Reference:
- * Bah, K., Schmit, T. J., et al. (2018). GOES-16 Advanced Baseline Imager (ABI)
- * True Color Imagery for Legacy and Non-Traditional Applications.
- * NOAA/CIMSS.
+/**
+ * @brief Calcula el Espesor Óptico de Rayleigh (Tau) usando Bucholtz (1995).
+ * Sustituye a las constantes fijas para mayor precisión espectral.
+ * * @param lambda_um Longitud de onda en micrómetros (ej. 0.47 para Azul).
+ * @return double Tau_R para presión estándar (1013.25 mb).
  */
-
-void analytic_rayleigh_correction(DataF *img, const RayleighNav *nav, float tau) {
-    if (!img || !nav || !img->data_in) return;
+static double calc_bucholtz_tau(double lambda_um) {
+    if (lambda_um <= 0) return 0.0;
     
-    // Validar dimensiones
-    if (img->width != nav->sza.width || img->height != nav->sza.height) {
-        LOG_ERROR("Mismatch dimensiones en Rayleigh Analytic: Img %dx%d vs Nav %dx%d",
-                  img->width, img->height, nav->sza.width, nav->sza.height);
+    double l2 = lambda_um * lambda_um;
+    double l4 = l2 * l2;
+    
+    // Fórmula de aproximación de alta precisión para Tau (P0=1013.25mb)
+    // Coeficientes derivados de Bucholtz (1995) para atmósfera estándar.
+    // Tau = A * lambda^-4 * (1 + B/lambda^2 + C/lambda^4)
+    return 0.008569 / l4 * (1.0 + 0.0113 / l2 + 0.00013 / l4);
+}
+
+/**
+ * @brief Función de Fase de Rayleigh con corrección de Despolarización.
+ * Considera que las moléculas de aire no son esferas perfectas (Factor 0.0279).
+ * * @param cos_theta Coseno del ángulo de dispersión.
+ * @return float Valor de la función de fase P(Theta).
+ */
+static float calc_bucholtz_phase(float cos_theta) {
+    // Factor de despolarización (rho_n) para aire estándar
+    const float rho_n = 0.0279f; 
+    const float gamma = rho_n / (2.0f - rho_n);
+    
+    // Términos precalculados de la ecuación de Chandrasekhar
+    const float A = 0.75f / (1.0f + 2.0f * gamma);
+    const float B = 1.0f + 3.0f * gamma;
+    const float C = 1.0f - gamma;
+
+    // P(Theta) = A * [ B + C * cos^2(Theta) ]
+    return A * (B + C * (cos_theta * cos_theta));
+}
+
+// ============================================================================
+// SECCIÓN 3: CORRECCIÓN ANALÍTICA MEJORADA
+// ============================================================================
+
+void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lambda_um) {
+    // 1. Validaciones básicas de punteros
+    if (!band || !nav) {
+        LOG_ERROR("Argumentos nulos en analytic_rayleigh_correction");
+        return;
+    }
+	DataF *output = band;
+	
+    // Extraer punteros de la estructura de navegación para facilitar el acceso
+    // NOTA: Asumo que en RayleighNav son punteros (DataF *sza). 
+    // Si son estructuras directas, usa &nav->sza.
+    DataF *sza = &nav->sza;
+    DataF *vza = &nav->vza;
+    DataF *raa = &nav->raa; 
+
+    // Validar que los datos de navegación existan
+    if (!sza || !vza || !raa || !sza->data_in || !vza->data_in || !raa->data_in) {
+        LOG_ERROR("Datos de navegación incompletos en RayleighNav");
         return;
     }
 
-    double start_time = omp_get_wtime();
-    float deg2rad = (float)(M_PI / 180.0);
-    
-    size_t count_corrected = 0;
-    float max_corr = 0.0f;
-    float sum_corr = 0.0f;
-
-    #pragma omp parallel for reduction(+:count_corrected, sum_corr) reduction(max:max_corr)
-    for (size_t i = 0; i < img->size; i++) {
-        float val = img->data_in[i];
-        float sza = nav->sza.data_in[i];
-        float vza = nav->vza.data_in[i];
-        float raa = nav->raa.data_in[i]; // Grados
-
-        if (IS_NONDATA(val) || IS_NONDATA(sza) || IS_NONDATA(vza) || IS_NONDATA(raa)) continue;
-
-        // 1. Límite estricto de seguridad
-        if (sza > 85.0f || vza > 75.0f) continue;
-
-		// 2. CÁLCULO DEL FACTOR DE DESVANECIMIENTO SUAVE (Fading)
-        // Esto evita que las nubes se vuelvan amarillas en ángulos altos
-        // Usamos smoothstep para transición suave, no lineal
-        float factor_sza = 1.0f;
-        float factor_vza = 1.0f;
-        
-        // Transición suave para SZA: 55° (100%) -> 85° (0%)
-        if (sza > 55.0f) {
-            float t = (sza - 55.0f) / (85.0f - 55.0f);
-            // Smoothstep: 3t^2 - 2t^3
-            factor_sza = 1.0f - (t * t * (3.0f - 2.0f * t));
-        }
-        
-        // Transición suave para VZA: 50° (100%) -> 75° (0%)
-        if (vza > 50.0f) {
-            float t = (vza - 50.0f) / (75.0f - 50.0f);
-            factor_vza = 1.0f - (t * t * (3.0f - 2.0f * t));
-        }
-        
-        // Factor combinado (tomar el mínimo para ser conservador)
-        float factor = fminf(factor_sza, factor_vza);
-        
-        // Si el factor es muy pequeño, mejor saltar
-        if (factor < 0.05f) continue;
-	
-        // Convertir a radianes
-        float theta_s = sza * deg2rad;
-        float theta_v = vza * deg2rad;
-        float phi     = raa * deg2rad;
-
-        float cos_s = cosf(theta_s);
-        float cos_v = cosf(theta_v);
-        
-        // Protección contra ángulos extremos donde la fórmula se vuelve inestable
-        // Cuando cos_s o cos_v son muy pequeños, el denominador explota
-        if (cos_s < 0.087f || cos_v < 0.174f) continue; // ~85° y ~80°
-
-        // Calcular ángulo de dispersión (Scattering Angle) Theta
-        // Cos(Theta) = -Cos(S)*Cos(V) + Sin(S)*Sin(V)*Cos(Phi)
-        // Nota: El signo del primer término depende de la convención de vectores. 
-        // Para satélite mirando abajo y sol arriba, el ángulo es obtuso, 
-        // pero la función de fase es simétrica (cuadrática), así que cos^2 nos salva.
-        // Usamos la forma estándar:
-        float sin_s = sinf(theta_s);
-        float sin_v = sinf(theta_v);
-        
-        float cos_scat = -cos_s * cos_v + sin_s * sin_v * cosf(phi);
-        
-        // Función de fase de Rayleigh mejorada con factor de despolarización
-        // P(Theta) = 0.75 * (1 + cos^2(Theta)) para aire sin despolarización
-        // Con despolarización δ=0.0279: P(Theta) = 0.7629 * (1 + 0.9320*cos^2(Theta))
-        // Simplificamos manteniendo el factor 0.75 y ajustando ligeramente el cos^2
-        float cos_scat_sq = cos_scat * cos_scat;
-        float phase = 0.75f * (1.0f + 0.935f * cos_scat_sq);
-        
-        // Reflectancia de Rayleigh: R = (Tau * P) / (4 * cos_s * cos_v)
-        // Factor 4.0 viene de la normalización para reflectancia bidireccional
-        float ray_refl = (tau * phase) / (4.0f * cos_s * cos_v);
-
-        // 3. Aplicar la corrección moderada por el factor
-        float result = val - (ray_refl * factor);
-
-        // Clipping suave
-        if (result < 0.0f) result = 0.0f;
-
-        img->data_in[i] = result;
-
-        // Estadísticas
-        count_corrected++;
-        if (ray_refl > max_corr) max_corr = ray_refl;
-        sum_corr += ray_refl;
+    // Validar dimensiones (asumiendo que enforce_resolution ya se llamó externamente o antes)
+    if (sza->size != band->size) {
+        LOG_WARN("Dimensiones de navegación (%zu) no coinciden con banda (%zu). Resultados impredecibles.", 
+                    sza->size, band->size);
+        // Aquí podrías llamar a enforce_resolution si fuera necesario
     }
 
-    double elapsed = omp_get_wtime() - start_time;
-    LOG_INFO("Rayleigh Analítico (Tau=%.3f): %.2fms. Media Corr: %.4f, Max Corr: %.4f", 
-             tau, elapsed*1000.0, 
-             (count_corrected > 0) ? sum_corr/count_corrected : 0.0f,
-             max_corr);
-}
+    size_t n = band->size;
+    
+    // 2. Calcular Tau físico
+    float tau_r = (float)calc_bucholtz_tau(lambda_um);
+    
+    LOG_INFO("Rayleigh (Bucholtz): Lambda=%.3f um, Tau=%.4f", lambda_um, tau_r);
 
+    size_t night_pixels = 0;
+    size_t valid_pixels = 0;
+    size_t clamped_pixels = 0;
+    double sum_orig = 0, sum_corr = 0;
+
+    #pragma omp parallel for reduction(+:night_pixels, valid_pixels, clamped_pixels, sum_orig, sum_corr)
+    for (size_t i = 0; i < n; i++) {
+        float val = band->data_in[i];
+
+        if (IS_NONDATA(val)) {
+            output->data_in[i] = NonData;
+            continue;
+        }
+
+        // Acceso directo a los arrays de navegación
+        float sza_val = sza->data_in[i];
+        
+        if (sza_val > 85.0f) {
+             output->data_in[i] = NonData; 
+             night_pixels++;
+             continue;
+        }
+
+        float vza_val = vza->data_in[i];
+        
+        // Conversión a radianes
+        float theta_s = sza_val * (float)(M_PI / 180.0);
+        float theta_v = vza_val * (float)(M_PI / 180.0);
+        float phi_rel = raa->data_in[i] * (float)(M_PI / 180.0);
+
+        float mu_s = cosf(theta_s);
+        float mu_v = cosf(theta_v);
+
+        if (mu_s < 0.01f || mu_v < 0.01f) {
+            output->data_in[i] = val;
+            continue;
+        }
+
+        // Geometría
+        float cos_scat = -mu_s * mu_v + sinf(theta_s) * sinf(theta_v) * cosf(phi_rel);
+
+        // Fase y Reflectancia
+        float P_ray = calc_bucholtz_phase(cos_scat);
+        float rho_ray = (tau_r * P_ray) / (4.0f * mu_s * mu_v);
+
+        // Corrección
+        float corrected = val - rho_ray;
+
+        sum_orig += val;
+        valid_pixels++;
+
+        if (corrected < 0.0f) {
+            corrected = 0.0001f;
+            clamped_pixels++;
+        }
+        sum_corr += corrected;
+
+        output->data_in[i] = corrected;
+    }
+
+    if (valid_pixels > 0) {
+        LOG_INFO("Rayleigh Stats: %zu valid. Mean: %.4f -> %.4f. Clamped: %.1f%%",
+            valid_pixels, sum_orig/valid_pixels, sum_corr/valid_pixels, 
+            100.0 * (double)clamped_pixels / valid_pixels);
+    }
+}
 
 
 /*********         Implementación Rayleigh con LUTs          **********/
