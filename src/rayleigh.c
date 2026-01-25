@@ -172,9 +172,9 @@ void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lam
     // Extraer punteros de la estructura de navegación para facilitar el acceso
     // NOTA: Asumo que en RayleighNav son punteros (DataF *sza). 
     // Si son estructuras directas, usa &nav->sza.
-    DataF *sza = &nav->sza;
-    DataF *vza = &nav->vza;
-    DataF *raa = &nav->raa; 
+    const DataF *sza = &nav->sza;
+    const DataF *vza = &nav->vza;
+    const DataF *raa = &nav->raa; 
 
     // Validar que los datos de navegación existan
     if (!sza || !vza || !raa || !sza->data_in || !vza->data_in || !raa->data_in) {

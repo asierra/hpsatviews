@@ -15,7 +15,7 @@
 
 const char *VAR_NAME_RAD = "Rad";
 
-const SatelliteID detect_satellite_from_filename(const char* filename) {
+SatelliteID detect_satellite_from_filename(const char* filename) {
     if (!filename) return SAT_UNKNOWN;
     
     const char* sat_ptr = strstr(filename, "_G");

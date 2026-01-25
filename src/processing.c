@@ -56,6 +56,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     DataF result_data = {0}, navla_full = {0}, navlo_full = {0};
     ImageData final_image = {0}, temp_image = {0};
     char *palette_name = NULL;
+    char *generated_filename = NULL;
     bool nav_loaded = false;
     bool expr_mode = cfg->is_custom_mode;
     int num_required_channels = 0;
@@ -236,7 +237,6 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     
     // Generar nombre de archivo si no se especificó
     const char* outfn = cfg->output_path_override;
-    char* generated_filename = NULL;
     
     if (!outfn) {
         // Determinar extensión
