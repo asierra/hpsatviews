@@ -206,7 +206,7 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
     cfg->scale = 1;
     if (ap_found(parser, "scale")) {
         cfg->scale = ap_get_int_value(parser, "scale");
-        if (cfg->scale < 1) cfg->scale = 1;
+        if (cfg->scale == 0) cfg->scale = 1;
     }
     
     // Opciones específicas de RGB
@@ -310,8 +310,8 @@ bool config_validate(const ProcessConfig* cfg) {
     }
     
     // Validar scale
-    if (cfg->scale < 1 || cfg->scale > 10) {
-        LOG_ERROR("scale debe estar en [1, 10], valor: %d", cfg->scale);
+    if (cfg->scale == 0 || cfg->scale > 10 || cfg->scale < -10) {
+        LOG_ERROR("scale debe estar en [-10, -1] o [1, 10], valor: %d", cfg->scale);
         return false;
     }
     
