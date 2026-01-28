@@ -1,0 +1,4 @@
+# .clangd
+CompileFlags:
+  Add: [-Iinclude, -std=c17, -Wall]
+

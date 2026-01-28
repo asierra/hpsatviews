@@ -1,0 +1,10 @@
+[
+  {
+    "label": "Build with Makefile",
+    "command": "make",
+    "use_new_terminal": true,
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  }
+]
+
