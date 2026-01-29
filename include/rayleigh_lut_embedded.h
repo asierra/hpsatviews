@@ -1,16 +1,12 @@
+/* Auto-generated file - DO NOT EDIT */
 #ifndef RAYLEIGH_LUT_EMBEDDED_H
 #define RAYLEIGH_LUT_EMBEDDED_H
 
-// Archivos binarios embebidos como arrays de C
-// Auto-generado con xxd -i desde rayleigh_lut_C0*.bin
+extern const unsigned char rayleigh_lut_c01_data[];
+extern const unsigned int rayleigh_lut_c01_data_len;
+extern const unsigned char rayleigh_lut_c02_data[];
+extern const unsigned int rayleigh_lut_c02_data_len;
+extern const unsigned char rayleigh_lut_c03_data[];
+extern const unsigned int rayleigh_lut_c03_data_len;
 
-extern unsigned char rayleigh_lut_C01_bin[];
-extern unsigned int rayleigh_lut_C01_bin_len;
-
-extern unsigned char rayleigh_lut_C02_bin[];
-extern unsigned int rayleigh_lut_C02_bin_len;
-
-extern unsigned char rayleigh_lut_C03_bin[];
-extern unsigned int rayleigh_lut_C03_bin_len;
-
-#endif // RAYLEIGH_LUT_EMBEDDED_H
+#endif /* RAYLEIGH_LUT_EMBEDDED_H */

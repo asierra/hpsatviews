@@ -66,47 +66,47 @@ def interpolate_wavelength(wavelengths, reflectance, target_wl):
     print(f"    Interpolando entre {w1} nm y {w2} nm (alpha={alpha:.3f})")
     return r1 * (1 - alpha) + r2 * alpha
 
-def export_binary_lut(output_file, sza_angles, vza_angles, az_angles, data):
+def export_binary_lut(output_file, sza_secants, vza_secants, az_angles, data):
     """
     Exporta LUT en formato binario optimizado para C.
     
     Formato del archivo:
     - Header (48 bytes):
-      * 9 floats: min, max, step para cada eje (sza, vza, az)
+      * 9 floats: min, max, step para cada eje (sza_sec, vza_sec, az)
       * 3 ints: número de puntos en cada eje
-    - Data: array 3D de floats [sza][vza][az] en orden C
+    - Data: array 3D de floats [sza_sec][vza_sec][az] en orden C
     
     Args:
         output_file: Nombre del archivo de salida
-        sza_angles: Array 1D de ángulos cenitales solares (grados)
-        vza_angles: Array 1D de ángulos cenitales de visión (grados)
+        sza_secants: Array 1D de secantes cenitales solares
+        vza_secants: Array 1D de secantes cenitales de visión
         az_angles: Array 1D de ángulos azimutales (grados)
-        data: Array 3D [sun_zen, sat_zen, azimuth] de reflectancias
+        data: Array 3D [sun_zen_sec, sat_zen_sec, azimuth] de reflectancias
     """
     with open(output_file, 'wb') as f:
         # Calcular steps
-        sz_step = (sza_angles[-1] - sza_angles[0]) / (len(sza_angles) - 1) if len(sza_angles) > 1 else 0
-        vz_step = (vza_angles[-1] - vza_angles[0]) / (len(vza_angles) - 1) if len(vza_angles) > 1 else 0
+        sz_step = (sza_secants[-1] - sza_secants[0]) / (len(sza_secants) - 1) if len(sza_secants) > 1 else 0
+        vz_step = (vza_secants[-1] - vza_secants[0]) / (len(vza_secants) - 1) if len(vza_secants) > 1 else 0
         az_step = (az_angles[-1] - az_angles[0]) / (len(az_angles) - 1) if len(az_angles) > 1 else 0
         
         # Header (9 floats + 3 ints = 48 bytes)
-        header = struct.pack('fff', float(sza_angles[0]), float(sza_angles[-1]), sz_step)
-        header += struct.pack('fff', float(vza_angles[0]), float(vza_angles[-1]), vz_step)
+        header = struct.pack('fff', float(sza_secants[0]), float(sza_secants[-1]), sz_step)
+        header += struct.pack('fff', float(vza_secants[0]), float(vza_secants[-1]), vz_step)
         header += struct.pack('fff', float(az_angles[0]), float(az_angles[-1]), az_step)
-        header += struct.pack('iii', len(sza_angles), len(vza_angles), len(az_angles))
+        header += struct.pack('iii', len(sza_secants), len(vza_secants), len(az_angles))
         f.write(header)
         
-        # Data (orden C: [sza][vza][az])
+        # Data (orden C: [sza_sec][vza_sec][az])
         # Convertir a float32 para ahorrar espacio
         data_flat = data.astype('float32').tobytes()
         f.write(data_flat)
     
-    file_size = 48 + len(sza_angles) * len(vza_angles) * len(az_angles) * 4
+    file_size = 48 + len(sza_secants) * len(vza_secants) * len(az_angles) * 4
     print(f"    ✓ Guardado: {output_file}")
     print(f"      Tamaño: {file_size / 1024:.1f} KB")
 
 def main():
-    input_file = '/data/cspp/geo2grid_v_1_2/pyspectral_data/rayleigh_only/rayleigh_lut_us-standard.h5'
+    input_file = '/home/aguilars/cspp/geo2grid_v_1_2/pyspectral_data/rayleigh_only/rayleigh_lut_us-standard.h5'
     
     print("="*70)
     print("Extracción de LUTs de Rayleigh para hpsatviews")
@@ -126,17 +126,14 @@ def main():
         sys.exit(1)
     
     print(f"  ✓ Shape original: {reflectance.shape}")
-    print(f"    [wavelength={len(wavelengths)}, sun_zen={len(sun_zen_sec)}, " +
-          f"azimuth={len(azimuth_diff)}, sat_zen={len(sat_zen_sec)}]")
+    print(f"    [wavelength={len(wavelengths)}, sun_zen_sec={len(sun_zen_sec)}, " +
+          f"azimuth={len(azimuth_diff)}, sat_zen_sec={len(sat_zen_sec)}]")
     print(f"  ✓ Wavelengths: {wavelengths[0]:.0f}-{wavelengths[-1]:.0f} nm")
     
-    # Convertir secantes a ángulos
-    sun_zen_angles = secant_to_angle(sun_zen_sec)
-    sat_zen_angles = secant_to_angle(sat_zen_sec)
-    
-    print(f"\nÁngulos convertidos (secante → grados):")
-    print(f"  Solar Zenith: {sun_zen_angles[0]:.1f}° - {sun_zen_angles[-1]:.1f}° ({len(sun_zen_angles)} puntos)")
-    print(f"  Satellite Zenith: {sat_zen_angles[0]:.1f}° - {sat_zen_angles[-1]:.1f}° ({len(sat_zen_angles)} puntos)")
+    # NO convertir secantes a ángulos - mantenerlos como secantes para interpolación correcta
+    print(f"\nEjes de la LUT (en secantes):") 
+    print(f"  Solar Zenith Secant: {sun_zen_sec[0]:.2f} - {sun_zen_sec[-1]:.2f} ({len(sun_zen_sec)} puntos)")
+    print(f"  Satellite Zenith Secant: {sat_zen_sec[0]:.2f} - {sat_zen_sec[-1]:.2f} ({len(sat_zen_sec)} puntos)")
     print(f"  Azimuth: {azimuth_diff[0]:.0f}° - {azimuth_diff[-1]:.0f}° ({len(azimuth_diff)} puntos)")
     
     # Procesar cada banda
@@ -157,17 +154,17 @@ def main():
         # reflectance shape: [wavelength, sun_zen, azimuth, sat_zen]
         refl_3d = interpolate_wavelength(wavelengths, reflectance, wl_adjusted)
         
-        # Reordenar de [sun_zen, azimuth, sat_zen] → [sun_zen, sat_zen, azimuth]
+        # Reordenar de [sun_zen_sec, azimuth, sat_zen_sec] → [sun_zen_sec, sat_zen_sec, azimuth]
         # para que sea compatible con nuestra función de interpolación trilineal
         refl_3d = np.transpose(refl_3d, (0, 2, 1))
         
-        print(f"    Shape final: {refl_3d.shape} [sun_zen={refl_3d.shape[0]}, " +
-              f"sat_zen={refl_3d.shape[1]}, azimuth={refl_3d.shape[2]}]")
+        print(f"    Shape final: {refl_3d.shape} [sun_zen_sec={refl_3d.shape[0]}, " +
+              f"sat_zen_sec={refl_3d.shape[1]}, azimuth={refl_3d.shape[2]}]")
         print(f"    Rango valores: {refl_3d.min():.6f} - {refl_3d.max():.6f}")
         
-        # Exportar
+        # Exportar con ejes en SECANTES (no ángulos)
         output_file = f'rayleigh_lut_{band}.bin'
-        export_binary_lut(output_file, sun_zen_angles, sat_zen_angles, 
+        export_binary_lut(output_file, sun_zen_sec, sat_zen_sec, 
                          azimuth_diff, refl_3d)
     
     print("\n" + "="*70)

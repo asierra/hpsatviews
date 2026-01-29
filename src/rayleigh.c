@@ -267,8 +267,9 @@ void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lam
 /*********         Implementación Rayleigh con LUTs          **********/
 
 /**
+ * Interpola valor de Rayleigh desde la LUT usando secantes.
  * Realiza una interpolación trilineal rápida sobre la LUT.
- * s: Solar Zenith, v: View Zenith, a: Relative Azimuth
+ * s: Solar Zenith Secant, v: View Zenith Secant, a: Relative Azimuth (degrees)
  */
 static inline float get_rayleigh_value(const RayleighLUT *lut, float s, float v, float a) {
     // 1. Validar rangos - clamp en lugar de devolver 0
@@ -285,7 +286,7 @@ static inline float get_rayleigh_value(const RayleighLUT *lut, float s, float v,
     if (a > lut->az_max) a = lut->az_max;
     if (a < lut->az_min) a = lut->az_min;
 
-    // 2. Calcular índices flotantes
+    // 2. Calcular índices flotantes (usando secantes directamente)
     float idx_s = (s - lut->sz_min) / lut->sz_step;
     float idx_v = (v - lut->vz_min) / lut->vz_step;
     float idx_a = (a - lut->az_min) / lut->az_step;
@@ -367,14 +368,14 @@ static RayleighLUT rayleigh_lut_load_from_memory(const uint8_t channel) {
     unsigned int data_len;
     // Determinar qué LUT embebida usar
     if (channel == 1) {
-        data = rayleigh_lut_C01_bin;
-        data_len = rayleigh_lut_C01_bin_len;
+        data = rayleigh_lut_c01_data;
+        data_len = rayleigh_lut_c01_data_len;
     } else if (channel == 2) {
-        data = rayleigh_lut_C02_bin;
-        data_len = rayleigh_lut_C02_bin_len;
+        data = rayleigh_lut_c02_data;
+        data_len = rayleigh_lut_c02_data_len;
     } else if (channel == 3) {
-        data = rayleigh_lut_C03_bin;
-        data_len = rayleigh_lut_C03_bin_len;
+        data = rayleigh_lut_c03_data;
+        data_len = rayleigh_lut_c03_data_len;
     } else {
         LOG_ERROR("Canal de LUT no reconocido %d", channel);
         return lut;
@@ -446,9 +447,9 @@ static RayleighLUT rayleigh_lut_load_from_memory(const uint8_t channel) {
     LOG_INFO("LUT de Rayleigh %d cargada desde datos embebidos", channel);
     LOG_INFO("  Dimensiones: %d × %d × %d = %zu valores", 
              lut.n_sz, lut.n_vz, lut.n_az, table_size);
-    LOG_INFO("  Solar Zenith: %.1f° - %.1f° (step: %.2f°)", 
+    LOG_INFO("  Solar Zenith Secant: %.2f - %.2f (step: %.3f)", 
              lut.sz_min, lut.sz_max, lut.sz_step);
-    LOG_INFO("  View Zenith: %.1f° - %.1f° (step: %.2f°)", 
+    LOG_INFO("  View Zenith Secant: %.2f - %.2f (step: %.3f)", 
              lut.vz_min, lut.vz_max, lut.vz_step);
     LOG_INFO("  Azimuth: %.0f° - %.0f° (step: %.1f°)", 
              lut.az_min, lut.az_max, lut.az_step);
@@ -516,17 +517,41 @@ void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t 
             continue;
         }
 
-        // Calcular valor Rayleigh de la tabla y multiplicar por tau
-        // Las LUTs contienen valores normalizados que deben multiplicarse por tau
-        float r_corr = get_rayleigh_value(&lut, theta_s, nav->vza.data_in[i], nav->raa.data_in[i]) * tau;
+        // Calcular secantes para interpolación (como hace pyspectral)
+        // Primero clipear ángulos al rango válido de la LUT (como hace pyspectral)
+        // SZA max = arccos(1/24.75) = 87.68°
+        // VZA max = arccos(1/3.0) = 70.53°
+        float sza_clipped = theta_s;
+        if (sza_clipped > 87.68f) sza_clipped = 87.68f;
+        if (sza_clipped < 0.0f) sza_clipped = 0.0f;
+        
+        float vza_clipped = nav->vza.data_in[i];
+        if (vza_clipped > 70.53f) vza_clipped = 70.53f;
+        if (vza_clipped < 0.0f) vza_clipped = 0.0f;
+        
+        float theta_s_sec = 1.0f / cosf(sza_clipped * M_PI / 180.0f);
+        float vza_sec = 1.0f / cosf(vza_clipped * M_PI / 180.0f);
+        
+        // Interpolar en LUT usando secantes
+        float r_corr = get_rayleigh_value(&lut, theta_s_sec, vza_sec, nav->raa.data_in[i]);
+        
+        // Reducir corrección en ángulos solares altos (como hace satpy/pyspectral)
+        // Para SZA > 70°, reduce linealmente hasta eliminar la corrección en SZA=88°
+        // Esto evita sobrecorrecciones irreales en el terminador día/noche
+        if (theta_s > 70.0f) {
+            float reduce_factor = 1.0f - (theta_s - 70.0f) / (88.0f - 70.0f);
+            if (reduce_factor < 0.0f) reduce_factor = 0.0f;
+            r_corr *= reduce_factor;
+        }
+        
         if (r_corr > max_rayleigh) max_rayleigh = r_corr;
         
         // Debug: samplear algunos valores distribuidos por la imagen
         if (valid_pixels % 10000 == 0 && valid_pixels < 100000) {
             #pragma omp critical
             {
-                LOG_DEBUG("Sample pixel %zu: SZA=%.2f, VZA=%.2f, RAA=%.2f, Original=%.6f, Rayleigh=%.6f", 
-                         i, theta_s, nav->vza.data_in[i], nav->raa.data_in[i], original, r_corr);
+                LOG_DEBUG("Sample pixel %zu: SZA=%.2f (clipped=%.2f), VZA=%.2f (clipped=%.2f), RAA=%.2f, Original=%.6f, Rayleigh=%.6f", 
+                         i, theta_s, sza_clipped, nav->vza.data_in[i], vza_clipped, nav->raa.data_in[i], original, r_corr);
             }
         }
 
