@@ -1,0 +1,22 @@
+Como puedes ver en docs/plan_rayleigh_cor.md, ayer avanzamos mucho en lograr una corrección de Rayleigh casi aceptable con luts: solamente se ven amarillos fuertes y unos pocos verdes oscuros en las orillas. Es claro que geo2grid hace más realces que solo esta corrección, posiblemente gamma 2.0, y debemos estudiarlo más.
+
+Las imágenes tests/tcgeo2grid_20260281200.png y tests/tcgeo2grid_20260281800.png y sus correspondientes logs fueron obtenidos con los comandos
+
+$ geo2grid_v_1_2/bin/geo2grid.sh -r abi_l1b -w geotiff -p true_color --output-filename tmp.tif -f sample_data/028/*s20260281200*
+$ geo2grid_v_1_2/bin/geo2grid.sh -r abi_l1b -w geotiff -p true_color --output-filename tmp.tif -f sample_data/028/*s20260281200*
+
+Y enseguida los convertí a png y reduje su tamaño con 
+
+$ gdal_translate -of PNG -outsize 12.5% 12.5% tmp.tif tests/tcgeo2grid_20260281200.png
+$ gdal_translate -of PNG -outsize 12.5% 12.5% tmp.tif tests/tcgeo2grid_20260281800.png
+
+Y después con el comando en tests/test_rayleigh.sh 
+
+bin/hpsv rgb -m truecolor --rayleigh -g 2 -s -4
+
+generé las imágenes tests/tcgeo2grid_20260281200.png y tests/tcgeo2grid_20260281200.png con sus correspondientes logs.
+
+Con esta información puedes comparar qué estamos haciendo y qué nos falta hacer. En la raíz del repo hay una liga simbólica con la que puedes entrar y estudiar todo el contenido de geo2grid_v_1_2. Necesitamos primero un informe sobre todos los realces que hace geo2grid y después un plan sobre lo que debemos hacer en hpsatviews para obtener un resultado aceptablemente similar.
+
+
+

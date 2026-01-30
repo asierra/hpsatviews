@@ -1,13 +1,53 @@
 # Plan de Corrección Rayleigh - Estado Actual
 
-**ACTUALIZADO**: 29 de enero de 2026, 17:05  
-**Estado**: PARCIALMENTE RESUELTO - Zona central correcta, bordes con amarillo/verde residual
+**ACTUALIZADO**: 30 de enero de 2026 - Análisis comparativo con geo2grid completado  
+**Estado**: ✅ Correcciones físicas implementadas - ⚠️ Realces adicionales requeridos
 
 ---
 
-## RESUMEN DEL PROGRESO
+## 🎯 HALLAZGOS CLAVE (30 de enero de 2026)
 
-### ✅ Problemas Resueltos
+### Problema Identificado
+
+Los "amarillos fuertes y verdes oscuros" observados NO son solo por corrección Rayleigh incorrecta. **Faltan realces críticos** que geo2grid aplica:
+
+1. **❌ Corrección Solar Zenith NO implementada** - Sin dividir por cos(SZA), los valores de reflectancia están subestimados. La corrección Rayleigh (valor absoluto) resulta excesiva → 21.9% píxeles negativos
+2. **❌ Piecewise Linear Stretch NO implementado** - Curva de realce no lineal que expande sombras ×3.6, mejora contraste en tonos medios
+
+### Documentos Generados
+
+- 📄 [`INFORME_REALCES_GEO2GRID.md`](INFORME_REALCES_GEO2GRID.md) - Análisis detallado de pipeline completo de geo2grid
+- 📋 [`PLAN_IMPLEMENTACION_REALCES.md`](PLAN_IMPLEMENTACION_REALCES.md) - Plan de implementación Sprint 1 y 2
+
+### Estadísticas Actuales (Problemáticas)
+
+**Canal Azul (C01) - Full Disk 20260281200:**
+```
+Reflectancia original:  media=0.152182
+Corrección Rayleigh:    media=0.112677 (muy alta!)
+Reflectancia corregida: media=0.056415 (muy baja!)
+Píxeles negativos:      25768178 (21.9%) ⚠️ CRÍTICO
+```
+
+**Causa raíz:** Sin corrección solar zenith, `reflectancia_raw - rayleigh_corr` da muchos negativos.
+
+### Próximos Pasos Priorizados
+
+**Sprint 1 (Crítico):** Implementar corrección solar zenith
+- Reducirá píxeles negativos de 21.9% a <5%
+- Archivo: `src/reader_nc.c`, función `apply_solar_zenith_correction()`
+- Integración: `src/rgb.c` antes de corrección Rayleigh
+
+**Sprint 2 (Alto Impacto Visual):** Implementar piecewise linear stretch
+- Mejorará contraste y balance de color para igualar a geo2grid
+- Archivo: `src/image.c` o nuevo `src/enhancements.c`
+- Curva con 5 puntos de control: expansión ×3.6 en sombras
+
+---
+
+## RESUMEN DEL PROGRESO ANTERIOR
+
+### ✅ Problemas Resueltos (28-29 de enero)
 
 1. **Interpolación correcta con secantes**
    - Implementado: Conversión ángulos → secantes antes de interpolar
