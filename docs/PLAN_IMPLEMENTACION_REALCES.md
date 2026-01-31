@@ -1,123 +1,118 @@
-# Plan de Implementación: Realces de Contraste para True Color RGB
+# PLAN DE IMPLEMENTACIÓN: REALCES TRUE COLOR Y CORRECCIONES FÍSICAS (V2)
 
-**Fecha:** 30 de enero de 2026  
-**Objetivo:** Implementar los realces que aplica geo2grid para lograr resultados visuales comparables  
-**Prioridad:** Alta (bloquea calidad de producto true_color)
+**Fecha:** 31 de Enero de 2026
+**Objetivo:** Refactorizar la cadena de procesamiento de hpsatviews para igualar la calidad visual de geo2grid, corrigiendo errores físicos (Rayleigh/Geometría) e implementando realces de contraste (SZA/Stretch).
 
 ---
 
-## 1. RESUMEN DE CAMBIOS NECESARIOS
+## 1. DIAGNÓSTICO Y SOLUCIONES
 
 Para que hpsatviews genere imágenes true_color similares a geo2grid, necesitamos implementar:
 
 ### Cambios Obligatorios (Prioridad Alta)
 1. ✅ **Corrección Rayleigh** - YA IMPLEMENTADO (con issues menores)
-2. ❌ **Corrección Solar Zenith** - FALTANTE
-3. ❌ **Piecewise Linear Stretch** - FALTANTE (realce principal)
+2. ❌ **Corrección Solar Zenith (SZA)** - FALTANTE
+3. ❌ **Orden de Operaciones Correcto** - CRÍTICO (SZA -> Rayleigh -> Verde?)
+4. ❌ **Piecewise Linear Stretch** - FALTANTE (realce principal)
 
-### Cambios Opcionales (Mejoras Futuras)
-4. ⚠️ **Crude Stretch** - Parcialmente innecesario si usamos escala correcta
-5. ⚠️ **Sharpening mejorado** - Box filter actual es suficiente por ahora
-
----
-
-## 2. PROBLEMA ACTUAL: DIAGNÓSTICO
-
-### 2.1 Síntomas Observados
-
-**Problema reportado por el usuario:**
-> "Las imágenes tienen amarillos fuertes y unos pocos verdes oscuros en las orillas"
-
-**Análisis:**
-- **Amarillos fuertes**: Resultado de canal azul sobre-corregido (demasiada sustracción Rayleigh) → Balance RGB desplazado hacia rojo+verde
-- **Verdes oscuros en orillas**: Alta corrección Rayleigh en ángulos extremos (bordes del disco)
-- **21.9% píxeles negativos en azul**: Corrección excesiva que se está clampeando a 0
-
-### 2.2 Causa Raíz
-
-El problema NO es solo la corrección Rayleigh. La verdadera causa es la **falta de corrección solar zenith**:
-
-```
-geo2grid:
-  reflectance_corrected = reflectance_raw / cos(sza)
-  reflectance_rayleigh = reflectance_corrected - rayleigh_correction
-  
-hpsatviews (actual):
-  reflectance_rayleigh = reflectance_raw - rayleigh_correction  ❌ INCORRECTO
-```
-
-**Consecuencia:**
-- Sin dividir por cos(sza), los valores de reflectancia están subestimados
-- La corrección Rayleigh (que es un valor absoluto) resulta demasiado grande en comparación
-- Resultado: muchos píxeles negativos después de la sustracción
+| Problema Actual | Causa Raíz Técnica | Solución Propuesta |
+| :--- | :--- | :--- |
+| **Imágenes "lavadas" / azuladas** | Multiplicación redundante de `tau` en LUTs (subestima corrección). | Eliminar factor `* tau` en `rayleigh.c`. |
+| **Bordes oscuros (Viñeteado)** | Falta de corrección Cenital Solar (SZA). | Implementar división por `cos(sza)`. |
+| **"Amarillos" o colores sucios** | Generación del Canal Verde usando datos sin corregir. | Mover generación del verde *después* de Rayleigh y SZA. |
+| **Contraste pobre en sombras** | Falta de curva de estiramiento (Stretch). | Implementar `Piecewise Linear Stretch` de geo2grid. |
+| **Errores geométricos** | Vector de visión del satélite invertido. | Invertir cálculo `dx, dy, dz` en `reader_nc.c`. |
 
 ---
 
-## 3. FASE 1: CORRECCIÓN SOLAR ZENITH (Crítico)
+## 2. ARQUITECTURA DEL PIPELINE (ORDEN ESTRICTO)
 
-### 3.1 Ubicación
+El orden de las operaciones es crítico. El flujo debe ser condicional según el tipo de producto (L1b vs L2).
 
-**Archivo:** `src/reader_nc.c`  
-**Función:** Después de calibración a reflectancia, antes de cualquier corrección atmosférica
+### Algoritmo General (pseudocódigo en `rgb.c`)
+
+Nota: Resolver la contradicción con SZA -> Rayleigh -> Verde. ¿Cómo trabajamos con los pixeles negativos? Si hacemos primero Rayleigh, luego SZA, y luego Verde, ¿qué pasa con los pixeles negativos?
+
+1.  **Entrada:** Cargar canales R, B, NIR (Normalizados 0.0 - 1.0).
+2.  **Paso A: Corrección Atmosférica**
+    * Aplicar `luts_rayleigh_correction` al canal Azul (y Rojo opcional).
+    * *Nota:* La función debe tener clamping interno (`val < 0 ? 0 : val`).
+3.  **Paso B: Corrección Cenital Solar (Solo L1b)**
+    * *Condición:* `if (is_L1b && sza_pixel < 85.0)`
+    * *Operación:* `Pixel = Pixel / cos(deg2rad(sza))`
+    * *Razón:* L2 (MCMIP) ya viene corregido; aplicar esto quemaría la imagen.
+4.  **Paso C: Generación de Verde Sintético**
+    * Usar bandas R, B, NIR *ya corregidas* en los pasos A y B.
+    * Fórmula: $G = 0.45 \times R + 0.10 \times NIR + 0.45 \times B$
+5.  **Paso D: Realces de Contraste (Enhancements)**
+    * Aplicar `apply_piecewise_stretch` (Curva de contraste de geo2grid).
+    * Aplicar Gamma (si se requiere).
+
+---
+
+## 3. DETALLE DE IMPLEMENTACIÓN POR MÓDULO
+
+### 3.1 Nuevo Módulo: `src/enhancements.c`
+
+Debe implementar dos funciones clave:
+
+**A. Corrección Cenital Solar:**
+```c
+// Divide la reflectancia por el coseno del ángulo cenital solar.
+// Protege contra ángulos extremos (>85°) para evitar infinito/ruido.
+void apply_solar_zenith_correction(DataF *band, const DataF *sza, float limit_deg);
+```
+
+**B. Piecewise Linear Stretch (Geo2grid Standard):** Interpolación lineal basada en los siguientes puntos de control (normalizados a float):
+
+| Punto Entrada (x)|	Valor Float |	Punto Salida (y) |	Valor Float |	Efecto Visual |
+| :--- | :--- | :--- | :--- | :--- |
+| 0	|0.000	|0	|0.000	|Punto Negro|
+| 25	| 0.098	| 90	| 0.353	| Shadow Boost (Aclara tierras) |
+| 55	| 0.216	| 140	| 0.549	| Medios tonos|
+| 100	| 0.392	| 175	| 0.686	| Nubes medias|
+| 255	| 1.000	| 255	| 1.000	| Punto Blanco|
+
+---
 
 ### 3.2 Implementación
+
+Usaremos un corte conservador (`MAX_SZA = 85.0f`) para evitar amplificación de ruido en el terminador.
 
 ```c
 /**
  * @brief Aplica corrección de ángulo cenital solar a datos de reflectancia.
  * 
- * Corrige por el camino óptico más largo cuando el sol está bajo en el horizonte.
  * Formula: reflectance_corrected = reflectance_TOA / cos(solar_zenith_angle)
  * 
  * @param data Datos de reflectancia (in-place modification)
  * @param sza Ángulos cenitales solares en grados
- * @param size Número de píxeles
  */
 void apply_solar_zenith_correction(DataF *data, const DataF *sza) {
-    if (!data || !sza || !data->data_in || !sza->data_in) {
-        LOG_ERROR("Invalid input for solar zenith correction");
-        return;
-    }
+    if (!data || !sza || !data->data_in || !sza->data_in) return;
     
-    if (data->size != sza->size) {
-        LOG_ERROR("Size mismatch in solar zenith correction");
-        return;
-    }
-    
-    const float MAX_SZA = 89.0f; // Evitar divisiones por valores muy pequeños
+    const float MAX_SZA = 85.0f; // Corte conservador para evitar ruido extremo
+    const float RAD_PER_DEG = M_PI / 180.0f;
     
     #pragma omp parallel for
     for (size_t i = 0; i < data->size; i++) {
         float refl = data->data_in[i];
         float sza_deg = sza->data_in[i];
         
-        // Skip invalid data
-        if (IS_NONDATA(refl) || IS_NONDATA(sza_deg)) {
+        if (IS_NONDATA(refl) || IS_NONDATA(sza_deg) || sza_deg > MAX_SZA) {
+            data->data_in[i] = 0.0f; // Clamping a negro en noche/terminador
             continue;
         }
         
-        // Skip píxeles con SZA muy alto (casi noche)
-        if (sza_deg > MAX_SZA) {
-            data->data_in[i] = 0.0f; // O NonData
-            continue;
-        }
-        
-        // Aplicar corrección: reflectance / cos(sza)
-        float sza_rad = sza_deg * M_PI / 180.0f;
-        float cos_sza = cosf(sza_rad);
-        
-        // Evitar división por valores muy pequeños
-        if (cos_sza > 0.01f) {
+        float cos_sza = cosf(sza_deg * RAD_PER_DEG);
+        // Evitar división por cero (aunque MAX_SZA ya protege)
+        if (cos_sza > 0.087f) { // cos(85) approx 0.087
             data->data_in[i] = refl / cos_sza;
         } else {
             data->data_in[i] = 0.0f;
         }
     }
-    
-    // Actualizar rangos
     dataf_find_min_max(data);
-    
-    LOG_INFO("Solar zenith correction applied");
 }
 ```
 
@@ -127,6 +122,15 @@ void apply_solar_zenith_correction(DataF *data, const DataF *sza) {
 **Función:** `compose_truecolor()`  
 **Ubicación:** Después de cargar canales, ANTES de corrección Rayleigh
 
+Nota:
+- La corrección del cenit solar también se aplica al ch_nir que se va a usar para el verde sintético.
+- Asegurarse de que el orden de las operaciones sea exactamente:
+    1. Cargar C01, C02, C03
+    2. cargar navegación (SZA, etc.)
+    3. Aplicar corrección solar a los 3 canales
+    4. Sintetizar el verde (que usa un C03 ya corregido por cenit)
+    5. Aplicar corrección Rayleigh a C01 y C02.
+ 
 ```c
 static bool compose_truecolor(RgbContext *ctx) {
     // ... cargar canales C01, C02, C03 ...
@@ -268,6 +272,9 @@ static float piecewise_interp(float x, const float *xp, const float *fp, int n) 
 ### 4.3 Curvas Predefinidas
 
 **Archivo:** `include/enhancements.h`
+
+Nota: es necesario poner estas curvas en un .h cuando podrían estar en el .c si solamente van a ser usadas en enhacements y no en ningún otro lugar?
+Si van a ser usadas en más de un .c. no ponerlas como static sino en un .c y en el .h declararlas como extern.
 
 ```c
 #ifndef HPSATVIEWS_ENHANCEMENTS_H_

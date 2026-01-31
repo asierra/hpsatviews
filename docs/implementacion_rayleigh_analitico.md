@@ -82,6 +82,16 @@ Green = 0.48 * Red_corr + 0.46 * Blue_corr + 0.06 * NIR
 
 Referencia: Bah, K., Schmit, T. J., et al. (2018). GOES-16 Advanced Baseline Imager (ABI) True Color Imagery for Legacy and Non-Traditional Applications. NOAA/CIMSS.
 
+### 5. Orden Crítico de Operaciones
+
+Para lograr una colorimetría correcta, el orden de aplicación de las correcciones es estricto: **SZA $\to$ Rayleigh $\to$ Verde**.
+
+1.  **Corrección Solar (SZA):** Normaliza la reflectancia dividiendo por $\cos(\theta_s)$. Esto evita que la sustracción posterior genere valores negativos en ángulos solares altos (atardecer), donde la señal es débil. Compensa las diferencias de la posición del sol para cada pixel.
+2.  **Corrección Rayleigh:** Se aplica a los canales Azul (C01) y Rojo (C02) *individualmente*.
+3.  **Síntesis del Verde:** Se genera usando los canales C01 y C02 *ya corregidos* (limpios de atmósfera) y el C03.
+
+**Justificación:** Si se genera el canal Verde antes de la corrección atmosférica, este "hereda" la neblina (scattering) presente en el canal Azul. Al limpiar posteriormente el Azul, el Verde queda desproporcionadamente brillante y sucio, resultando en un tinte amarillento o verdoso antinatural en la imagen final.
+
 ### Citación
 
 Si utilizas este software para investigación, por favor considera citar el repositorio y las referencias metodológicas mencionadas anteriormente.
