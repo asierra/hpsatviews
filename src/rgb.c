@@ -11,6 +11,7 @@
 #include "filename_utils.h"
 #include "image.h"
 #include "logger.h"
+#include "metadata.h"
 #include "nocturnal_pseudocolor.h"
 #include "parse_expr.h"
 #include "processing.h"
@@ -22,8 +23,6 @@
 #include "truecolor.h"
 #include "writer_geotiff.h"
 #include "writer_png.h"
-#include "metadata.h"
-
 
 void rgb_context_init(RgbContext *ctx) {
     memset(ctx, 0, sizeof(RgbContext));
@@ -171,6 +170,7 @@ bool rgb_parse_options(ArgParser *parser, RgbContext *ctx) {
 }
 
 // --- FASE 2: COMPOSERS (PATRÓN ESTRATEGIA) ---
+extern void apply_solar_zenith_correction(DataF *data, const DataF *sza);
 
 static bool compose_truecolor(RgbContext *ctx) {
     // 1. Setup y Copia
@@ -196,15 +196,19 @@ static bool compose_truecolor(RgbContext *ctx) {
         RayleighNav nav = {0};
         // Cargar navegación ajustada al tamaño de la imagen azul (C01)
         if (rayleigh_load_navigation(nav_file, &nav, ctx->comp_b.width, ctx->comp_b.height)) {
-			if (ctx->opts.rayleigh_analytic) {
-            LOG_INFO("Aplicando Rayleigh Analítico...");
-            analytic_rayleigh_correction(&ctx->comp_b, &nav, 0.47);
-            analytic_rayleigh_correction(&ctx->comp_r, &nav, 0.64);
-		} else {
-            LOG_INFO("Aplicando Rayleigh Luts...");
-            luts_rayleigh_correction(&ctx->comp_b, &nav, 1, RAYLEIGH_TAU_BLUE);
-            luts_rayleigh_correction(&ctx->comp_r, &nav, 2, RAYLEIGH_TAU_RED);
-		}
+            LOG_INFO("Aplicando corrección solar zenith...");
+            apply_solar_zenith_correction(&ctx->comp_b, &nav.sza);
+            apply_solar_zenith_correction(&ctx->comp_r, &nav.sza);
+            apply_solar_zenith_correction(ch_nir, &nav.sza);
+            if (ctx->opts.rayleigh_analytic) {
+                LOG_INFO("Aplicando Rayleigh Analítico...");
+                analytic_rayleigh_correction(&ctx->comp_b, &nav, 0.47);
+                analytic_rayleigh_correction(&ctx->comp_r, &nav, 0.64);
+            } else {
+                LOG_INFO("Aplicando Rayleigh Luts...");
+                luts_rayleigh_correction(&ctx->comp_b, &nav, 1, RAYLEIGH_TAU_BLUE);
+                luts_rayleigh_correction(&ctx->comp_r, &nav, 2, RAYLEIGH_TAU_RED);
+            }
             rayleigh_free_navigation(&nav);
         } else {
             LOG_WARN("Falló carga de navegación, saltando Rayleigh.");
@@ -321,7 +325,7 @@ static bool compose_custom(RgbContext *ctx) {
     char *token = strtok(expr_copy, ";");
     bool parse_error = false;
     for (int i = 0; i < 3; i++) {
-		if (token == NULL) {
+        if (token == NULL) {
             LOG_ERROR("Error, deben ser 3 expresiones divididas por ';'.");
             parse_error = true;
             break;
@@ -333,7 +337,8 @@ static bool compose_custom(RgbContext *ctx) {
         token = strtok(NULL, ";");
     }
     free(expr_copy);
-    if (parse_error) return false;
+    if (parse_error)
+        return false;
 
     // 2. Parsear rangos minmax (min,max; min,max; min,max) si los hay
     if (ctx->opts.minmax) {
@@ -351,16 +356,14 @@ static bool compose_custom(RgbContext *ctx) {
         }
         free(minmax_copy);
     }
-    LOG_INFO("Rangos custom RGB: %s: %f,%f  %f,%f %f,%f", ctx->opts.minmax,
-		ranges[0][0], ranges[0][1], 
-		ranges[1][0], ranges[1][1],
-		ranges[2][0], ranges[2][1]);
-    
+    LOG_INFO("Rangos custom RGB: %s: %f,%f  %f,%f %f,%f", ctx->opts.minmax, ranges[0][0],
+             ranges[0][1], ranges[1][0], ranges[1][1], ranges[2][0], ranges[2][1]);
+
     // 3. Evaluar las combinaciones lineales
     ctx->comp_r = evaluate_linear_combo(&combo[0], ctx->channels);
     ctx->comp_g = evaluate_linear_combo(&combo[1], ctx->channels);
     ctx->comp_b = evaluate_linear_combo(&combo[2], ctx->channels);
-    
+
     if (!ctx->comp_r.data_in || !ctx->comp_g.data_in || !ctx->comp_b.data_in) {
         LOG_ERROR("Falla al evaluar las fórmulas matemáticas del modo custom.");
         return false;
@@ -378,7 +381,11 @@ static bool compose_custom(RgbContext *ctx) {
 }
 
 static const RgbStrategy STRATEGIES[] = {
-    {"truecolor", {"C01", "C02", "C03", NULL}, compose_truecolor, "True Color RGB (natural)", false},
+    {"truecolor",
+     {"C01", "C02", "C03", NULL},
+     compose_truecolor,
+     "True Color RGB (natural)",
+     false},
     {"night", {"C13", NULL}, compose_night, "Nocturnal IR with temperature pseudocolor", false},
     {"ash", {"C11", "C13", "C14", "C15", NULL}, compose_ash, "Volcanic Ash RGB", false},
     {"airmass", {"C08", "C10", "C12", "C13", NULL}, compose_airmass, "Air Mass RGB", false},
@@ -389,8 +396,8 @@ static const RgbStrategy STRATEGIES[] = {
 };
 
 static const RgbStrategy *get_strategy_for_mode(const char *mode) {
-	if (strcmp("default", mode) == 0)
-		return &STRATEGIES[5];
+    if (strcmp("default", mode) == 0)
+        return &STRATEGIES[5];
     for (int i = 0; STRATEGIES[i].mode_name != NULL; i++) {
         if (strcmp(STRATEGIES[i].mode_name, mode) == 0) {
             return &STRATEGIES[i];
@@ -683,7 +690,7 @@ static bool apply_postprocessing(RgbContext *ctx) {
     return true;
 }
 
-static bool write_output(RgbContext *ctx) {	
+static bool write_output(RgbContext *ctx) {
     bool is_geotiff = ctx->opts.force_geotiff ||
                       (ctx->opts.output_filename && (strstr(ctx->opts.output_filename, ".tif") ||
                                                      strstr(ctx->opts.output_filename, ".tiff")));
@@ -705,7 +712,6 @@ static bool write_output(RgbContext *ctx) {
         writer_save_png(ctx->opts.output_filename, &ctx->final_image);
     }
 
-	
     LOG_INFO("Imagen guardada en: %s", ctx->opts.output_filename);
     return true;
 }
@@ -716,19 +722,19 @@ static bool write_output(RgbContext *ctx) {
 
 /**
  * @brief Convierte ProcessConfig a RgbContext para reutilizar funciones existentes.
- * 
+ *
  * Esta función actúa como adaptador entre la nueva interfaz (ProcessConfig)
  * y la implementación interna (RgbContext).
  */
 static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
     rgb_context_init(ctx);
-    
+
     // Copiar opciones básicas
     ctx->opts.input_file = cfg->input_file;
     ctx->opts.mode = cfg->strategy ? cfg->strategy : "daynite";
     ctx->opts.gamma = cfg->gamma;
     ctx->opts.scale = cfg->scale;
-    
+
     // Opciones booleanas
     ctx->opts.do_reprojection = cfg->do_reprojection;
     ctx->opts.apply_histogram = cfg->apply_histogram;
@@ -738,7 +744,7 @@ static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
     ctx->opts.use_citylights = cfg->use_citylights;
     ctx->opts.use_alpha = cfg->use_alpha;
     ctx->opts.use_full_res = cfg->use_full_res;
-    
+
     // CLAHE
     ctx->opts.apply_clahe = cfg->apply_clahe;
     if (cfg->apply_clahe) {
@@ -746,7 +752,7 @@ static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
         ctx->opts.clahe_tiles_y = cfg->clahe_tiles_y;
         ctx->opts.clahe_clip_limit = cfg->clahe_clip_limit;
     }
-    
+
     // Clip
     ctx->opts.has_clip = cfg->has_clip;
     if (cfg->has_clip) {
@@ -754,19 +760,19 @@ static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
             ctx->opts.clip_coords[i] = cfg->clip_coords[i];
         }
     }
-    
+
     // Custom mode
     // Cast para silenciar el warning -Wdiscarded-qualifiers. La solución ideal
     // es cambiar el tipo de 'expr' y 'minmax' en RgbOptions a 'const char*'.
     ctx->opts.expr = (char *)cfg->custom_expr;
     ctx->opts.minmax = (char *)cfg->custom_minmax;
-    
+
     // Output filename
     if (cfg->output_path_override) {
         ctx->opts.output_filename = (char *)cfg->output_path_override;
         ctx->opts.output_generated = false;
     }
-    
+
     // Detectar producto L2
     const char *basename_input = strrchr(cfg->input_file, '/');
     basename_input = basename_input ? basename_input + 1 : cfg->input_file;
@@ -778,14 +784,14 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         LOG_ERROR("run_rgb: parámetros NULL");
         return 1;
     }
-    
+
     LOG_INFO("Procesando RGB: %s", cfg->input_file);
-    
+
     RgbContext ctx;
     config_to_rgb_context(cfg, &ctx);
     int status = 1;
     char **custom_channels = NULL;
-    
+
     // Registrar metadatos básicos
     metadata_add(meta, "command", "rgb");
     metadata_add(meta, "mode", ctx.opts.mode ? ctx.opts.mode : "unknown");
@@ -794,11 +800,11 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     metadata_add(meta, "apply_rayleigh", ctx.opts.apply_rayleigh);
     metadata_add(meta, "apply_histogram", ctx.opts.apply_histogram);
     metadata_add(meta, "do_reprojection", ctx.opts.do_reprojection);
-    
+
     if (ctx.opts.apply_clahe) {
         metadata_add(meta, "clahe_limit", ctx.opts.clahe_clip_limit);
     }
-    
+
     // Obtener estrategia
     const RgbStrategy *strategy = get_strategy_for_mode(ctx.opts.mode);
     if (!strategy) {
@@ -806,7 +812,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         goto cleanup;
     }
     LOG_INFO("Modo seleccionado: %s - %s", strategy->mode_name, strategy->description);
-    
+
     const char **req_channels = NULL;
     if (strcmp(ctx.opts.mode, "custom") == 0) {
         if (!ctx.opts.expr) {
@@ -823,7 +829,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     } else {
         req_channels = (const char **)strategy->req_channels;
     }
-    
+
     // Cargar canales
     if (!load_channels(&ctx, req_channels)) {
         LOG_ERROR("%s", ctx.error_msg);
@@ -832,20 +838,20 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
 
     // Extraer metadatos del canal de referencia (satélite, timestamp, geometría nativa)
     metadata_from_nc(meta, &ctx.channels[ctx.ref_channel_idx]);
-    
+
     // Procesar geoespacial
     if (!process_geospatial(&ctx, strategy)) {
         LOG_ERROR("%s", ctx.error_msg);
         goto cleanup;
     }
-    
+
     // Composición
     LOG_INFO("Generando compuesto '%s'...", strategy->mode_name);
     if (!strategy->composer_func(&ctx)) {
         LOG_ERROR("Falla al generar compuesto RGB");
         goto cleanup;
     }
-    
+
     // Preprocesar DataF
     if (ctx.comp_r.data_in && ctx.comp_g.data_in && ctx.comp_b.data_in) {
         if (ctx.opts.gamma > 0.0f && fabsf(ctx.opts.gamma - 1.0f) > 1e-6) {
@@ -855,41 +861,39 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
             dataf_apply_gamma(&ctx.comp_b, ctx.opts.gamma);
             ctx.opts.gamma = 1.0f;
         }
-        
+
         // Renderizar a imagen
-        ctx.final_image = create_multiband_rgb(&ctx.comp_r, &ctx.comp_g, &ctx.comp_b,
-                                                ctx.min_r, ctx.max_r,
-                                                ctx.min_g, ctx.max_g,
-                                                ctx.min_b, ctx.max_b);
+        ctx.final_image =
+            create_multiband_rgb(&ctx.comp_r, &ctx.comp_g, &ctx.comp_b, ctx.min_r, ctx.max_r,
+                                 ctx.min_g, ctx.max_g, ctx.min_b, ctx.max_b);
     }
-    
+
     if (ctx.final_image.data == NULL) {
         LOG_ERROR("Falla al generar imagen RGB");
         goto cleanup;
     }
-    
+
     // Reproyección
     if (ctx.opts.do_reprojection) {
         if (!ctx.has_navigation) {
             LOG_ERROR("Navegación requerida para reproyección");
             goto cleanup;
         }
-        
+
         LOG_INFO("Iniciando reproyección...");
-        ImageData reprojected = reproject_image_to_geographics(
-            &ctx.final_image, &ctx.nav_lat, &ctx.nav_lon,
-            ctx.channels[ctx.ref_channel_idx].native_resolution_km,
-            ctx.opts.has_clip ? ctx.opts.clip_coords : NULL
-        );
-        
+        ImageData reprojected =
+            reproject_image_to_geographics(&ctx.final_image, &ctx.nav_lat, &ctx.nav_lon,
+                                           ctx.channels[ctx.ref_channel_idx].native_resolution_km,
+                                           ctx.opts.has_clip ? ctx.opts.clip_coords : NULL);
+
         if (reprojected.data == NULL) {
             LOG_ERROR("Falla durante reproyección");
             goto cleanup;
         }
-        
+
         image_destroy(&ctx.final_image);
         ctx.final_image = reprojected;
-        
+
         // Actualizar límites
         if (ctx.opts.has_clip) {
             ctx.final_lon_min = ctx.opts.clip_coords[0];
@@ -903,24 +907,24 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
             ctx.final_lat_max = ctx.nav_lat.fmax;
         }
     }
-    
+
     // Post-procesamiento
     if (!apply_postprocessing(&ctx)) {
         LOG_ERROR("Falla en post-procesamiento");
         goto cleanup;
     }
-    
+
     // Escritura
     if (!write_output(&ctx)) {
         LOG_ERROR("Falla al guardar imagen");
         goto cleanup;
     }
-    
+
     // Actualizar metadatos finales
     metadata_add(meta, "output_file", ctx.opts.output_filename);
     metadata_add(meta, "output_width", (int)ctx.final_image.width);
     metadata_add(meta, "output_height", (int)ctx.final_image.height);
-    
+
     LOG_INFO("✅ Imagen RGB guardada: %s", ctx.opts.output_filename);
     status = 0;
 

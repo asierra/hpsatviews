@@ -62,6 +62,43 @@ DataF create_truecolor_synthetic_green(const DataF *c_blue, const DataF *c_red, 
 }
 
 
+/**
+ * @brief Aplica corrección de ángulo cenital solar a datos de reflectancia.
+ * 
+ * Formula: reflectance_corrected = reflectance_TOA / cos(solar_zenith_angle)
+ * 
+ * @param data Datos de reflectancia (in-place modification)
+ * @param sza Ángulos cenitales solares en grados
+ */
+void apply_solar_zenith_correction(DataF *data, const DataF *sza) {
+    if (!data || !sza || !data->data_in || !sza->data_in) return;
+    
+    const float MAX_SZA = 85.0f; // Corte conservador para evitar ruido extremo
+    const float RAD_PER_DEG = M_PI / 180.0f;
+
+    #pragma omp parallel for
+    for (size_t i = 0; i < data->size; i++) {
+        float refl = data->data_in[i];
+        float sza_deg = sza->data_in[i];
+        
+        if (IS_NONDATA(refl) || IS_NONDATA(sza_deg) || sza_deg > MAX_SZA) {
+            data->data_in[i] = 0.0f; // Clamping a negro en noche/terminador
+            continue;
+        }
+        
+        float cos_sza = cosf(sza_deg * RAD_PER_DEG);
+        // Evitar división por cero (aunque MAX_SZA ya protege)
+        if (cos_sza > 0.087f) { // cos(85) approx 0.087
+            data->data_in[i] = refl / cos_sza;
+        } else {
+            data->data_in[i] = 0.0f;
+        }
+        if (data->data_in[i] < data->fmin) data->fmin = data->data_in[i];
+        if (data->data_in[i] > data->fmax) data->fmax = data->data_in[i];
+    }
+}
+
+
 ImageData create_multiband_rgb(const DataF* r_ch, const DataF* g_ch, const DataF* b_ch,
                                float r_min, float r_max, float g_min, float g_max,
                                float b_min, float b_max) {

@@ -49,6 +49,12 @@ typedef enum {
 } SatelliteID;
 
 typedef enum {
+    LEVEL_UNKNOWN = 0,
+    LEVEL_L1b,
+    LEVEL_L2
+} Level;
+
+typedef enum {
   PROJ_GEOS = 0,   // GOES-R ABI Fixed Grid
   PROJ_LATLON = 1, // Equirrectangular / Plate Carrée (EPSG:4326)
   PROJ_UNKNOWN = 255
@@ -60,6 +66,7 @@ typedef struct {
   DataB bdata; // Used if the data is byte
   bool is_float; // True if fdata is valid, false if bdata is valid
   SatelliteID sat_id;
+  Level level;
   const char* varname;
   time_t timestamp;
   unsigned char band_id;

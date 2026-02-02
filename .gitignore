@@ -46,3 +46,5 @@ bin/
 
 # Archivos NetCDF grandes (datos satelitales)
 *.nc
+*.log
+geo2grid_v_1_2

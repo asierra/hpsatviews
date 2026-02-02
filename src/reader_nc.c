@@ -87,10 +87,7 @@ static const char *detect_variable_from_content(int ncid) {
         LOG_WARN("NetCDF warning: %s", nc_strerror(e));                                            \
     }
 
-// En reader_nc.c, antes de load_nc_sf
-
 // Carga un conjunto de datos de NetCDF y lo pone en una estructura DataNC
-// Específico para datos L1b de GOES
 int load_nc_sf(const char *filename, DataNC *datanc) {
     int retval;
     int ncid;
@@ -209,6 +206,7 @@ int load_nc_sf(const char *filename, DataNC *datanc) {
     // Only L1b
     float planck_fk1, planck_fk2, planck_bc1, planck_bc2, kappa0;
     if (is_l1b) {
+        datanc->level = LEVEL_L1b;
         // Obtiene los parámetros de Planck o Kappa0
         if (datanc->band_id > 6) {
             int fk1_varid, fk2_varid, bc1_varid, bc2_varid;
@@ -235,6 +233,8 @@ int load_nc_sf(const char *filename, DataNC *datanc) {
             if ((retval = nc_get_var_float(ncid, kappa0_varid, &kappa0)))
                 ERR(retval);
         }
+    } else {
+        datanc->level = LEVEL_L2;
     }
 
     // =========================================================================
