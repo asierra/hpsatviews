@@ -5,6 +5,7 @@
  * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Laboratorio Nacional de Observación de la Tierra, UNAM
  */
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -175,6 +176,7 @@ int main(int argc, char *argv[]) {
         add_common_opts(rgb_cmd);
         ap_add_flag(rgb_cmd, "rayleigh");
         ap_add_flag(rgb_cmd, "ray-analytic");
+        ap_add_flag(rgb_cmd, "stretch");
         ap_add_flag(rgb_cmd, "full-res f");
         ap_set_cmd_callback(rgb_cmd, cmd_rgb);
     }

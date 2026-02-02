@@ -45,6 +45,7 @@ typedef struct {
     // Opciones especiales
     bool apply_rayleigh;           // --rayleigh (solo truecolor/composite)
     bool rayleigh_analytic;        // --ray-analytic (usa fórmula analítica en lugar de LUTs)
+    bool use_piecewise_stretch;    // --stretch (realce de contraste por tramos)
     bool use_citylights;           // --citylights (solo night/composite)
     bool use_alpha;                // --alpha
     bool force_geotiff;            // --geotiff

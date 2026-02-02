@@ -62,14 +62,6 @@ DataF create_truecolor_synthetic_green(const DataF *c_blue, const DataF *c_red, 
 }
 
 
-/**
- * @brief Aplica corrección de ángulo cenital solar a datos de reflectancia.
- * 
- * Formula: reflectance_corrected = reflectance_TOA / cos(solar_zenith_angle)
- * 
- * @param data Datos de reflectancia (in-place modification)
- * @param sza Ángulos cenitales solares en grados
- */
 void apply_solar_zenith_correction(DataF *data, const DataF *sza) {
     if (!data || !sza || !data->data_in || !sza->data_in) return;
     
@@ -165,4 +157,68 @@ ImageData create_multiband_rgb(const DataF* r_ch, const DataF* g_ch, const DataF
     }
 
     return imout;
+}
+
+
+// --- CONSTANTES DE GEO2GRID (Normalizadas 0.0 - 1.0) ---
+
+// Puntos de control estándar para TrueColor (Shadow Boost)
+// Entrada: 0, 25, 55, 100, 255 (Escala 0-255)
+// Salida:  0, 90, 140, 175, 255
+static const float GEO2GRID_STRETCH_X[] = {0.0f, 0.09804f, 0.21569f, 0.39216f, 1.0f};
+static const float GEO2GRID_STRETCH_Y[] = {0.0f, 0.35294f, 0.54902f, 0.68627f, 1.0f};
+static const int GEO2GRID_STRETCH_COUNT = 5;
+
+// Función auxiliar inline para interpolación lineal
+static inline float interpolate_linear(float val, const float *x, const float *y, int n) {
+    // 1. Clamping extremos
+    if (val <= x[0]) return y[0];
+    if (val >= x[n - 1]) return y[n - 1];
+
+    // 2. Buscar el tramo correspondiente
+    // Dado que son pocos puntos (5), un loop lineal es más rápido que búsqueda binaria
+    for (int i = 0; i < n - 1; i++) {
+        if (val >= x[i] && val < x[i+1]) {
+            // Fórmula: y = y0 + (val - x0) * (y1 - y0) / (x1 - x0)
+            float slope = (y[i+1] - y[i]) / (x[i+1] - x[i]);
+            return y[i] + (val - x[i]) * slope;
+        }
+    }
+    return val; // Fallback (no debería ocurrir)
+}
+
+
+void apply_piecewise_stretch(DataF *band) {
+    const float *x_norm = GEO2GRID_STRETCH_X;
+    const float *y_norm = GEO2GRID_STRETCH_Y;
+    int count = GEO2GRID_STRETCH_COUNT;
+
+    if (!band || !band->data_in || !x_norm || !y_norm || count < 2) return;
+
+    size_t n = band->size;
+    
+    // Calcular min/max para estadísticas rápidas
+    float local_min = 1.0f; 
+    float local_max = 0.0f;
+
+    #pragma omp parallel for reduction(min:local_min) reduction(max:local_max)
+    for (size_t i = 0; i < n; i++) {
+        float val = band->data_in[i];
+
+        if (IS_NONDATA(val)) continue;
+
+        // Aplicar interpolación
+        float out = interpolate_linear(val, x_norm, y_norm, count);
+        
+        band->data_in[i] = out;
+
+        if (out < local_min) local_min = out;
+        if (out > local_max) local_max = out;
+    }
+
+    // Actualizar metadatos de rango del DataF
+    band->fmin = local_min;
+    band->fmax = local_max;
+
+    LOG_DEBUG("Piecewise Stretch aplicado. Nuevo rango: [%.4f, %.4f]", local_min, local_max);
 }

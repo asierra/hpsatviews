@@ -190,6 +190,7 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
     if (cfg->command && strcmp(cfg->command, "rgb") == 0) {
         cfg->apply_rayleigh = ap_found(parser, "rayleigh");
         cfg->rayleigh_analytic = ap_found(parser, "ray-analytic");
+        cfg->use_piecewise_stretch = ap_found(parser, "stretch");
     }
     
     // Inversión de valores (solo para gray/pseudocolor)
@@ -371,6 +372,7 @@ void config_print_debug(const ProcessConfig* cfg) {
     LOG_DEBUG("  apply_histogram: %s", cfg->apply_histogram ? "true" : "false");
     LOG_DEBUG("  apply_rayleigh: %s", cfg->apply_rayleigh ? "true" : "false");
     LOG_DEBUG("  rayleigh_analytic: %s", cfg->rayleigh_analytic ? "true" : "false");
+    LOG_DEBUG("  use_piecewise_stretch: %s", cfg->use_piecewise_stretch ? "true" : "false");
     LOG_DEBUG("  invert_values: %s", cfg->invert_values ? "true" : "false");
     
     LOG_DEBUG("--- Composición ---");

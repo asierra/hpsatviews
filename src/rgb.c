@@ -61,116 +61,8 @@ void rgb_context_destroy(RgbContext *ctx) {
     }
 }
 
-bool rgb_parse_options(ArgParser *parser, RgbContext *ctx) {
-    // Validar archivo de entrada
-    if (!ap_has_args(parser)) {
-        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
-                 "Se requiere un archivo NetCDF de entrada.");
-        ctx->error_occurred = true;
-        return false;
-    }
-    ctx->opts.input_file = ap_get_arg_at_index(parser, 0);
-
-    // Parsear opciones booleanas
-    ctx->opts.do_reprojection = ap_found(parser, "geographics");
-    ctx->opts.apply_histogram = ap_found(parser, "histo");
-    ctx->opts.force_geotiff = ap_found(parser, "geotiff");
-    ctx->opts.apply_rayleigh = ap_found(parser, "rayleigh");
-    ctx->opts.rayleigh_analytic = ap_found(parser, "ray-analytic");
-    ctx->opts.use_citylights = ap_found(parser, "citylights");
-    ctx->opts.use_alpha = ap_found(parser, "alpha");
-    ctx->opts.use_full_res = ap_found(parser, "full-res");
-
-    // Parsear opciones con valores
-    ctx->opts.mode = ap_get_str_value(parser, "mode");
-    if (!ctx->opts.mode) {
-        ctx->opts.mode = "daynite"; // Valor por defecto
-    }
-
-    // ap_get_dbl_value y ap_get_int_value retornan 0 si no se encuentra la opción
-    double gamma_val = ap_get_dbl_value(parser, "gamma");
-    if (gamma_val != 0.0)
-        ctx->opts.gamma = (float)gamma_val;
-
-    int scale_val = ap_get_int_value(parser, "scale");
-    if (ap_found(parser, "scale"))
-        ctx->opts.scale = scale_val;
-
-    // Parsear CLAHE
-    ctx->opts.apply_clahe = ap_found(parser, "clahe") || ap_found(parser, "clahe-params");
-    if (ctx->opts.apply_clahe) {
-        const char *clahe_params = ap_get_str_value(parser, "clahe-params");
-        sscanf(clahe_params, "%d,%d,%f", &ctx->opts.clahe_tiles_x, &ctx->opts.clahe_tiles_y,
-               &ctx->opts.clahe_clip_limit);
-    }
-
-    // Parsear clip
-    ctx->opts.has_clip = false;
-    if (ap_found(parser, "clip")) {
-        const char *clip_value = ap_get_str_value(parser, "clip");
-        if (clip_value && strlen(clip_value) > 0) {
-            // Intentar parsear como 4 coordenadas
-            int parsed = sscanf(clip_value, "%f%*[, ]%f%*[, ]%f%*[, ]%f", &ctx->opts.clip_coords[0],
-                                &ctx->opts.clip_coords[1], &ctx->opts.clip_coords[2],
-                                &ctx->opts.clip_coords[3]);
-
-            if (parsed == 4) {
-                ctx->opts.has_clip = true;
-                LOG_INFO("Usando recorte con coordenadas directas");
-            } else {
-                // Intentar cargar desde CSV
-                GeoClip clip = buscar_clip_por_clave(
-                    "/usr/local/share/lanot/docs/recortes_coordenadas.csv", clip_value);
-                if (clip.encontrado) {
-                    ctx->opts.clip_coords[0] = (float)clip.ul_x; // lon_min
-                    ctx->opts.clip_coords[1] = (float)clip.ul_y; // lat_max
-                    ctx->opts.clip_coords[2] = (float)clip.lr_x; // lon_max
-                    ctx->opts.clip_coords[3] = (float)clip.lr_y; // lat_min
-                    ctx->opts.has_clip = true;
-                    LOG_INFO("Usando recorte '%s': %s", clip_value, clip.region);
-                } else {
-                    LOG_WARN("No se pudo cargar el recorte '%s'", clip_value);
-                }
-            }
-        }
-    }
-
-    // Custom
-    ctx->opts.expr = ap_get_str_value(parser, "expr");
-    ctx->opts.minmax = ap_get_str_value(parser, "minmax");
-
-    // Detectar producto L2
-    // Es necesario duplicar el string porque basename puede modificarlo
-    char *input_dup = strdup(ctx->opts.input_file);
-    if (!input_dup) {
-        snprintf(ctx->error_msg, sizeof(ctx->error_msg),
-                 "Falla de memoria al duplicar el nombre de archivo.");
-        ctx->error_occurred = true;
-        return false;
-    }
-    const char *basename_input = basename(input_dup);
-    ctx->opts.is_l2_product = (strstr(basename_input, "CMIP") != NULL);
-    free(input_dup);
-
-    // Parsear nombre de salida
-    if (ap_found(parser, "out")) {
-        const char *user_out = ap_get_str_value(parser, "out");
-
-        // Detectar patrones con llaves y expandirlos
-        if (strchr(user_out, '{') && strchr(user_out, '}')) {
-            ctx->opts.output_filename = expand_filename_pattern(user_out, ctx->opts.input_file);
-            ctx->opts.output_generated = true; // Lo generamos nosotros
-        } else {
-            ctx->opts.output_filename = (char *)user_out;
-            ctx->opts.output_generated = false; // El usuario lo proveyó exactamente así
-        }
-    }
-
-    return true;
-}
 
 // --- FASE 2: COMPOSERS (PATRÓN ESTRATEGIA) ---
-extern void apply_solar_zenith_correction(DataF *data, const DataF *sza);
 
 static bool compose_truecolor(RgbContext *ctx) {
     // 1. Setup y Copia
@@ -220,6 +112,13 @@ static bool compose_truecolor(RgbContext *ctx) {
         return false;
     // Resalte adicional del verde
     ctx->comp_g = dataf_op_scalar(&ctx->comp_g, 1.05f, OP_MUL, false);
+    LOG_INFO("stretch? %d", ctx->opts.use_piecewise_stretch);
+    if (ctx->opts.use_piecewise_stretch) {
+        LOG_INFO("Aplicando piecewise stretch...");
+        apply_piecewise_stretch(&ctx->comp_r);
+        apply_piecewise_stretch(&ctx->comp_g);
+        apply_piecewise_stretch(&ctx->comp_b);
+    }
 
     // 4. Rangos
     ctx->min_r = 0.0f;
@@ -741,6 +640,7 @@ static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
     ctx->opts.force_geotiff = cfg->force_geotiff;
     ctx->opts.apply_rayleigh = cfg->apply_rayleigh;
     ctx->opts.rayleigh_analytic = cfg->rayleigh_analytic;
+    ctx->opts.use_piecewise_stretch = cfg->use_piecewise_stretch;
     ctx->opts.use_citylights = cfg->use_citylights;
     ctx->opts.use_alpha = cfg->use_alpha;
     ctx->opts.use_full_res = cfg->use_full_res;

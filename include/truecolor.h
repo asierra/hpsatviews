@@ -29,5 +29,23 @@ ImageData create_multiband_rgb(const DataF* r_ch, const DataF* g_ch, const DataF
                                float r_min, float r_max, float g_min, float g_max,
                                float b_min, float b_max);
 
+                               
+/**
+ * @brief Aplica corrección de ángulo cenital solar a datos de reflectancia.
+ * 
+ * Formula: reflectance_corrected = reflectance_TOA / cos(solar_zenith_angle)
+ * 
+ * @param data Datos de reflectancia (in-place modification)
+ * @param sza Ángulos cenitales solares en grados
+ */
+void apply_solar_zenith_correction(DataF *data, const DataF *sza);
+
+
+/**
+ * @brief Aplica un estiramiento de contraste lineal por tramos (Piecewise Linear Stretch).
+ * Usado para replicar el "look" de Geo2grid/Satpy.
+ * * @param band Banda a realzar (modificada in-place)
+ */                               
+void apply_piecewise_stretch(DataF *band);
 
 #endif // HPSATVIEWS_TRUECOLOR_H
