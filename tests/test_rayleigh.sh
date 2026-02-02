@@ -15,7 +15,7 @@ for file in "${files[@]}"; do
 	temp="${file#*_s}"  # Elimina todo hasta _s
 	TS="${temp:0:11}"   # Toma los primeros 11 caracteres
 	echo "$TS"
-    ../bin/hpsv rgb -m truecolor -g 2 -s -4 $path/$file -o "tcref_{TS}.png"
-    ../bin/hpsv rgb -m truecolor --rayleigh -g 2 -s -4 $path/$file -o "tcrayluts_{TS}.png" > "tcrayluts_$TS.log" 2>&1
+#    ../bin/hpsv rgb -m truecolor -g 2 -s -4 $path/$file -o "tcref_{TS}.png"
+    ../bin/hpsv rgb -m truecolor --rayleigh --stretch -s -4 $path/$file -o "tcrayluts_{TS}_stretch.png" > "tcrayluts_$TS.log" 2>&1
 #    ../bin/hpsv rgb -m truecolor --ray-analytic -g 2 -s -4 $path/$file -o "tcrayanal_{TS}.png" 
 done
