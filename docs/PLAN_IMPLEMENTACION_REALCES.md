@@ -11,9 +11,9 @@ Para que hpsatviews genere imágenes true_color similares a geo2grid, necesitamo
 
 ### Cambios Obligatorios (Prioridad Alta)
 1. ✅ **Corrección Rayleigh** - YA IMPLEMENTADO (con issues menores)
-2. ❌ **Corrección Solar Zenith (SZA)** - FALTANTE
-3. ❌ **Orden de Operaciones Correcto** - CRÍTICO (SZA -> Rayleigh -> Verde?)
-4. ❌ **Piecewise Linear Stretch** - FALTANTE (realce principal)
+2. ✅ **Corrección Solar Zenith (SZA)** - IMPLEMENTADO
+3. ⚠️ **Orden de Operaciones Correcto** - EN PROGRESO
+4. ✅ **Piecewise Linear Stretch** - IMPLEMENTADO (realce principal)
 
 | Problema Actual | Causa Raíz Técnica | Solución Propuesta |
 | :--- | :--- | :--- |
@@ -201,7 +201,9 @@ Geo2grid aplica una curva de realce no lineal que expande fuertemente las sombra
 
 ### 4.2 Implementación
 
-**Archivo:** `src/image.c` (o crear `src/enhancements.c`)
+**Archivo:** `src/enhancements.c` (o `src/image.c`)
+
+**CORRECCIÓN IMPORTANTE:** El realce debe aplicarse sobre los datos en punto flotante (`DataF`) antes de la conversión a imagen de 8 bits, para preservar la precisión y el rango dinámico durante la transformación no lineal.
 
 ```c
 /**
@@ -210,16 +212,16 @@ Geo2grid aplica una curva de realce no lineal que expande fuertemente las sombra
  * Implementa una curva de realce de contraste definida por puntos de control.
  * Compatible con el enhancement de geo2grid/satpy para true_color.
  * 
- * @param img Imagen a realzar (modificada in-place)
+ * @param data Datos en punto flotante a realzar (modificada in-place)
  * @param xp Puntos de control de entrada (valores normalizados 0-1)
  * @param fp Puntos de control de salida (valores normalizados 0-1)
  * @param n_points Número de puntos de control (debe ser >= 2)
  */
-void image_apply_piecewise_linear_stretch(ImageData *img, 
-                                          const float *xp, 
-                                          const float *fp, 
-                                          int n_points) {
-    if (!img || !img->data || !xp || !fp || n_points < 2) {
+void apply_piecewise_stretch(DataF *data, 
+                             const float *xp, 
+                             const float *fp, 
+                             int n_points) {
+    if (!data || !data->data_in || !xp || !fp || n_points < 2) {
         LOG_ERROR("Invalid parameters for piecewise linear stretch");
         return;
     }
@@ -227,15 +229,17 @@ void image_apply_piecewise_linear_stretch(ImageData *img,
     LOG_INFO("Aplicando piecewise linear stretch con %d puntos de control", n_points);
     
     #pragma omp parallel for
-    for (size_t i = 0; i < img->width * img->height * img->bpp; i++) {
-        // Normalizar de uint8 a float [0-1]
-        float value = img->data[i] / 255.0f;
+    for (size_t i = 0; i < data->size; i++) {
+        float value = data->data_in[i];
+        
+        // Ignorar NonData
+        if (IS_NONDATA(value)) continue;
         
         // Interpolar linealmente en la curva definida
         float result = piecewise_interp(value, xp, fp, n_points);
         
-        // Convertir de vuelta a uint8
-        img->data[i] = (uint8_t)(fminf(fmaxf(result * 255.0f, 0.0f), 255.0f));
+        // Guardar resultado (manteniendo float)
+        data->data_in[i] = result;
     }
 }
 
@@ -308,7 +312,7 @@ static const float LINEAR_XP[LINEAR_STRETCH_POINTS] = {0.0f, 1.0f};
 static const float LINEAR_FP[LINEAR_STRETCH_POINTS] = {0.0f, 1.0f};
 
 // Funciones públicas
-void image_apply_piecewise_linear_stretch(ImageData *img, 
+void apply_piecewise_stretch(DataF *data, 
                                           const float *xp, 
                                           const float *fp, 
                                           int n_points);
@@ -324,16 +328,17 @@ void image_apply_piecewise_linear_stretch(ImageData *img,
 // En args.h
 typedef struct {
     // ... campos existentes ...
-    bool enhance_contrast;  // --enhance-contrast
+    bool use_piecewise_stretch;  // --stretch
 } Args;
 
-// En rgb.c, después de generar ImageData, antes de downsampling
-if (ctx->opts.enhance_contrast) {
+// En rgb.c, ANTES de generar ImageData (sobre los componentes DataF)
+if (ctx->opts.use_piecewise_stretch) {
     LOG_INFO("Aplicando realce de contraste true_color...");
-    image_apply_piecewise_linear_stretch(&ctx->final_image, 
-                                        TRUECOLOR_XP, 
-                                        TRUECOLOR_FP, 
-                                        TRUECOLOR_STRETCH_POINTS);
+    
+    // Aplicar a cada canal individualmente
+    apply_piecewise_stretch(&ctx->comp_r, TRUECOLOR_XP, TRUECOLOR_FP, TRUECOLOR_STRETCH_POINTS);
+    apply_piecewise_stretch(&ctx->comp_g, TRUECOLOR_XP, TRUECOLOR_FP, TRUECOLOR_STRETCH_POINTS);
+    apply_piecewise_stretch(&ctx->comp_b, TRUECOLOR_XP, TRUECOLOR_FP, TRUECOLOR_STRETCH_POINTS);
 }
 ```
 
