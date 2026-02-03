@@ -411,6 +411,15 @@ Mantener escala 0-1 internamente es más estándar y evita confusión. El "crude
 - Océanos con mejor contraste
 - Nubes preservadas (no quemadas)
 
+### Sprint 3: Sharpening (Impacto Estético Final)
+**Estimación:** 8-10 horas
+**Archivos:** `enhancements.c`, `rgb.c`
+
+1. Implementar `apply_sharpening()` y un helper de `upsample`.
+2. Integrar en el pipeline de `truecolor`.
+3. Probar con diferentes valores de `amount`.
+4. Validar que la nitidez es comparable a la de geo2grid.
+
 ### Sprint 3: Validación y Ajustes Finos
 **Estimación:** 4 horas  
 **Archivos:** Tests, documentación
@@ -419,6 +428,83 @@ Mantener escala 0-1 internamente es más estándar y evita confusión. El "crude
 2. Ajustar parámetros de curva si es necesario
 3. Documentar cambios en README.md
 4. Actualizar plan_rayleigh_cor.md
+
+---
+
+## 8. FASE 3: SHARPENING (Realce de Nitidez)
+
+### 8.1 Problema: "Opacidad" o Falta de Nitidez
+
+**Diagnóstico:** Incluso con las correcciones físicas y de contraste, nuestras imágenes pueden parecer "opacas" o "suaves" en comparación con las de geo2grid.
+
+**Causa Raíz:** Geo2grid utiliza la banda Roja (C02), que tiene una resolución nativa de **500m**, para realzar los detalles de las bandas de **1km** (Azul C01, NIR C03). Este proceso se conoce como *sharpening* o *pansharpening*. Nuestra implementación actual simplemente degrada el canal rojo a 1km, perdiendo esa información de alta frecuencia.
+
+### 8.2 Algoritmo Propuesto: Unsharp Mask Adaptado
+
+Podemos simular este realce implementando una variante del filtro "Unsharp Mask" que utiliza el canal de alta resolución como fuente de detalles.
+
+**Flujo del Algoritmo:**
+
+1.  **Crear una versión "borrosa" del canal de alta resolución:**
+    *   Tomar el canal Rojo original (`C02_500m`).
+    *   Aplicar un `downsample` a 1km para obtener `C02_1km_blurred`.
+    *   Aplicar un `upsample` de vuelta a 500m para obtener `C02_500m_blurred`. Este paso es clave para que tenga las mismas dimensiones que el original y poder restarlos.
+
+2.  **Extraer el "mapa de detalles":**
+    *   Restar la versión borrosa de la original:
+        `details_500m = C02_500m - C02_500m_blurred`
+    *   Este `details_500m` es un `DataF` que contiene únicamente las altas frecuencias (bordes, texturas finas) presentes en el canal de 500m.
+
+3.  **Aplicar los detalles a los canales de baja resolución:**
+    *   Degradar el mapa de detalles a 1km: `details_1km = downsample(details_500m)`.
+    *   Sumar este mapa de detalles a cada canal de 1km que compone la imagen final (Azul y Verde Sintético).
+        *   `Blue_sharpened = Blue_1km + (details_1km * amount)`
+        *   `Green_sharpened = Green_1km + (details_1km * amount)`
+
+El `amount` es un factor de "fuerza" del realce, típicamente entre 0.5 y 1.5.
+
+### 8.3 Implementación
+
+**Archivo:** `src/enhancements.c`
+
+**Nuevas funciones:**
+
+```c
+/**
+ * @brief Realza la nitidez de una banda de baja resolución usando una de alta resolución.
+ * 
+ * @param target_band Banda de 1km a realzar (modificada in-place).
+ * @param high_res_band Banda de 500m usada como fuente de detalles (ej. C02).
+ * @param amount Factor de realce (ej. 1.0).
+ */
+void apply_sharpening(DataF *target_band, const DataF *high_res_band, float amount);
+
+// Necesitaremos una función de upsampling simple si no existe.
+// Puede ser un nearest-neighbor o una duplicación de píxeles.
+static DataF upsample_simple(const DataF *low_res, int factor);
+```
+
+**Integración en Pipeline (`rgb.c`):**
+
+El sharpening debe aplicarse **después** de las correcciones físicas (SZA, Rayleigh) y la síntesis del verde, pero **antes** del `piecewise_stretch`.
+
+```c
+// En compose_truecolor() o similar
+// ... después de sintetizar el canal verde ...
+
+LOG_INFO("Aplicando sharpening usando C02 como referencia...");
+apply_sharpening(&ctx->comp_b, &ctx->ch_red_500m_original, 1.0f);
+apply_sharpening(&ctx->comp_g, &ctx->ch_red_500m_original, 1.0f);
+// El canal rojo (comp_r) ya es de alta resolución, no necesita sharpening.
+
+// ... continuar con piecewise_stretch ...
+```
+
+### 8.4 Impacto Esperado
+
+- **Visual:** Imágenes mucho más nítidas, con detalles finos en las costas y en los bordes de las nubes.
+- **Paridad:** La similitud visual con geo2grid aumentará drásticamente.
+- **Performance:** El overhead será moderado. Las operaciones son `downsample`, `upsample` y restas/sumas de arrays, todas paralelizables con OpenMP.
 
 ---
 
