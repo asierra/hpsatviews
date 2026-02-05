@@ -136,15 +136,25 @@ static bool compose_night(RgbContext *ctx) {
     ImageData fondo_img = {0};
     const ImageData *fondo_ptr = NULL;
     if (ctx->opts.use_citylights) {
-        const char *bg_path = (ctx->channels[ctx->ref_channel_idx].fdata.width == 2500)
-                                  ? "/usr/local/share/lanot/images/land_lights_2012_conus.png"
-                                  : "/usr/local/share/lanot/images/land_lights_2012_fd.png";
-        LOG_INFO("Cargando imagen de fondo: %s", bg_path);
-        fondo_img = reader_load_png(bg_path);
-        if (fondo_img.data != NULL) {
-            fondo_ptr = &fondo_img;
+        int width = ctx->channels[ctx->ref_channel_idx].fdata.width;
+        const char *bg_path = NULL;
+
+        if (width == 2500) {
+            bg_path = "/usr/local/share/lanot/images/land_lights_2012_conus.png";
+        } else if (width == 5424) {
+            bg_path = "/usr/local/share/lanot/images/land_lights_2012_fd.png";
         } else {
-            LOG_WARN("No se pudo cargar la imagen de fondo de luces de ciudad.");
+            LOG_WARN("Resolución (%d) no coincide con fondos disponibles. Se omiten luces.", width);
+        }
+
+        if (bg_path) {
+            LOG_INFO("Cargando imagen de fondo: %s", bg_path);
+            fondo_img = reader_load_png(bg_path);
+            if (fondo_img.data != NULL) {
+                fondo_ptr = &fondo_img;
+            } else {
+                LOG_WARN("No se pudo cargar la imagen de fondo de luces de ciudad.");
+            }
         }
     }
     ctx->final_image = create_nocturnal_pseudocolor(&ctx->channels[13].fdata, fondo_ptr);
@@ -194,11 +204,11 @@ static bool compose_so2(RgbContext *ctx) {
 static bool compose_daynite(RgbContext *ctx) {
     // Genera imagen diurna
     ctx->opts.apply_rayleigh = true;
-    ctx->opts.gamma = 2.2f;
+    ctx->opts.use_piecewise_stretch = true;
     if (!compose_truecolor(ctx)) {
         return false;
     }
-    // Forzamos el uso de citylights para la parte nocturna.
+    // Forzamos el uso de citylights para la nocturna.
     ctx->opts.use_citylights = true;
     if (!compose_night(ctx)) {
         return false;
@@ -522,18 +532,19 @@ static bool apply_postprocessing(RgbContext *ctx) {
         DataF *nav_lon_ptr = &ctx->nav_lon;
 
         // Genera máscara día/noche usando los datos del contexto
-        float day_night_ratio = 0.0f;
+        float day_pct = 0.0f;
         ImageData mask = create_daynight_mask(ctx->channels[13], *nav_lat_ptr, *nav_lon_ptr,
-                                              &day_night_ratio, 263.15f);
+                                              &day_pct, 263.15f);
+        
+        float night_pct = 100.0f - day_pct;
 
-        // Si hay una porción significativa de noche (>15%), mezclamos las imágenes,
-        // de lo contrario, usamos la imagen diurna directamente.
-        if (day_night_ratio > 0.15f && mask.data) {
-            LOG_INFO("Mezclando imágenes diurna y nocturna (ratio día/noche: %.2f)",
-                     day_night_ratio);
+        // Si hay una porción de noche (>0.1%), mezclamos las imágenes.
+        // Para una imagen totalmente nocturna, night_pct es 100.
+        if (night_pct > 0.1f && mask.data) {
+            LOG_INFO("Mezclando imágenes diurna y nocturna (Noche: %.2f%%)", night_pct);
             ctx->final_image = blend_images(ctx->alpha_mask, ctx->final_image, mask);
         } else {
-            LOG_INFO("La escena es mayormente diurna, usando solo imagen diurna.");
+            LOG_INFO("La escena es mayormente diurna (%.2f%%), usando solo imagen diurna.", day_pct);
             // Ya está en ctx->final_image
         }
         image_destroy(&ctx->alpha_mask);
@@ -586,6 +597,11 @@ static bool apply_postprocessing(RgbContext *ctx) {
         }
     }
 
+    /* 
+     * NOTA: No realizamos reproyección de canales individuales aquí (Step 4 del plan original).
+     * La reproyección se delega a run_rgb() para realizarla sobre la imagen final compuesta.
+     * Esto es crítico para que el modo 'night' funcione, ya que las luces de ciudad están en proyección nativa.
+     */
     return true;
 }
 
@@ -652,7 +668,12 @@ static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
 
     // Copiar opciones básicas
     ctx->opts.input_file = cfg->input_file;
-    ctx->opts.mode = cfg->strategy ? cfg->strategy : "daynite";
+    // Normalizar 'default' a 'daynite' para comparaciones de string posteriores
+    if (cfg->strategy && strcmp(cfg->strategy, "default") == 0) {
+        ctx->opts.mode = "daynite";
+    } else {
+        ctx->opts.mode = cfg->strategy ? cfg->strategy : "daynite";
+    }
     ctx->opts.gamma = cfg->gamma;
     ctx->opts.scale = cfg->scale;
 
@@ -731,6 +752,13 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     const RgbStrategy *strategy = get_strategy_for_mode(ctx.opts.mode);
     if (!strategy) {
         LOG_ERROR("Modo '%s' no reconocido.", ctx.opts.mode);
+
+        char available[512] = {0};
+        for (int i = 0; STRATEGIES[i].mode_name != NULL; i++) {
+            if (i > 0) strcat(available, ", ");
+            strcat(available, STRATEGIES[i].mode_name);
+        }
+        LOG_INFO("Modos disponibles: %s", available);
         goto cleanup;
     }
     LOG_INFO("Modo seleccionado: %s - %s", strategy->mode_name, strategy->description);
@@ -889,6 +917,18 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     if (!apply_postprocessing(&ctx)) {
         LOG_ERROR("Falla en post-procesamiento");
         goto cleanup;
+    }
+
+    // Generar nombre de salida si no fue especificado
+    if (ctx.opts.output_filename == NULL) {
+        const char *ext = ctx.opts.force_geotiff ? ".tif" : ".png";
+        ctx.opts.output_filename = metadata_build_filename(meta, ext);
+        ctx.opts.output_generated = true;
+        
+        if (ctx.opts.output_filename == NULL) {
+            LOG_ERROR("Falla al generar nombre de archivo de salida");
+            goto cleanup;
+        }
     }
 
     // Escritura
