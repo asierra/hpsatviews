@@ -125,6 +125,11 @@ void metadata_set_command(MetadataContext *ctx, const char *command) {
     strncpy(ctx->command, command, sizeof(ctx->command) - 1);
 }
 
+void metadata_set_projection(MetadataContext *ctx, const char *proj) {
+    if (!ctx || !proj) return;
+    strncpy(ctx->projection, proj, sizeof(ctx->projection) - 1);
+}
+
 void metadata_set_geometry(MetadataContext *ctx, float x1, float y1, float x2, float y2) {
     if(!ctx) return;
     ctx->bbox[0] = x1; ctx->bbox[1] = y1;
@@ -301,7 +306,15 @@ int metadata_save_json(MetadataContext *ctx, const char *filename) {
     json_write(w, "version", "1.0");  // TODO: usar HPSV_VERSION_STRING
     if (ctx->command[0]) json_write(w, "command", ctx->command);
     if (ctx->satellite) json_write(w, "satellite", ctx->satellite);
-    if (ctx->time_iso[0]) json_write(w, "timestamp_iso", ctx->time_iso);
+    if (ctx->time_iso[0]) json_write(w, "timestamp", ctx->time_iso);
+
+    // Campos para mapdrawer (CRS y Bounds en raíz)
+    if (ctx->projection[0]) {
+        json_write_string(w, "crs", ctx->projection);
+    }
+    if (ctx->has_bbox) {
+        json_write_float_array(w, "bounds", ctx->bbox, 4);
+    }
 
     // Geometría
     if (ctx->has_bbox) {

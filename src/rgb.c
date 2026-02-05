@@ -598,14 +598,36 @@ static bool write_output(RgbContext *ctx) {
         LOG_INFO("Guardando como GeoTIFF...");
         DataNC meta_out = {0};
         if (ctx->opts.do_reprojection) {
-            // TODO: Metadatos para reproyección geográfica
+            meta_out.proj_code = PROJ_LATLON;
+            meta_out.geotransform[0] = ctx->final_lon_min;
+            meta_out.geotransform[1] = (ctx->final_lon_max - ctx->final_lon_min) / (double)ctx->final_image.width;
+            meta_out.geotransform[2] = 0.0;
+            meta_out.geotransform[3] = ctx->final_lat_max;
+            meta_out.geotransform[4] = 0.0;
+            meta_out.geotransform[5] = (ctx->final_lat_min - ctx->final_lat_max) / (double)ctx->final_image.height;
         } else {
             // Metadatos nativos (geoestacionarios)
             meta_out = ctx->channels[ctx->ref_channel_idx];
-            // TODO: Ajustar geotransform si hay scale o crop
+            
+            // 1. Aplicar offset de recorte al origen (en radianes originales)
+            meta_out.geotransform[0] += ctx->crop_x_offset * meta_out.geotransform[1];
+            meta_out.geotransform[3] += ctx->crop_y_offset * meta_out.geotransform[5];
+            
+            // 2. Ajustar resolución si hubo escalado
+            if (ctx->opts.scale != 1) {
+                double scale_factor = (ctx->opts.scale < 0) ? -ctx->opts.scale : ctx->opts.scale;
+                if (ctx->opts.scale > 1) {
+                    meta_out.geotransform[1] /= scale_factor;
+                    meta_out.geotransform[5] /= scale_factor;
+                } else {
+                    meta_out.geotransform[1] *= scale_factor;
+                    meta_out.geotransform[5] *= scale_factor;
+                }
+            }
         }
+        // Pasamos 0,0 como offset porque ya lo integramos en meta_out.geotransform
         write_geotiff_rgb(ctx->opts.output_filename, &ctx->final_image, &meta_out,
-                          ctx->crop_x_offset, ctx->crop_y_offset);
+                          0, 0);
     } else {
         LOG_INFO("Guardando como PNG... %s", ctx->opts.output_filename);
         writer_save_png(ctx->opts.output_filename, &ctx->final_image);
@@ -805,6 +827,61 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
             ctx.final_lon_max = ctx.nav_lon.fmax;
             ctx.final_lat_min = ctx.nav_lat.fmin;
             ctx.final_lat_max = ctx.nav_lat.fmax;
+        }
+    } else {
+        // Si no hay reproyección pero hay clip, necesitamos recortar la imagen final
+        if (ctx.opts.has_clip && ctx.has_navigation) {
+            int ix, iy, iw, ih;
+            // Encontrar qué píxeles corresponden al lat/lon solicitado
+            reprojection_find_bounding_box(&ctx.nav_lat, &ctx.nav_lon, 
+                ctx.opts.clip_coords[0], ctx.opts.clip_coords[1], 
+                ctx.opts.clip_coords[2], ctx.opts.clip_coords[3], 
+                &ix, &iy, &iw, &ih);
+            
+            // Aplicar el recorte a la imagen generada
+            ImageData cropped = image_crop(&ctx.final_image, ix, iy, iw, ih);
+            image_destroy(&ctx.final_image);
+            ctx.final_image = cropped;
+            
+            ctx.crop_x_offset = (unsigned)ix;
+            ctx.crop_y_offset = (unsigned)iy;
+        } else if (ctx.has_navigation) {
+            ctx.final_lon_min = ctx.nav_lon.fmin;
+            ctx.final_lon_max = ctx.nav_lon.fmax;
+            ctx.final_lat_min = ctx.nav_lat.fmin;
+            ctx.final_lat_max = ctx.nav_lat.fmax;
+        }
+    }
+
+    // Registrar metadatos de geometría para JSON
+    if (ctx.has_navigation || ctx.opts.has_clip) {
+        if (ctx.opts.do_reprojection) {
+            metadata_set_geometry(meta, ctx.final_lon_min, ctx.final_lat_min, ctx.final_lon_max, ctx.final_lat_max);
+            metadata_set_projection(meta, "EPSG:4326");
+        } else {
+            // Calcular bounds en Metros (Proyección Geoestacionaria)
+            DataNC *ref = &ctx.channels[ctx.ref_channel_idx];
+            double *gt = ref->geotransform;
+            double h = (ref->proj_info.valid) ? ref->proj_info.sat_height : 35786023.0;
+
+            if (gt[1] != 0.0) {
+                double x_min = (gt[0] + ctx.crop_x_offset * gt[1]) * h;
+                double y_top = (gt[3] + ctx.crop_y_offset * gt[5]) * h;
+                double x_max = x_min + (ctx.final_image.width * gt[1] * h);
+                double y_bot = y_top + (ctx.final_image.height * gt[5] * h);
+                
+                double y_min = (y_bot < y_top) ? y_bot : y_top;
+                double y_max = (y_bot > y_top) ? y_bot : y_top;
+                metadata_set_geometry(meta, (float)x_min, (float)y_min, (float)x_max, (float)y_max);
+            }
+
+            const char* sat_crs = "geostationary";
+            int sid = ctx.channels[ctx.ref_channel_idx].sat_id;
+            if (sid == SAT_GOES16) sat_crs = "goes16";
+            else if (sid == SAT_GOES17) sat_crs = "goes17";
+            else if (sid == SAT_GOES18) sat_crs = "goes18";
+            else if (sid == SAT_GOES19) sat_crs = "goes19";
+            metadata_set_projection(meta, sat_crs);
         }
     }
 

@@ -50,6 +50,8 @@ void metadata_add_bool(MetadataContext *ctx, const char *key, bool value);
  */
 void metadata_set_command(MetadataContext *ctx, const char *command);
 
+void metadata_set_projection(MetadataContext *ctx, const char *proj);
+
 /**
  * Registra la geometría final de la imagen.
  * @param x1 lon_min

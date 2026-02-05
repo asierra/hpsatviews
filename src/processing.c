@@ -323,6 +323,51 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         final_image = temp_image;
         crop_x_start = (unsigned)ix;
         crop_y_start = (unsigned)iy;
+        
+        // Definir límites del recorte
+        final_lon_min = cfg->clip_coords[0];
+        final_lat_max = cfg->clip_coords[1];
+        final_lon_max = cfg->clip_coords[2];
+        final_lat_min = cfg->clip_coords[3];
+    } else if (nav_loaded) {
+        // Sin recorte ni reproyección, usar límites completos de navegación
+        final_lon_min = navlo_full.fmin; final_lon_max = navlo_full.fmax;
+        final_lat_min = navla_full.fmin; final_lat_max = navla_full.fmax;
+    }
+
+    // Registrar geometría y proyección en metadatos
+    if (nav_loaded) {
+        if (cfg->do_reprojection) {
+            metadata_set_geometry(meta, final_lon_min, final_lat_min, final_lon_max, final_lat_max);
+            metadata_set_projection(meta, "EPSG:4326");
+        } else {
+            // Calcular bounds en coordenadas de proyección (Metros)
+            // x = x_rad * h, y = y_rad * h
+            double *gt = c01.geotransform;
+            double h = (c01.proj_info.valid) ? c01.proj_info.sat_height : 35786023.0;
+            
+            // gt[0]=TopLeftX, gt[1]=PixelW, gt[3]=TopLeftY, gt[5]=PixelH
+            double x_min = (gt[0] + crop_x_start * gt[1]) * h;
+            double y_top = (gt[3] + crop_y_start * gt[5]) * h;
+            
+            // Calcular esquina opuesta
+            double x_max = x_min + (final_image.width * gt[1] * h);
+            double y_bot = y_top + (final_image.height * gt[5] * h);
+            
+            // Ordenar Y (gt[5] es negativo, así que y_top > y_bot)
+            double y_min = (y_bot < y_top) ? y_bot : y_top;
+            double y_max_val = (y_bot > y_top) ? y_bot : y_top;
+            
+            metadata_set_geometry(meta, (float)x_min, (float)y_min, (float)x_max, (float)y_max_val);
+
+            // Usar nombre del satélite como clave de proyección (ej. "goes16")
+            const char* sat_crs = "geostationary";
+            if (c01.sat_id == SAT_GOES16) sat_crs = "goes16";
+            else if (c01.sat_id == SAT_GOES17) sat_crs = "goes17";
+            else if (c01.sat_id == SAT_GOES18) sat_crs = "goes18";
+            else if (c01.sat_id == SAT_GOES19) sat_crs = "goes19";
+            metadata_set_projection(meta, sat_crs);
+        }
     }
     
     // Post-procesamiento (solo para gray)
@@ -370,6 +415,11 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             }
         } else {
             meta_out = c01;
+            
+            // Aplicar el offset del recorte al origen (en radianes) ANTES de escalar
+            meta_out.geotransform[0] += crop_x_start * meta_out.geotransform[1];
+            meta_out.geotransform[3] += crop_y_start * meta_out.geotransform[5];
+
             if (cfg->scale != 1) {
                 double scale_factor = (cfg->scale < 0) ? -cfg->scale : cfg->scale;
                 if (cfg->scale > 1) {
@@ -384,13 +434,13 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             if (is_pseudocolor && color_array) {
                 if (cfg->use_alpha) {
                     temp_image = image_expand_palette(&final_image, color_array);
-                    write_geotiff_rgb(outfn, &temp_image, &meta_out, crop_x_start, crop_y_start);
+                    write_geotiff_rgb(outfn, &temp_image, &meta_out, 0, 0);
                     image_destroy(&temp_image);
                 } else {
-                    write_geotiff_indexed(outfn, &final_image, color_array, &meta_out, crop_x_start, crop_y_start);
+                    write_geotiff_indexed(outfn, &final_image, color_array, &meta_out, 0, 0);
                 }
             } else {
-                write_geotiff_gray(outfn, &final_image, &meta_out, crop_x_start, crop_y_start);
+                write_geotiff_gray(outfn, &final_image, &meta_out, 0, 0);
             }
         }
     } else {
