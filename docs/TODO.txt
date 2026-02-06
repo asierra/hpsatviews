@@ -152,7 +152,7 @@ Sun Jan  4 09:23:19 AM CST 2026
 
 Clearly document the behavior of your API in the header file. The user
 should not be required to have a look at the implementation in order
-to understand how the func‐ tions provided in the API work.  Salvo
+to understand how the functions provided in the API work.  Salvo
 casos especiales, eliminar documentación excesiva en *.c y dejarla en
 *.h.
 
@@ -162,4 +162,13 @@ Tue Jan  6 11:15:19 PM CST 2026
 Implementada la refactorización de metadatos. Falta afinar la
 información que se pone en el json, que sea útil. Falta que mapdrawer
 la aproveche. Hecho.
+
+
+Fri Feb  6 03:48:40 PM CST 2026
+
+Resuelto el problema del conflicto de resolución con la mezcla de
+diurna, nocturna y la máscara y añadido
+land_lights_2012_lalo.png. Falta corregir el crepúsculo porque se ve
+una línea muy marcada y es algo que tenemos resuelto con la solución
+actual en kawak.
 
