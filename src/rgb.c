@@ -143,6 +143,8 @@ static bool compose_night(RgbContext *ctx) {
             bg_path = "/usr/local/share/lanot/images/land_lights_2012_conus.png";
         } else if (width == 5424) {
             bg_path = "/usr/local/share/lanot/images/land_lights_2012_fd.png";
+        } else if (width == 8987) {
+            bg_path = "/usr/local/share/lanot/images/land_lights_2012_lalo.png";
         } else {
             LOG_WARN("Resolución (%d) no coincide con fondos disponibles. Se omiten luces.", width);
         }
@@ -523,7 +525,7 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
     return true;
 }
 
-static bool apply_postprocessing(RgbContext *ctx) {
+static bool apply_enhancements(RgbContext *ctx) {
     // daynite es un caso exclusivo especial
     if (strcmp(ctx->opts.mode, "daynite") == 0) {
         // La navegación ya está remuestreada al tamaño de referencia en
@@ -573,7 +575,23 @@ static bool apply_postprocessing(RgbContext *ctx) {
             image_create_alpha_mask_from_dataf(&ctx->channels[ctx->ref_channel_idx].fdata);
     }
 
-    // 4. Remuestreo (scale)
+    // 4. Agregar canal alpha
+    if (ctx->opts.use_alpha && ctx->alpha_mask.data) {
+        LOG_INFO("Agregando canal alpha a la imagen final...");
+        ImageData with_alpha = image_add_alpha_channel(&ctx->final_image, &ctx->alpha_mask);
+        if (with_alpha.data) {
+            image_destroy(&ctx->final_image);
+            ctx->final_image = with_alpha;
+        }
+        // Liberar máscara alpha ya que se integró
+        image_destroy(&ctx->alpha_mask);
+        memset(&ctx->alpha_mask, 0, sizeof(ImageData));
+    }
+    
+    return true;
+}
+
+static bool apply_scaling(RgbContext *ctx) {
     if (ctx->opts.scale != 1) {
         ImageData scaled_img = {0};
         if (ctx->opts.scale < 0) {
@@ -583,25 +601,15 @@ static bool apply_postprocessing(RgbContext *ctx) {
             LOG_INFO("Ampliando imagen por factor %d", ctx->opts.scale);
             scaled_img = image_upsample_bilinear(&ctx->final_image, ctx->opts.scale);
         }
-        image_destroy(&ctx->final_image);
-        ctx->final_image = scaled_img;
-    }
-
-    // 5. Agregar canal alpha
-    if (ctx->opts.use_alpha && ctx->alpha_mask.data) {
-        LOG_INFO("Agregando canal alpha a la imagen final...");
-        ImageData with_alpha = image_add_alpha_channel(&ctx->final_image, &ctx->alpha_mask);
-        if (with_alpha.data) {
+        
+        if (scaled_img.data) {
             image_destroy(&ctx->final_image);
-            ctx->final_image = with_alpha;
+            ctx->final_image = scaled_img;
+        } else {
+            LOG_ERROR("Falla al escalar imagen");
+            return false;
         }
     }
-
-    /* 
-     * NOTA: No realizamos reproyección de canales individuales aquí (Step 4 del plan original).
-     * La reproyección se delega a run_rgb() para realizarla sobre la imagen final compuesta.
-     * Esto es crítico para que el modo 'night' funcione, ya que las luces de ciudad están en proyección nativa.
-     */
     return true;
 }
 
@@ -823,6 +831,12 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         goto cleanup;
     }
 
+    // Post-procesamiento (Blending, CLAHE, Alpha) - ANTES de reproyección
+    if (!apply_enhancements(&ctx)) {
+        LOG_ERROR("Falla en post-procesamiento (enhancements)");
+        goto cleanup;
+    }
+
     // Reproyección
     if (ctx.opts.do_reprojection) {
         if (!ctx.has_navigation) {
@@ -913,9 +927,9 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         }
     }
 
-    // Post-procesamiento
-    if (!apply_postprocessing(&ctx)) {
-        LOG_ERROR("Falla en post-procesamiento");
+    // Escalado final - DESPUÉS de reproyección
+    if (!apply_scaling(&ctx)) {
+        LOG_ERROR("Falla en escalado final");
         goto cleanup;
     }
 
