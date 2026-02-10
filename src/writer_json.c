@@ -128,7 +128,7 @@ void json_write_float_array(JsonWriter* w, const char* key, const float* vals, i
     write_key(w, key);
     fprintf(w->fp, "[");
     for (int i = 0; i < count; i++) {
-        fprintf(w->fp, "%.6g%s", vals[i], (i < count - 1) ? ", " : "");
+        fprintf(w->fp, "%.8g%s", vals[i], (i < count - 1) ? ", " : "");
     }
     fprintf(w->fp, "]");
 }

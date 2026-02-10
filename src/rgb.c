@@ -140,11 +140,11 @@ static bool compose_night(RgbContext *ctx) {
         const char *bg_path = NULL;
 
         if (width == 2500) {
-            bg_path = "/usr/local/share/lanot/images/land_lights_2012_conus.webp";
+            bg_path = "/usr/local/share/lanot/images/land_lights_2016_conus.webp";
         } else if (width == 5424) {
-            bg_path = "/usr/local/share/lanot/images/land_lights_2012_fd.webp";
+            bg_path = "/usr/local/share/lanot/images/land_lights_2016_fd.webp";
         } else if (width == 8987) {
-            bg_path = "/usr/local/share/lanot/images/land_lights_2012_lalo.webp";
+            bg_path = "/usr/local/share/lanot/images/land_lights_2016_lalo.webp";
         } else {
             LOG_WARN("Resolución (%d) no coincide con fondos disponibles. Se omiten luces.", width);
         }
