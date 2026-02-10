@@ -17,7 +17,7 @@
 #include "processing.h"
 #include "rayleigh.h"
 #include "reader_nc.h"
-#include "reader_png.h"
+#include "reader_webp.h"
 #include "reprojection.h"
 #include "rgb.h"
 #include "truecolor.h"
@@ -140,24 +140,26 @@ static bool compose_night(RgbContext *ctx) {
         const char *bg_path = NULL;
 
         if (width == 2500) {
-            bg_path = "/usr/local/share/lanot/images/land_lights_2012_conus.png";
+            bg_path = "/usr/local/share/lanot/images/land_lights_2012_conus.webp";
         } else if (width == 5424) {
-            bg_path = "/usr/local/share/lanot/images/land_lights_2012_fd.png";
+            bg_path = "/usr/local/share/lanot/images/land_lights_2012_fd.webp";
         } else if (width == 8987) {
-            bg_path = "/usr/local/share/lanot/images/land_lights_2012_lalo.png";
+            bg_path = "/usr/local/share/lanot/images/land_lights_2012_lalo.webp";
         } else {
             LOG_WARN("Resolución (%d) no coincide con fondos disponibles. Se omiten luces.", width);
         }
 
         if (bg_path) {
             LOG_INFO("Cargando imagen de fondo: %s", bg_path);
-            fondo_img = reader_load_png(bg_path);
+            fondo_img = reader_load_webp(bg_path);
             if (fondo_img.data != NULL) {
                 fondo_ptr = &fondo_img;
             } else {
                 LOG_WARN("No se pudo cargar la imagen de fondo de luces de ciudad.");
             }
         }
+    } else {
+        LOG_INFO("Luces de ciudad desactivadas. Use -l o --citylights para activarlas.");
     }
     ctx->final_image = create_nocturnal_pseudocolor(&ctx->channels[13].fdata, fondo_ptr);
     image_destroy(&fondo_img); // Liberar la imagen de fondo si fue cargada*/
@@ -770,6 +772,16 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         goto cleanup;
     }
     LOG_INFO("Modo seleccionado: %s - %s", strategy->mode_name, strategy->description);
+
+    // Advertencias de configuración para modo night
+    if (strcmp(ctx.opts.mode, "night") == 0) {
+        if (ctx.opts.apply_rayleigh || ctx.opts.rayleigh_analytic) {
+            LOG_WARN("La corrección Rayleigh se ignora en modo 'night' (solo afecta canales visibles).");
+        }
+        if (ctx.opts.use_piecewise_stretch) {
+            LOG_WARN("El estiramiento de contraste (stretch) se ignora en modo 'night'.");
+        }
+    }
 
     const char **req_channels = NULL;
     if (strcmp(ctx.opts.mode, "custom") == 0) {

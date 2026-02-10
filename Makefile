@@ -11,7 +11,7 @@ HPSV_LANG ?= en
 # Banderas base: C11 estándar, advertencias, OpenMP
 CFLAGS_COMMON = -Wall -Wextra -std=c11 -fopenmp -D_POSIX_C_SOURCE=200809L \
                 -D_DEFAULT_SOURCE -MMD -MP $(shell gdal-config --cflags)
-LDFLAGS = -lm -lnetcdf -lpng -fopenmp $(shell gdal-config --libs)
+LDFLAGS = -lm -lnetcdf -lpng -lwebp -fopenmp $(shell gdal-config --libs)
 
 # --- Flags de idioma ---
 CFLAGS_LANG =
