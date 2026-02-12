@@ -538,8 +538,9 @@ static bool apply_enhancements(RgbContext *ctx) {
         // Genera máscara día/noche usando los datos del contexto
         float day_pct = 0.0f;
         ImageData mask = create_daynight_mask(ctx->channels[13], *nav_lat_ptr, *nav_lon_ptr,
-                                              &day_pct, 263.15f);
-        
+                                              &day_pct, 0); //263.15f);
+        writer_save_png("mask.png", &mask);
+       
         float night_pct = 100.0f - day_pct;
 
         // Si hay una porción de noche (>0.1%), mezclamos las imágenes.
@@ -547,6 +548,7 @@ static bool apply_enhancements(RgbContext *ctx) {
         if (night_pct > 0.1f && mask.data) {
             LOG_INFO("Mezclando imágenes diurna y nocturna (Noche: %.2f%%)", night_pct);
             ctx->final_image = blend_images(ctx->alpha_mask, ctx->final_image, mask);
+            //ctx->final_image = blend_images(ctx->final_image, ctx->alpha_mask, mask);
         } else {
             LOG_INFO("La escena es mayormente diurna (%.2f%%), usando solo imagen diurna.", day_pct);
             // Ya está en ctx->final_image

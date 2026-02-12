@@ -147,6 +147,8 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo, float *d
     float *temp_data = datanc.fdata.data_in;
     unsigned char *imout_data = imout.data;
 
+    float terminador = 85;
+    float penumbra = 10;
 #pragma omp parallel for shared(datanc, navla_data, navlo_data, temp_data, imout_data)             \
     reduction(+ : day, nite)
     for (unsigned y = 0; y < navla.height; y++) {
@@ -160,11 +162,11 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo, float *d
             float temp = temp_data[i];
             double zenith_out, azimuth_out;
             double sza = sun_zenith_angle(la, lo, datanc, &zenith_out, &azimuth_out) * 180 / M_PI;
-            if (sza > 88.0) { // Nite
+            if (sza > terminador) { // Nite
                 w = 1;
                 nite++;
-            } else if (78.0 < sza && sza < 88.0) { // Twilight
-                w = (sza - 78.0) / 10.0;
+            } else if (terminador-penumbra < sza && sza < terminador) { // Twilight
+                w = (sza - (terminador-penumbra)) / penumbra;
                 if (w >= 0.5)
                     nite++;
                 else
