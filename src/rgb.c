@@ -539,7 +539,7 @@ static bool apply_enhancements(RgbContext *ctx) {
         float day_pct = 0.0f;
         ImageData mask = create_daynight_mask(ctx->channels[13], *nav_lat_ptr, *nav_lon_ptr,
                                               &day_pct, 0); //263.15f);
-        writer_save_png("mask.png", &mask);
+        //writer_save_png("mask.png", &mask);
        
         float night_pct = 100.0f - day_pct;
 
