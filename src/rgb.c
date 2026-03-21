@@ -112,6 +112,22 @@ static bool compose_truecolor(RgbContext *ctx) {
         return false;
     // Resalte adicional del verde
     ctx->comp_g = dataf_op_scalar(&ctx->comp_g, 1.05f, OP_MUL, false);
+
+    // 3b. Ratio Sharpening
+    if (ctx->opts.use_sharpen) {
+        LOG_INFO("Aplicando ratio sharpening...");
+        DataF ratio_map = dataf_ratio_sharpen_map(&ctx->comp_r);
+        if (ratio_map.data_in) {
+            DataF new_g = dataf_op_dataf(&ctx->comp_g, &ratio_map, OP_MUL);
+            dataf_destroy(&ctx->comp_g);
+            ctx->comp_g = new_g;
+            DataF new_b = dataf_op_dataf(&ctx->comp_b, &ratio_map, OP_MUL);
+            dataf_destroy(&ctx->comp_b);
+            ctx->comp_b = new_b;
+            dataf_destroy(&ratio_map);
+        }
+    }
+
     LOG_INFO("stretch? %d", ctx->opts.use_piecewise_stretch);
     if (ctx->opts.use_piecewise_stretch) {
         LOG_INFO("Aplicando piecewise stretch...");
@@ -696,6 +712,7 @@ static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
     ctx->opts.apply_rayleigh = cfg->apply_rayleigh;
     ctx->opts.rayleigh_analytic = cfg->rayleigh_analytic;
     ctx->opts.use_piecewise_stretch = cfg->use_piecewise_stretch;
+    ctx->opts.use_sharpen = cfg->use_sharpen;
     ctx->opts.use_citylights = cfg->use_citylights;
     ctx->opts.use_alpha = cfg->use_alpha;
     ctx->opts.use_full_res = cfg->use_full_res;

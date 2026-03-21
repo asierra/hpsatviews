@@ -48,4 +48,14 @@ void apply_solar_zenith_correction(DataF *data, const DataF *sza);
  */                               
 void apply_piecewise_stretch(DataF *band);
 
+/**
+ * @brief Genera un mapa de ratio de sharpening a partir de un canal de referencia.
+ * Calcula ratio = channel / mean_2x2(channel), sanitiza valores inválidos (→ 1.0)
+ * y limita a [0, 1.5]. El resultado se multiplica sobre otros canales para
+ * transferir el contraste local del canal de referencia.
+ * @param channel Canal de referencia (típicamente el rojo, C02).
+ * @return Nuevo DataF con el mapa de ratios.
+ */
+DataF dataf_ratio_sharpen_map(const DataF *channel);
+
 #endif // HPSATVIEWS_TRUECOLOR_H

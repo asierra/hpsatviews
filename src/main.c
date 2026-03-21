@@ -177,6 +177,7 @@ int main(int argc, char *argv[]) {
         ap_add_flag(rgb_cmd, "rayleigh");
         ap_add_flag(rgb_cmd, "ray-analytic");
         ap_add_flag(rgb_cmd, "stretch");
+        ap_add_flag(rgb_cmd, "sharpen");
         ap_add_flag(rgb_cmd, "full-res f");
         ap_set_cmd_callback(rgb_cmd, cmd_rgb);
     }

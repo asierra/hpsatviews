@@ -458,3 +458,64 @@ void dataf_apply_gamma(DataF *data, float gamma) {
     if (data->fmax != NonData && data->fmax > 0) 
         data->fmax = powf(data->fmax, inv_gamma);
 }
+
+
+DataF dataf_mean_2x2(const DataF *input) {
+    if (!input || !input->data_in)
+        return dataf_create(0, 0);
+
+    unsigned int w = input->width;
+    unsigned int h = input->height;
+    DataF out = dataf_create(w, h);
+    if (!out.data_in) return out;
+
+    unsigned int bh = (h + 1) / 2;
+    unsigned int bw = (w + 1) / 2;
+
+    #pragma omp parallel for
+    for (unsigned int by = 0; by < bh; by++) {
+        for (unsigned int bx = 0; bx < bw; bx++) {
+            unsigned int y0 = by * 2;
+            unsigned int x0 = bx * 2;
+            unsigned int y1 = (y0 + 1 < h) ? y0 + 1 : y0;
+            unsigned int x1 = (x0 + 1 < w) ? x0 + 1 : x0;
+
+            float sum = 0.0f;
+            int count = 0;
+            float vals[4] = {
+                input->data_in[y0 * w + x0],
+                input->data_in[y0 * w + x1],
+                input->data_in[y1 * w + x0],
+                input->data_in[y1 * w + x1]
+            };
+            for (int k = 0; k < 4; k++) {
+                if (!IS_NONDATA(vals[k])) {
+                    sum += vals[k];
+                    count++;
+                }
+            }
+            float avg = (count > 0) ? sum / count : NonData;
+
+            out.data_in[y0 * w + x0] = avg;
+            out.data_in[y0 * w + x1] = avg;
+            out.data_in[y1 * w + x0] = avg;
+            out.data_in[y1 * w + x1] = avg;
+        }
+    }
+
+    // Calcular min/max
+    float local_min = 1e30f;
+    float local_max = -1e30f;
+    #pragma omp parallel for reduction(min:local_min) reduction(max:local_max)
+    for (size_t i = 0; i < out.size; i++) {
+        float v = out.data_in[i];
+        if (!IS_NONDATA(v)) {
+            if (v < local_min) local_min = v;
+            if (v > local_max) local_max = v;
+        }
+    }
+    out.fmin = (local_min < 1e29f) ? local_min : 0.0f;
+    out.fmax = (local_max > -1e29f) ? local_max : 0.0f;
+
+    return out;
+}

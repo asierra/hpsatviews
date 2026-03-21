@@ -27,6 +27,7 @@ typedef struct {
     bool apply_rayleigh;        // Corrección atmosférica (LUTs)
     bool rayleigh_analytic;     // Corrección Rayleigh analítica
     bool use_piecewise_stretch; // --stretch (realce de contraste por tramos)
+    bool use_sharpen;           // --sharpen (ratio sharpening)
     bool invert_values;         // Invertir escala (para canales IR)
     
     // --- Opciones de Composición ---

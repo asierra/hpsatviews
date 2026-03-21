@@ -48,3 +48,4 @@ bin/
 *.nc
 *.log
 geo2grid_v_1_2
+testtc/

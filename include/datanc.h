@@ -193,4 +193,13 @@ DataF datanc_get_float_base(DataNC *datanc);
  */
 void dataf_apply_gamma(DataF *data, float gamma);
 
+/**
+ * @brief Promedio por bloques 2×2 del mismo tamaño que la entrada.
+ * Cada bloque de 2×2 pixeles se reemplaza por su promedio.
+ * Maneja dimensiones impares y salta valores NonData.
+ * @param input Datos de entrada.
+ * @return Nuevo DataF con el promedio por bloques.
+ */
+DataF dataf_mean_2x2(const DataF *input);
+
 #endif /* HPSATVIEWS_DATANC_H_ */

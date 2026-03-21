@@ -191,6 +191,7 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
         cfg->apply_rayleigh = ap_found(parser, "rayleigh");
         cfg->rayleigh_analytic = ap_found(parser, "ray-analytic");
         cfg->use_piecewise_stretch = ap_found(parser, "stretch");
+        cfg->use_sharpen = ap_found(parser, "sharpen");
     }
     
     // Inversión de valores (solo para gray/pseudocolor)

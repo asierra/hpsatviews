@@ -228,6 +228,15 @@ Genera un compuesto RGB a partir de combinaciones lineales de varias bandas.
 * `-f, --full-res`          Usa el canal de mayor resolución como referencia (más detalle, más lento).
 							Por omisión, se usa el de menor resolución (más rápido, vistas menos grandes).
 
+* `--stretch`               Aplica un estiramiento de contraste por tramos (*piecewise stretch*) similar al
+							usado por geo2grid/Beaufort. Mejora la diferenciación tonal en escenas con rango
+							dinámico comprimido (útil especialmente con `truecolor`).
+
+* `--sharpen`               Aplica *ratio sharpening* para mejorar la nitidez espacial de las componentes
+							verde y azul. Calcula por cada píxel la razón entre su valor y la media de su
+							bloque 2×2 en el canal rojo (C02), y multiplica dicha razón en el verde y azul.
+							Equivalente al `SelfSharpenedRGB` de satpy/geo2grid.
+
 
   Ejemplos:
   ```bash
@@ -236,6 +245,9 @@ Genera un compuesto RGB a partir de combinaciones lineales de varias bandas.
   
   # True color con corrección atmosférica de Rayleigh y CLAHE
   hpsv rgb -m truecolor --rayleigh --clahe archivo.nc
+
+  # True color con Rayleigh, estiramiento y ratio sharpening (mayor nitidez)
+  hpsv rgb -m truecolor --rayleigh --stretch --sharpen archivo.nc
 
   # Detección de ceniza volcánica
   hpsv rgb -m ash -o ceniza.png archivo.nc

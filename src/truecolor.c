@@ -222,3 +222,49 @@ void apply_piecewise_stretch(DataF *band) {
 
     LOG_DEBUG("Piecewise Stretch aplicado. Nuevo rango: [%.4f, %.4f]", local_min, local_max);
 }
+
+
+DataF dataf_ratio_sharpen_map(const DataF *channel) {
+    if (!channel || !channel->data_in)
+        return dataf_create(0, 0);
+
+    DataF mean = dataf_mean_2x2(channel);
+    if (!mean.data_in)
+        return dataf_create(0, 0);
+
+    DataF ratio = dataf_create(channel->width, channel->height);
+    if (!ratio.data_in) {
+        dataf_destroy(&mean);
+        return ratio;
+    }
+
+    float rmin = 1e30f, rmax = -1e30f;
+
+    #pragma omp parallel for reduction(min:rmin) reduction(max:rmax)
+    for (size_t i = 0; i < channel->size; i++) {
+        float ch = channel->data_in[i];
+        float m = mean.data_in[i];
+
+        if (IS_NONDATA(ch) || IS_NONDATA(m) || m == 0.0f) {
+            ratio.data_in[i] = 1.0f;
+            continue;
+        }
+
+        float r = ch / m;
+        if (!isfinite(r) || r < 0.0f)
+            r = 1.0f;
+        if (r < 0.5f) r = 0.5f;
+        if (r > 1.5f) r = 1.5f;
+        ratio.data_in[i] = r;
+
+        if (r < rmin) rmin = r;
+        if (r > rmax) rmax = r;
+    }
+
+    dataf_destroy(&mean);
+
+    ratio.fmin = (rmin < 1e29f) ? rmin : 0.5f;
+    ratio.fmax = (rmax > -1e29f) ? rmax : 1.5f;
+    LOG_INFO("Ratio sharpening map: min=%.4f, max=%.4f", ratio.fmin, ratio.fmax);
+    return ratio;
+}
