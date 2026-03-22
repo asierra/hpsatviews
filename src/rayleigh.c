@@ -470,7 +470,7 @@ void rayleigh_lut_destroy(RayleighLUT *lut) {
 }
 
 
-void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t channel, float tau) {
+void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t channel) {
 	// Validar dimensiones
     if (img->width != nav->sza.width || img->height != nav->sza.height) {
         LOG_ERROR("Mismatch dimensiones en Rayleigh Analytic: Img %dx%d vs Nav %dx%d",

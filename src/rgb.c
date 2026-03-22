@@ -98,8 +98,8 @@ static bool compose_truecolor(RgbContext *ctx) {
                 analytic_rayleigh_correction(&ctx->comp_r, &nav, 0.64);
             } else {
                 LOG_INFO("Aplicando Rayleigh Luts...");
-                luts_rayleigh_correction(&ctx->comp_b, &nav, 1, RAYLEIGH_TAU_BLUE);
-                luts_rayleigh_correction(&ctx->comp_r, &nav, 2, RAYLEIGH_TAU_RED);
+                luts_rayleigh_correction(&ctx->comp_b, &nav, 1);
+                luts_rayleigh_correction(&ctx->comp_r, &nav, 2);
             }
             rayleigh_free_navigation(&nav);
         } else {
