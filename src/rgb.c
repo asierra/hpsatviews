@@ -88,16 +88,15 @@ static bool compose_truecolor(RgbContext *ctx) {
         RayleighNav nav = {0};
         // Cargar navegación ajustada al tamaño de la imagen azul (C01)
         if (rayleigh_load_navigation(nav_file, &nav, ctx->comp_b.width, ctx->comp_b.height)) {
-            LOG_INFO("Aplicando corrección solar zenith...");
             apply_solar_zenith_correction(&ctx->comp_b, &nav.sza);
             apply_solar_zenith_correction(&ctx->comp_r, &nav.sza);
             apply_solar_zenith_correction(ch_nir, &nav.sza);
             if (ctx->opts.rayleigh_analytic) {
-                LOG_INFO("Aplicando Rayleigh Analítico...");
+                LOG_INFO("Aplicando Rayleigh analítico...");
                 analytic_rayleigh_correction(&ctx->comp_b, &nav, 0.47);
                 analytic_rayleigh_correction(&ctx->comp_r, &nav, 0.64);
             } else {
-                LOG_INFO("Aplicando Rayleigh Luts...");
+                LOG_INFO("Aplicando Rayleigh LUT...");
                 luts_rayleigh_correction(&ctx->comp_b, &nav, 1, &ctx->comp_r);
                 luts_rayleigh_correction(&ctx->comp_r, &nav, 2, NULL);
             }
@@ -114,7 +113,7 @@ static bool compose_truecolor(RgbContext *ctx) {
 
     // 3b. Ratio Sharpening
     if (ctx->opts.use_sharpen) {
-        LOG_INFO("Aplicando ratio sharpening...");
+        LOG_DEBUG("Aplicando ratio sharpening...");
         DataF ratio_map = dataf_ratio_sharpen_map(&ctx->comp_r);
         if (ratio_map.data_in) {
             DataF new_g = dataf_op_dataf(&ctx->comp_g, &ratio_map, OP_MUL);
@@ -127,9 +126,8 @@ static bool compose_truecolor(RgbContext *ctx) {
         }
     }
 
-    LOG_INFO("stretch? %d", ctx->opts.use_piecewise_stretch);
     if (ctx->opts.use_piecewise_stretch) {
-        LOG_INFO("Aplicando piecewise stretch...");
+        LOG_DEBUG("Aplicando piecewise stretch...");
         apply_piecewise_stretch(&ctx->comp_r);
         apply_piecewise_stretch(&ctx->comp_g);
         apply_piecewise_stretch(&ctx->comp_b);
@@ -287,7 +285,7 @@ static bool compose_custom(RgbContext *ctx) {
         }
         free(minmax_copy);
     }
-    LOG_INFO("Rangos custom RGB: %s: %f,%f  %f,%f %f,%f", ctx->opts.minmax, ranges[0][0],
+    LOG_DEBUG("Rangos custom RGB: %s: %f,%f  %f,%f %f,%f", ctx->opts.minmax, ranges[0][0],
              ranges[0][1], ranges[1][0], ranges[1][1], ranges[2][0], ranges[2][1]);
 
     // 3. Evaluar las combinaciones lineales
@@ -505,8 +503,7 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
             if (nav_width > ref_width) {
                 // Downsampling de navegación
                 int factor = nav_width / ref_width;
-                LOG_INFO("Remuestreando navegación al tamaño de referencia (factor "
-                         "downsample %d)",
+                LOG_DEBUG("Remuestreando navegación (downsample factor %d)",
                          factor);
                 DataF nav_lat_resampled = downsample_boxfilter(ctx->nav_lat, factor);
                 DataF nav_lon_resampled = downsample_boxfilter(ctx->nav_lon, factor);
@@ -523,8 +520,7 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
             } else {
                 // Upsampling de navegación
                 int factor = ref_width / nav_width;
-                LOG_INFO("Remuestreando navegación al tamaño de referencia (factor "
-                         "upsample %d)",
+                LOG_DEBUG("Remuestreando navegación (upsample factor %d)",
                          factor);
                 DataF nav_lat_resampled = upsample_bilinear(ctx->nav_lat, factor);
                 DataF nav_lon_resampled = upsample_bilinear(ctx->nav_lon, factor);
@@ -556,9 +552,7 @@ static bool apply_enhancements(RgbContext *ctx) {
         // Genera máscara día/noche usando los datos del contexto
         float day_pct = 0.0f;
         ImageData mask = create_daynight_mask(ctx->channels[13], *nav_lat_ptr, *nav_lon_ptr,
-                                              &day_pct, 0); //263.15f);
-        //writer_save_png("mask.png", &mask);
-       
+                                              &day_pct, 0);
         float night_pct = 100.0f - day_pct;
 
         // Si hay una porción de noche (>0.1%), mezclamos las imágenes.
@@ -566,7 +560,6 @@ static bool apply_enhancements(RgbContext *ctx) {
         if (night_pct > 0.1f && mask.data) {
             LOG_INFO("Mezclando imágenes diurna y nocturna (Noche: %.2f%%)", night_pct);
             ctx->final_image = blend_images(ctx->alpha_mask, ctx->final_image, mask);
-            //ctx->final_image = blend_images(ctx->final_image, ctx->alpha_mask, mask);
         } else {
             LOG_INFO("La escena es mayormente diurna (%.2f%%), usando solo imagen diurna.", day_pct);
             // Ya está en ctx->final_image
@@ -592,14 +585,14 @@ static bool apply_enhancements(RgbContext *ctx) {
 
     // 3. Crear máscara alpha (antes de remuestreo)
     if (ctx->opts.use_alpha) {
-        LOG_INFO("Creando máscara alpha...");
+        LOG_DEBUG("Creando máscara alpha...");
         ctx->alpha_mask =
             image_create_alpha_mask_from_dataf(&ctx->channels[ctx->ref_channel_idx].fdata);
     }
 
     // 4. Agregar canal alpha
     if (ctx->opts.use_alpha && ctx->alpha_mask.data) {
-        LOG_INFO("Agregando canal alpha a la imagen final...");
+        LOG_DEBUG("Agregando canal alpha...");
         ImageData with_alpha = image_add_alpha_channel(&ctx->final_image, &ctx->alpha_mask);
         if (with_alpha.data) {
             image_destroy(&ctx->final_image);
@@ -641,7 +634,7 @@ static bool write_output(RgbContext *ctx) {
                                                      strstr(ctx->opts.output_filename, ".tiff")));
 
     if (is_geotiff) {
-        LOG_INFO("Guardando como GeoTIFF...");
+        LOG_DEBUG("Formato de salida: GeoTIFF");
         DataNC meta_out = {0};
         if (ctx->opts.do_reprojection) {
             meta_out.proj_code = PROJ_LATLON;
@@ -675,11 +668,10 @@ static bool write_output(RgbContext *ctx) {
         write_geotiff_rgb(ctx->opts.output_filename, &ctx->final_image, &meta_out,
                           0, 0);
     } else {
-        LOG_INFO("Guardando como PNG... %s", ctx->opts.output_filename);
         writer_save_png(ctx->opts.output_filename, &ctx->final_image);
     }
 
-    LOG_INFO("Imagen guardada en: %s", ctx->opts.output_filename);
+    LOG_INFO("Imagen guardada: %s", ctx->opts.output_filename);
     return true;
 }
 

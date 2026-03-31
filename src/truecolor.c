@@ -67,7 +67,10 @@ void apply_solar_zenith_correction(DataF *data, const DataF *sza) {
     const float MAX_SZA = 85.0f; // Corte conservador para evitar ruido extremo
     const float RAD_PER_DEG = M_PI / 180.0f;
 
-    #pragma omp parallel for
+    float local_min = 1e30f;
+    float local_max = -1e30f;
+
+    #pragma omp parallel for reduction(min:local_min) reduction(max:local_max)
     for (size_t i = 0; i < data->size; i++) {
         float refl = data->data_in[i];
         float sza_deg = sza->data_in[i];
@@ -80,12 +83,18 @@ void apply_solar_zenith_correction(DataF *data, const DataF *sza) {
         float cos_sza = cosf(sza_deg * RAD_PER_DEG);
         // Evitar división por cero (aunque MAX_SZA ya protege)
         if (cos_sza > 0.087f) { // cos(85) approx 0.087
-            data->data_in[i] = refl / cos_sza;
+            float corrected = refl / cos_sza;
+            data->data_in[i] = corrected;
+            if (corrected < local_min) local_min = corrected;
+            if (corrected > local_max) local_max = corrected;
         } else {
             data->data_in[i] = 0.0f;
         }
-        if (data->data_in[i] < data->fmin) data->fmin = data->data_in[i];
-        if (data->data_in[i] > data->fmax) data->fmax = data->data_in[i];
+    }
+
+    if (local_min < 1e29f) {
+        data->fmin = local_min;
+        data->fmax = local_max;
     }
 }
 

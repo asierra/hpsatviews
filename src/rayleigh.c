@@ -63,7 +63,7 @@ bool rayleigh_load_navigation(const char *filename, RayleighNav *nav,
     nav->vza.data_in = NULL;
     nav->raa.data_in = NULL;
 
-    LOG_INFO("Generando navegación para Rayleigh (SZA, VZA, RAA)...");
+    LOG_DEBUG("Generando navegación Rayleigh (SZA, VZA, RAA)...");
 
     // 1. Calcular Latitud/Longitud (Necesario para los ángulos)
     DataF navla = {0}, navlo = {0};
@@ -174,11 +174,8 @@ void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lam
         LOG_ERROR("Argumentos nulos en analytic_rayleigh_correction");
         return;
     }
-	DataF *output = band;
-	
+
     // Extraer punteros de la estructura de navegación para facilitar el acceso
-    // NOTA: Asumo que en RayleighNav son punteros (DataF *sza). 
-    // Si son estructuras directas, usa &nav->sza.
     const DataF *sza = &nav->sza;
     const DataF *vza = &nav->vza;
     const DataF *raa = &nav->raa; 
@@ -201,7 +198,7 @@ void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lam
     // 2. Calcular Tau físico
     float tau_r = (float)calc_bucholtz_tau(lambda_um);
     
-    LOG_INFO("Rayleigh (Bucholtz): Lambda=%.3f um, Tau=%.4f", lambda_um, tau_r);
+    LOG_DEBUG("Rayleigh analítico: Lambda=%.3f um, Tau=%.4f", lambda_um, tau_r);
 
     size_t night_pixels = 0;
     size_t valid_pixels = 0;
@@ -213,7 +210,7 @@ void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lam
         float val = band->data_in[i];
 
         if (IS_NONDATA(val)) {
-            output->data_in[i] = NonData;
+            band->data_in[i] = NonData;
             continue;
         }
 
@@ -221,7 +218,7 @@ void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lam
         float sza_val = sza->data_in[i];
         
         if (sza_val > 85.0f) {
-             output->data_in[i] = NonData; 
+             band->data_in[i] = NonData; 
              night_pixels++;
              continue;
         }
@@ -237,7 +234,7 @@ void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lam
         float mu_v = cosf(theta_v);
 
         if (mu_s < 0.01f || mu_v < 0.01f) {
-            output->data_in[i] = val;
+            band->data_in[i] = val;
             continue;
         }
 
@@ -260,11 +257,11 @@ void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lam
         }
         sum_corr += corrected;
 
-        output->data_in[i] = corrected;
+        band->data_in[i] = corrected;
     }
 
     if (valid_pixels > 0) {
-        LOG_INFO("Rayleigh Stats: %zu valid. Mean: %.4f -> %.4f. Clamped: %.1f%%",
+        LOG_DEBUG("Rayleigh analítico: %zu px, media %.4f -> %.4f, clamped %.1f%%",
             valid_pixels, sum_orig/valid_pixels, sum_corr/valid_pixels, 
             100.0 * (double)clamped_pixels / valid_pixels);
     }
@@ -444,26 +441,14 @@ static RayleighLUT rayleigh_lut_load_from_memory(const uint8_t channel) {
     // Calcular estadísticas de la tabla para verificar el rango
     float min_val = lut.table[0];
     float max_val = lut.table[0];
-    double sum = 0.0;
-    for (size_t i = 0; i < table_size; i++) {
+    for (size_t i = 1; i < table_size; i++) {
         float v = lut.table[i];
         if (v < min_val) min_val = v;
         if (v > max_val) max_val = v;
-        sum += v;
     }
-    float mean_val = (float)(sum / table_size);
     
-    LOG_INFO("LUT de Rayleigh %d cargada desde datos embebidos", channel);
-    LOG_INFO("  Dimensiones: %d × %d × %d = %zu valores", 
-             lut.n_sz, lut.n_vz, lut.n_az, table_size);
-    LOG_INFO("  Solar Zenith Secant: %.2f - %.2f (step: %.3f)", 
-             lut.sz_min, lut.sz_max, lut.sz_step);
-    LOG_INFO("  View Zenith Secant: %.2f - %.2f (step: %.3f)", 
-             lut.vz_min, lut.vz_max, lut.vz_step);
-    LOG_INFO("  Azimuth: %.0f° - %.0f° (step: %.1f°)", 
-             lut.az_min, lut.az_max, lut.az_step);
-    LOG_INFO("  Valores tabla: min=%.6f, max=%.6f, media=%.6f", 
-             min_val, max_val, mean_val);
+    LOG_DEBUG("LUT C%02d: %d×%d×%d, rango [%.4f, %.4f]",
+             channel, lut.n_sz, lut.n_vz, lut.n_az, min_val, max_val);
     
     return lut;
 }
@@ -569,15 +554,6 @@ void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t 
         }
         
         if (r_corr > max_rayleigh) max_rayleigh = r_corr;
-        
-        // Debug: samplear algunos valores distribuidos por la imagen
-        if (valid_pixels % 10000 == 0 && valid_pixels < 100000) {
-            #pragma omp critical
-            {
-                LOG_DEBUG("Sample pixel %zu: SZA=%.2f (clipped=%.2f), VZA=%.2f (clipped=%.2f), RAA=%.2f, Original=%.6f, Rayleigh=%.6f", 
-                         i, theta_s, sza_clipped, nav->vza.data_in[i], vza_clipped, nav->raa.data_in[i], original, r_corr);
-            }
-        }
 
         // Aplicar corrección: Reflectancia = Observada - Rayleigh
         float val = original - r_corr;
@@ -598,23 +574,18 @@ void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t 
     }
 
     double end_time = omp_get_wtime();
-    LOG_INFO("Kernel de corrección de Rayleigh completado en %.4f segundos.", end_time - start_time);
-    LOG_INFO("Estadísticas de corrección:");
-    LOG_INFO("  Píxeles noche (SZA>85°):    %zu (%.1f%%)", night_pixels, 100.0*night_pixels/n);
-    LOG_INFO("  Píxeles válidos corregidos: %zu (%.1f%%)", valid_pixels, 100.0*valid_pixels/n);
-    LOG_INFO("  Píxeles negativos clamped:  %zu (%.1f%%)", negative_pixels, 100.0*negative_pixels/n);
-    if (valid_pixels > 0) {
-        LOG_INFO("  Reflectancia original:  min=%.6f, max=%.6f, media=%.6f", 
-                 min_original, max_original, sum_original/valid_pixels);
-        LOG_INFO("  Corrección Rayleigh:    max=%.6f, media=%.6f", 
-                 max_rayleigh, sum_rayleigh/valid_pixels);
-        LOG_INFO("  Reflectancia corregida: media=%.6f", sum_corrected/valid_pixels);
-    }
+    LOG_INFO("Rayleigh LUT C%02d: %zu px en %.3fs", channel, valid_pixels, end_time - start_time);
+    LOG_DEBUG("  noche=%zu clamped=%zu media=%.4f->%.4f corr_max=%.4f",
+             night_pixels, negative_pixels,
+             valid_pixels > 0 ? sum_original/valid_pixels : 0.0,
+             valid_pixels > 0 ? sum_corrected/valid_pixels : 0.0,
+             max_rayleigh);
 
     // Actualizar fmin/fmax de la estructura para que la normalización sea correcta
     // Recalcular min/max sobre los datos corregidos
     float new_min = 1e20f;
     float new_max = -1e20f;
+    #pragma omp parallel for reduction(min:new_min) reduction(max:new_max)
     for (size_t i = 0; i < n; i++) {
         float val = img->data_in[i];
         // Solo considerar píxeles válidos: mayor que 0 y no NonData
@@ -627,6 +598,6 @@ void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t 
     if (new_max > new_min) {
         img->fmin = new_min;
         img->fmax = new_max;
-        LOG_INFO("  Rango actualizado después de Rayleigh: [%.6f, %.6f]", new_min, new_max);
+        LOG_DEBUG("  Rango post-Rayleigh: [%.6f, %.6f]", new_min, new_max);
     }
 }

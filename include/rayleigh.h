@@ -6,26 +6,7 @@
 #define HPSATVIEWS_RAYLEIGH_H_
 
 #include "datanc.h"
-#include "datanc.h"
 #include <stdbool.h>
-
-// Coeficientes de Profundidad Óptica de Rayleigh (Tau) para GOES-R ABI
-// Calculados usando formula de Hansen & Travis para presión estándar (1013mb)
-// Tau ~ 0.008569 * lambda^(-4) * (1 + 0.0113 * lambda^(-2) + ...)
-//
-// NOTA: Los valores están ajustados empíricamente para coincidir con las LUTs
-// de pyspectral, que incluyen efectos de absorción atmosférica adicionales.
-
-// Banda 1 (0.47 um) - Azul Profundo (La que más se dispersa)
-// Valor teórico: 0.188, ajustado para mejor match con LUTs
-#define RAYLEIGH_TAU_BLUE 0.235f
-
-// Banda 2 (0.64 um) - Rojo (Se dispersa menos)  
-// Valor teórico: 0.055, reducido por absorción de ozono en el rojo
-#define RAYLEIGH_TAU_RED  0.024f
-
-// Banda 3 (0.86 um) - NIR (Casi nula, despreciable)
-#define RAYLEIGH_TAU_NIR  0.016f
 
 typedef struct {
     DataF sza; // Solar Zenith Angle
@@ -80,14 +61,6 @@ void rayleigh_free_navigation(RayleighNav *nav);
  * @param name Channel name for LUT selection ("C01", "C02", "C03")
  */
 void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t channel, const DataF *redband);
-
-/**
- * @brief Load Rayleigh LUT from binary file.
- * 
- * @param filename Path to the LUT binary file
- * @return Loaded RayleighLUT structure
- */
-RayleighLUT rayleigh_lut_load(const char *filename);
 
 /**
  * @brief Free memory allocated for a Rayleigh LUT.
