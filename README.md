@@ -236,6 +236,9 @@ Genera un compuesto RGB a partir de combinaciones lineales de varias bandas.
 							verde y azul. Calcula por cada píxel la razón entre su valor y la media de su
 							bloque 2×2 en el canal rojo (C02), y multiplica dicha razón en el verde y azul.
 							Equivalente al `SelfSharpenedRGB` de satpy/geo2grid.
+							El efecto es apreciable cuando se trabaja a resolución completa (`--full-res`)
+							o con recortes geográficos (`--clip`). En disco completo a resolución reducida
+							el beneficio es imperceptible.
 
 
   Ejemplos:
@@ -354,13 +357,55 @@ La generación de vistas se apoya en formulaciones geométricas rigurosas. El si
 
 ### 5.2 Corrección atmosférica (Rayleigh)
 
-HPSATVIEWS incorpora corrección de dispersión de Rayleigh para productos visibles, siguiendo formulaciones estándar reportadas en la literatura, mejorando la fidelidad visual de escenas diurnas.
+HPSATVIEWS incorpora corrección de dispersión de Rayleigh para canales
+visibles, mejorando la fidelidad visual de escenas diurnas al remover la
+contribución de dispersión molecular de la atmósfera.
+
+**Implementación LUT (predeterminada, `--rayleigh`).** Utiliza tablas de
+búsqueda (*look-up tables*) pre-calculadas a partir de pyspectral
+(Scheirer et al., 2018), indexadas por tres variables: secante del ángulo
+zenital solar, secante del ángulo zenital del satélite y diferencia de
+ángulos azimutales. Las LUTs se embeben en el binario en tiempo de
+compilación para evitar dependencias externas. La convención de azimuth
+sigue a pyspectral: la LUT se indexa con `180° − Δφ`, donde Δφ es la
+diferencia de azimut sol–satélite.
+
+**Implementación analítica (`--ray-analytic`).** Alternativa más ligera
+que calcula la corrección en tiempo real con el modelo de Bucholtz (1995)
+y la función de fase de Rayleigh de Hansen & Travis (1974). Útil cuando
+no se requiere la máxima precisión o se busca reducir el tamaño del
+binario.
+
+**Relajación en zonas nubosas.** Ambas implementaciones incorporan
+relajación de la corrección donde la reflectancia del canal rojo
+(C02, 0.64 µm) supera 0.20, siguiendo el criterio de pyspectral.
+La corrección se reduce linealmente hasta anularse cuando la
+reflectancia alcanza 1.0, evitando sobre-corrección en nubes y
+superficies altamente reflectivas.
 
 ### 5.3 CLAHE
 
 El sistema incluye ecualización adaptativa de histograma con control de contraste local (CLAHE) para mejorar la interpretabilidad visual en escenas con variaciones espaciales pronunciadas de contraste.
 
-### 5.4 Rendimiento
+### 5.4 Composición True Color
+
+El modo `truecolor` genera una imagen de color natural a partir de tres
+canales ABI: C01 (0.47 µm, azul), C02 (0.64 µm, rojo) y C03
+(0.865 µm, infrarrojo cercano). Dado que ABI no posee un canal verde
+nativo, se sintetiza mediante la combinación lineal:
+
+$$G = 0.465 \cdot B + 0.465 \cdot R + 0.07 \cdot NIR$$
+
+Estos coeficientes reproducen los utilizados por geo2grid/satpy (Bah
+et al., 2018) y proporcionan un verde perceptualmente equilibrado.
+
+**Piecewise stretch (`--stretch`).** La reflectancia corregida se mapea
+a niveles digitales mediante un estiramiento por tramos que expande
+selectivamente los tonos oscuros y comprime los claros, mejorando la
+diferenciación tonal en escenas con rango dinámico comprimido. La curva
+es equivalente a la utilizada por geo2grid.
+
+### 5.5 Rendimiento
 
 Implementado en C11 (ISO/IEC 9899:2011) con paralelización mediante OpenMP, HPSATVIEWS prioriza el alto rendimiento, el uso eficiente de memoria y la escalabilidad en sistemas multi-núcleo.
 

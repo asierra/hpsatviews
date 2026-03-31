@@ -79,7 +79,7 @@ void rayleigh_free_navigation(RayleighNav *nav);
  * @param nav Navigation data (SZA, VZA, RAA)
  * @param name Channel name for LUT selection ("C01", "C02", "C03")
  */
-void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t channel);
+void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t channel, const DataF *redband);
 
 /**
  * @brief Load Rayleigh LUT from binary file.

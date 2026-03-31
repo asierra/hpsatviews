@@ -25,20 +25,27 @@ static void enforce_resolution(DataF *data, unsigned int target_w, unsigned int 
     // Caso 2: La navegación es más grande (5000) y queremos pequeña (2500) -> Downsampling
     if (data->width > target_w) {
         int factor = data->width / target_w;
-        // Validación básica de factor entero
         if (factor < 1) factor = 1;
 
-        LOG_DEBUG("Ajustando navegación Rayleigh: %dx%d -> %dx%d (factor %d)", 
+        LOG_DEBUG("Ajustando navegación Rayleigh: %dx%d -> %dx%d (downsample factor %d)", 
                  data->width, data->height, target_w, target_h, factor);
         
-        // Usamos boxfilter para promediar los ángulos suavemente
         DataF resized = downsample_boxfilter(*data, factor);
-        
-        // Reemplazamos la matriz original con la redimensionada
         dataf_destroy(data);
         *data = resized;
     }
-    // Caso 3: Upsampling (no implementado aquí, raramente necesario para Nav)
+    // Caso 3: La navegación es más pequeña -> Upsampling (necesario para --full-res)
+    else if (data->width < target_w) {
+        int factor = target_w / data->width;
+        if (factor < 1) factor = 1;
+
+        LOG_DEBUG("Ajustando navegación Rayleigh: %dx%d -> %dx%d (upsample factor %d)", 
+                 data->width, data->height, target_w, target_h, factor);
+        
+        DataF resized = upsample_bilinear(*data, factor);
+        dataf_destroy(data);
+        *data = resized;
+    }
 }
 
 void rayleigh_free_navigation(RayleighNav *nav) {
@@ -283,6 +290,8 @@ static inline float get_rayleigh_value(const RayleighLUT *lut, float s, float v,
     // Asegurar que el azimut esté entre 0 y 180 (simetría)
     a = fabsf(a);
     if (a > 180.0f) a = 360.0f - a;
+    // Convención pyspectral: la LUT se indexa con 180-azidiff
+    a = 180.0f - a;
     if (a > lut->az_max) a = lut->az_max;
     if (a < lut->az_min) a = lut->az_min;
 
@@ -470,12 +479,17 @@ void rayleigh_lut_destroy(RayleighLUT *lut) {
 }
 
 
-void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t channel) {
+void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t channel, const DataF *redband) {
 	// Validar dimensiones
     if (img->width != nav->sza.width || img->height != nav->sza.height) {
         LOG_ERROR("Mismatch dimensiones en Rayleigh Analytic: Img %dx%d vs Nav %dx%d",
                   img->width, img->height, nav->sza.width, nav->sza.height);
         return;
+    }
+    if (redband && redband->data_in && redband->size != img->size) {
+        LOG_WARN("Redband size mismatch (%zu vs %zu), desactivando relajación por nubes",
+                 redband->size, img->size);
+        redband = NULL;
     }
     RayleighLUT lut = rayleigh_lut_load_from_memory(channel);
 
@@ -542,6 +556,16 @@ void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t 
             float reduce_factor = 1.0f - (theta_s - 70.0f) / (88.0f - 70.0f);
             if (reduce_factor < 0.0f) reduce_factor = 0.0f;
             r_corr *= reduce_factor;
+        }
+        
+        // Relajar corrección sobre nubes brillantes (como pyspectral)
+        // Donde redband >= 0.20 (20%), reducir corrección linealmente
+        if (redband && redband->data_in && !IS_NONDATA(redband->data_in[i])) {
+            float rb = redband->data_in[i];
+            if (rb >= 0.20f) {
+                r_corr *= 1.0f - (rb - 0.20f) / 0.80f;
+                if (r_corr < 0.0f) r_corr = 0.0f;
+            }
         }
         
         if (r_corr > max_rayleigh) max_rayleigh = r_corr;

@@ -98,8 +98,8 @@ static bool compose_truecolor(RgbContext *ctx) {
                 analytic_rayleigh_correction(&ctx->comp_r, &nav, 0.64);
             } else {
                 LOG_INFO("Aplicando Rayleigh Luts...");
-                luts_rayleigh_correction(&ctx->comp_b, &nav, 1);
-                luts_rayleigh_correction(&ctx->comp_r, &nav, 2);
+                luts_rayleigh_correction(&ctx->comp_b, &nav, 1, &ctx->comp_r);
+                luts_rayleigh_correction(&ctx->comp_r, &nav, 2, NULL);
             }
             rayleigh_free_navigation(&nav);
         } else {
@@ -110,8 +110,7 @@ static bool compose_truecolor(RgbContext *ctx) {
     ctx->comp_g = create_truecolor_synthetic_green(&ctx->comp_b, &ctx->comp_r, ch_nir);
     if (!ctx->comp_g.data_in)
         return false;
-    // Resalte adicional del verde
-    ctx->comp_g = dataf_op_scalar(&ctx->comp_g, 1.05f, OP_MUL, false);
+    // Sin boost adicional: la fórmula de verde ya usa los coeficientes de geo2grid
 
     // 3b. Ratio Sharpening
     if (ctx->opts.use_sharpen) {
@@ -137,12 +136,15 @@ static bool compose_truecolor(RgbContext *ctx) {
     }
 
     // 4. Rangos
+    // Con piecewise stretch, el rango de salida ya está en [0, 1.0]
+    // Sin stretch, reflectancia puede superar 1.0 pero se clampea en la conversión a 8-bit
+    float range_max = ctx->opts.use_piecewise_stretch ? 1.0f : 1.1f;
     ctx->min_r = 0.0f;
-    ctx->max_r = 1.1f;
+    ctx->max_r = range_max;
     ctx->min_g = 0.0f;
-    ctx->max_g = 1.1f;
+    ctx->max_g = range_max;
     ctx->min_b = 0.0f;
-    ctx->max_b = 1.1f;
+    ctx->max_b = range_max;
 
     return true;
 }
@@ -400,7 +402,7 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
 
             // Identificar canal de referencia
             if (ctx->opts.use_full_res) {
-                // Modo --full-res: buscar la MAYOR resolución (valor en km MÁS PEQUEÑO)
+                // Buscar la MAYOR resolución (valor en km MÁS PEQUEÑO)
                 if (ctx->ref_channel_idx == 0 ||
                     ctx->channels[cn].native_resolution_km <
                         ctx->channels[ctx->ref_channel_idx].native_resolution_km) {

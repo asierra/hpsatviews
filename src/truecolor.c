@@ -42,9 +42,8 @@ DataF create_truecolor_synthetic_green(const DataF *c_blue, const DataF *c_red, 
             green.data_in[i] = NonData;
         } else {
             // Cálculo lineal físico (sin gamma ni clips aún)
-            //float G_val = //(0.45f * R) + (0.10f * N) + (0.45f * B);
-			//	0.45706946f * B + 0.48358168f * R + 0.06038137f * N;
-			float G_val = (0.48358168f * R) + (0.45706946f * B) + (0.05934885f * N);
+            // geo2grid SimulatedGreen: 0.465*C01 + 0.465*C02 + 0.07*C03
+            float G_val = (0.465f * B) + (0.465f * R) + (0.07f * N);
             green.data_in[i] = G_val;
 
             if (G_val < local_min) local_min = G_val;
