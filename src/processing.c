@@ -451,7 +451,6 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         }
     }
     
-    LOG_INFO("✅ Imagen guardada: %s", outfn);
     metadata_add(meta, "output_file", outfn);
     metadata_add(meta, "output_width", (int)final_image.width);
     metadata_add(meta, "output_height", (int)final_image.height);

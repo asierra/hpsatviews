@@ -394,7 +394,6 @@ int load_nc_sf(const char *filename, DataNC *datanc) {
     }
     free(datatmp);
 
-    printf("Exito decodificando %s!\n", filename);
     return 0;
 }
 
@@ -561,7 +560,6 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
     if ((retval = nc_close(ncid)))
         ERR(retval);
 
-    printf("Exito creando navegación con %s!\n", filename);
     return 0;
 }
 

@@ -670,8 +670,6 @@ static bool write_output(RgbContext *ctx) {
     } else {
         writer_save_png(ctx->opts.output_filename, &ctx->final_image);
     }
-
-    LOG_INFO("Imagen guardada: %s", ctx->opts.output_filename);
     return true;
 }
 
@@ -981,7 +979,6 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     metadata_add(meta, "output_width", (int)ctx.final_image.width);
     metadata_add(meta, "output_height", (int)ctx.final_image.height);
 
-    LOG_INFO("✅ Imagen RGB guardada: %s", ctx.opts.output_filename);
     status = 0;
 
 cleanup:
