@@ -178,9 +178,10 @@ Genera una vista en escala de grises del canal C13.
   solo enteros**.
 
 * `-t, --geotiff`
-  Genera la salida en formato **GeoTIFF** georreferenciado, con 
-  metadatos de proyección completos, compatible con QGIS, GDAL, ArcGIS, 
-  etc.
+  Genera la salida en formato **Cloud Optimized GeoTIFF (COG)** 
+  georreferenciado, con tiling interno, overviews y metadatos de 
+  proyección completos. Compatible con QGIS, GDAL, ArcGIS, y servicios 
+  cloud como STAC, Titiler y cualquier cliente HTTP con range requests.
 
   Ejemplos:
   ```bash
@@ -417,7 +418,7 @@ Implementado en C11 (ISO/IEC 9899:2011) con paralelización mediante OpenMP, HPS
 * Bibliotecas:
   - **libnetcdf-dev** - Lectura de archivos NetCDF GOES L1b
   - **libpng-dev** - Generación de imágenes PNG
-  - **libgdal-dev** - Generación de imágenes GeoTIFF
+  - **libgdal-dev** - Generación de imágenes COG (Cloud Optimized GeoTIFF)
   - **libm** - Funciones matemáticas
   - **OpenMP** - Paralelismo.
 
