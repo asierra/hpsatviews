@@ -49,36 +49,28 @@ static char* get_projection_wkt(const DataNC* meta) {
 }
 
 /**
- * Crea el Dataset de GDAL, configura el GeoTransform y la proyección.
- * * NOTA IMPORTANTE: Si la proyección es GEOS, convierte el GeoTransform
+ * Crea un Dataset en memoria (MEM), configura GeoTransform y proyección.
+ * NOTA IMPORTANTE: Si la proyección es GEOS, convierte el GeoTransform
  * de Radianes a Metros multiplicando por la altura del satélite.
  */
-static GDALDatasetH create_geotiff_dataset(const char* filename, 
-                                           int width, 
-                                           int height, 
-                                           int bands, 
-                                           GDALDataType type, 
-                                           const DataNC* meta,
-                                           int offset_x, 
-                                           int offset_y) {
+static GDALDatasetH create_mem_dataset(int width, 
+                                       int height, 
+                                       int bands, 
+                                       GDALDataType type, 
+                                       const DataNC* meta,
+                                       int offset_x, 
+                                       int offset_y) {
     
     GDALAllRegister();
-    GDALDriverH driver = GDALGetDriverByName("GTiff");
+    GDALDriverH driver = GDALGetDriverByName("MEM");
     if (!driver) {
-        LOG_ERROR("Driver GTiff no disponible en GDAL.");
+        LOG_ERROR("Driver MEM no disponible en GDAL.");
         return NULL;
     }
 
-    // Opciones: Compresión LZW y predictor para reducir tamaño
-    char **papszOptions = NULL;
-    papszOptions = CSLSetNameValue(papszOptions, "COMPRESS", "LZW");
-    papszOptions = CSLSetNameValue(papszOptions, "PREDICTOR", "2"); 
-
-    GDALDatasetH ds = GDALCreate(driver, filename, width, height, bands, type, papszOptions);
-    CSLDestroy(papszOptions);
-
+    GDALDatasetH ds = GDALCreate(driver, "", width, height, bands, type, NULL);
     if (!ds) {
-        LOG_ERROR("No se pudo crear el archivo GeoTIFF: %s", filename);
+        LOG_ERROR("No se pudo crear dataset en memoria.");
         return NULL;
     }
 
@@ -106,13 +98,9 @@ static GDALDatasetH create_geotiff_dataset(const char* filename,
             gt[3] *= h; // Origen Y
             gt[4] *= h; // Rotación Y
             gt[5] *= h; // Pixel Height
-            
-            // LOG_DEBUG("GeoTransform escalado a metros (Factor: %.1f)", h);
         }
 
         // --- AJUSTE DE RECORTE (CROP) ---
-        // Aplicamos el desplazamiento del crop (offset en píxeles)
-        // gt[1] y gt[5] ahora tienen el tamaño correcto (metros o grados)
         gt[0] = gt[0] + (offset_x * gt[1]);
         gt[3] = gt[3] + (offset_y * gt[5]);
 
@@ -120,6 +108,37 @@ static GDALDatasetH create_geotiff_dataset(const char* filename,
     }
 
     return ds;
+}
+
+/**
+ * Copia el dataset MEM a un archivo COG (Cloud Optimized GeoTIFF).
+ * El driver COG genera tiling y overviews automáticamente.
+ * Cierra el dataset MEM al finalizar.
+ */
+static int finalize_cog(GDALDatasetH mem_ds, const char* filename) {
+    GDALDriverH cog_driver = GDALGetDriverByName("COG");
+    if (!cog_driver) {
+        LOG_ERROR("Driver COG no disponible en GDAL.");
+        GDALClose(mem_ds);
+        return -1;
+    }
+
+    char **opts = NULL;
+    opts = CSLSetNameValue(opts, "COMPRESS", "LZW");
+    opts = CSLSetNameValue(opts, "PREDICTOR", "2");
+    opts = CSLSetNameValue(opts, "OVERVIEWS", "IGNORE_EXISTING");
+
+    GDALDatasetH cog_ds = GDALCreateCopy(cog_driver, filename, mem_ds, FALSE, opts, NULL, NULL);
+    CSLDestroy(opts);
+    GDALClose(mem_ds);
+
+    if (!cog_ds) {
+        LOG_ERROR("No se pudo crear el archivo COG: %s", filename);
+        return -1;
+    }
+
+    GDALClose(cog_ds);
+    return 0;
 }
 
 // --- Implementación de Funciones Públicas ---
@@ -131,9 +150,9 @@ int write_geotiff_rgb(const char* filename, const ImageData* img, const DataNC* 
         return -1;
     }
 
-    // Crear dataset con 3 o 4 bandas según si hay alpha
+    // Crear dataset en memoria con 3 o 4 bandas según si hay alpha
     int num_bands = img->bpp;
-    GDALDatasetH ds = create_geotiff_dataset(filename, img->width, img->height, num_bands, GDT_Byte, meta, offset_x, offset_y);
+    GDALDatasetH ds = create_mem_dataset(img->width, img->height, num_bands, GDT_Byte, meta, offset_x, offset_y);
     if (!ds) return -1;
 
     // Escribir canales RGB (y alpha si existe)
@@ -151,9 +170,12 @@ int write_geotiff_rgb(const char* filename, const ImageData* img, const DataNC* 
             GDALSetRasterColorInterpretation(band, GCI_AlphaBand);
         }
     }
-    
-    GDALClose(ds);
-    return (err == CE_None) ? 0 : -1;
+
+    if (err != CE_None) {
+        GDALClose(ds);
+        return -1;
+    }
+    return finalize_cog(ds, filename);
 }
 
 int write_geotiff_gray(const char* filename, const ImageData* img, const DataNC* meta,
@@ -163,9 +185,9 @@ int write_geotiff_gray(const char* filename, const ImageData* img, const DataNC*
         return -1;
     }
 
-    // Crear dataset con 1 o 2 bandas según si hay alpha
+    // Crear dataset en memoria con 1 o 2 bandas según si hay alpha
     int num_bands = img->bpp;
-    GDALDatasetH ds = create_geotiff_dataset(filename, img->width, img->height, num_bands, GDT_Byte, meta, offset_x, offset_y);
+    GDALDatasetH ds = create_mem_dataset(img->width, img->height, num_bands, GDT_Byte, meta, offset_x, offset_y);
     if (!ds) return -1;
 
     CPLErr err = CE_None;
@@ -200,8 +222,11 @@ int write_geotiff_gray(const char* filename, const ImageData* img, const DataNC*
         }
     }
 
-    GDALClose(ds);
-    return (err == CE_None) ? 0 : -1;
+    if (err != CE_None) {
+        GDALClose(ds);
+        return -1;
+    }
+    return finalize_cog(ds, filename);
 }
 
 int write_geotiff_indexed(const char* filename, const ImageData* img, const ColorArray* palette,
@@ -211,7 +236,7 @@ int write_geotiff_indexed(const char* filename, const ImageData* img, const Colo
         return -1;
     }
 
-    GDALDatasetH ds = create_geotiff_dataset(filename, img->width, img->height, 1, GDT_Byte, meta, offset_x, offset_y);
+    GDALDatasetH ds = create_mem_dataset(img->width, img->height, 1, GDT_Byte, meta, offset_x, offset_y);
     if (!ds) return -1;
 
     GDALRasterBandH band = GDALGetRasterBand(ds, 1);
@@ -232,6 +257,9 @@ int write_geotiff_indexed(const char* filename, const ImageData* img, const Colo
                               img->width, img->height, GDT_Byte, 
                               0, 0);
 
-    GDALClose(ds);
-    return (err == CE_None) ? 0 : -1;
+    if (err != CE_None) {
+        GDALClose(ds);
+        return -1;
+    }
+    return finalize_cog(ds, filename);
 }
