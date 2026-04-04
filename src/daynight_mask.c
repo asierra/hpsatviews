@@ -89,8 +89,10 @@ static SolarEphemeris solar_ephemeris_precompute(time_t timestamp) {
     return eph;
 }
 
-// Per-pixel zenith computation using precomputed ephemeris
-static inline double sun_zenith_fast(float la, float lo, const SolarEphemeris *eph) {
+// Per-pixel sin(elevation) using precomputed ephemeris.
+// Returns sin(solar_elevation) = cos(SZA), sufficient for threshold comparison
+// without computing the full zenith angle (avoids asin, tan, refraction).
+static inline double sun_sin_elevation(float la, float lo, const SolarEphemeris *eph) {
     double Longitude = lo * (M_PI / 180.0);
     double Latitude = la * (M_PI / 180.0);
 
@@ -102,16 +104,7 @@ static inline double sun_zenith_fast(float la, float lo, const SolarEphemeris *e
     double sp = sin(Latitude);
     double cp = sqrt(1 - sp * sp);
     double cH = cos(HourAngle);
-    double se0 = sp * eph->sd + cp * eph->cd * cH;
-    double ep = asin(se0) - 4.26e-5 * sqrt(1.0 - se0 * se0);
-
-    double De;
-    if (ep > 0.0)
-        De = (0.08422 * 1.0) / (273.0 * tan(ep + 0.003138 / (ep + 0.08919)));
-    else
-        De = 0.0;
-
-    return M_PI_2 - ep - De;
+    return sp * eph->sd + cp * eph->cd * cH;
 }
 
 // All data structures must be of the same dimensions, or the result will be wrong.
@@ -136,6 +129,13 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo, float *d
     float terminador = 85;
     float penumbra = 10;
 
+    // Umbrales en sin(elevación) para evitar asin/tan por pixel:
+    // sza > terminador (85°)  <=> elevación < 5°   <=> se0 < sin(5°)
+    // sza > terminador-penumbra (75°) <=> elev < 15° <=> se0 < sin(15°)
+    double se_nite = sin((90.0 - terminador) * M_PI / 180.0);         // sin(5°)
+    double se_twil = sin((90.0 - terminador + penumbra) * M_PI / 180.0); // sin(15°)
+    double inv_se_range = 1.0 / (se_twil - se_nite);  // para interpolar penumbra
+
     // Precompute time-dependent solar ephemeris ONCE (was repeated per pixel)
     SolarEphemeris eph = solar_ephemeris_precompute(datanc.timestamp);
 
@@ -146,27 +146,31 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo, float *d
             int i = y * navla.width + x;
             int po = i * imout.bpp;
 
-            float w = 0;
             float la = navla_data[i];
             float lo = navlo_data[i];
             float temp = temp_data[i];
-            double sza = sun_zenith_fast(la, lo, &eph) * 180 / M_PI;
-            if (sza > terminador) { // Nite
+
+            // Clasificar nubes altas como noche sin calcular geometría solar
+            if (temp < max_temp) {
+                imout_data[po] = 255;
+                nite++;
+                continue;
+            }
+
+            double se0 = sun_sin_elevation(la, lo, &eph);
+            float w;
+            if (se0 < se_nite) {       // Noche (sza > 85°)
                 w = 1;
                 nite++;
-            } else if (terminador-penumbra < sza && sza < terminador) { // Twilight
-                w = (sza - (terminador-penumbra)) / penumbra;
-                if (w >= 0.5)
+            } else if (se0 < se_twil) { // Penumbra (75° < sza < 85°)
+                w = (float)(1.0 - (se0 - se_nite) * inv_se_range);
+                if (w >= 0.5f)
                     nite++;
                 else
                     day++;
-            } else { // Day
+            } else {                    // Día (sza < 75°)
                 w = 0;
                 day++;
-            }
-            // Even if it is day, it is opaque for high clouds
-            if (temp < max_temp) {
-                w = 1;
             }
             imout_data[po] = (unsigned char)(255 * w);
         }
