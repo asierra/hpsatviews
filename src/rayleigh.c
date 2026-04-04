@@ -56,6 +56,58 @@ void rayleigh_free_navigation(RayleighNav *nav) {
     }
 }
 
+bool rayleigh_load_navigation_from_latlon(const char *filename,
+                                          const DataF *navla, const DataF *navlo,
+                                          RayleighNav *nav,
+                                          unsigned int target_width, unsigned int target_height) {
+    nav->sza.data_in = NULL;
+    nav->vza.data_in = NULL;
+    nav->raa.data_in = NULL;
+
+    LOG_DEBUG("Generando navegación Rayleigh (SZA, VZA, RAA) desde lat/lon precalculados...");
+
+    // 1. Usar lat/lon ya calculados (copia no-owning mediante cast)
+    DataF la = *navla, lo = *navlo;  // copia superficial, datos no se liberan aquí
+
+    // 2. Calcular Ángulos Solares (SZA y SAA)
+    DataF saa = {0};
+    if (compute_solar_angles_nc(filename, &la, &lo, &nav->sza, &saa) != 0) {
+        LOG_ERROR("Falla al computar ángulos solares.");
+        return false;
+    }
+
+    // 3. Calcular Ángulos del Satélite (VZA y VAA)
+    DataF vaa = {0};
+    if (compute_satellite_angles_nc(filename, &la, &lo, &nav->vza, &vaa) != 0) {
+        LOG_ERROR("Falla al computar ángulos del satélite.");
+        dataf_destroy(&saa); dataf_destroy(&nav->sza);
+        return false;
+    }
+
+    // 4. Calcular Azimut Relativo (RAA)
+    compute_relative_azimuth(&saa, &vaa, &nav->raa);
+    dataf_destroy(&saa);
+    dataf_destroy(&vaa);
+
+    if (!nav->sza.data_in || !nav->vza.data_in || !nav->raa.data_in) {
+        rayleigh_free_navigation(nav);
+        return false;
+    }
+
+    if (target_width > 0 && target_height > 0) {
+        enforce_resolution(&nav->sza, target_width, target_height);
+        enforce_resolution(&nav->vza, target_width, target_height);
+        enforce_resolution(&nav->raa, target_width, target_height);
+        if (nav->sza.width != target_width) {
+            LOG_ERROR("Falla redimensionando navegación Rayleigh: %dx%d != %dx%d",
+                      nav->sza.width, nav->sza.height, target_width, target_height);
+            rayleigh_free_navigation(nav);
+            return false;
+        }
+    }
+    return true;
+}
+
 bool rayleigh_load_navigation(const char *filename, RayleighNav *nav, 
 				unsigned int target_width, unsigned int target_height) {
     // Inicializar estructura
@@ -72,54 +124,12 @@ bool rayleigh_load_navigation(const char *filename, RayleighNav *nav,
         return false;
     }
 
-    // 2. Calcular Ángulos Solares (SZA y SAA)
-    DataF saa = {0}; // Solar Azimuth (Temporal)
-    if (compute_solar_angles_nc(filename, &navla, &navlo, &nav->sza, &saa) != 0) {
-        LOG_ERROR("Falla al computar ángulos solares.");
-        dataf_destroy(&navla); dataf_destroy(&navlo);
-        return false;
-    }
-
-    // 3. Calcular Ángulos del Satélite (VZA y VAA)
-    DataF vaa = {0}; // View Azimuth (Temporal)
-    if (compute_satellite_angles_nc(filename, &navla, &navlo, &nav->vza, &vaa) != 0) {
-        LOG_ERROR("Falla al computar ángulos del satélite.");
-        dataf_destroy(&navla); dataf_destroy(&navlo);
-        dataf_destroy(&saa);   dataf_destroy(&nav->sza);
-        return false;
-    }
-
-    // Ya no necesitamos Lat/Lon, liberamos memoria
+    // Delegar al helper con lat/lon propios — liberar antes de retornar
+    bool ok = rayleigh_load_navigation_from_latlon(filename, &navla, &navlo, nav,
+                                                   target_width, target_height);
     dataf_destroy(&navla);
     dataf_destroy(&navlo);
-
-    // 4. Calcular Azimut Relativo (RAA)
-    compute_relative_azimuth(&saa, &vaa, &nav->raa);
-
-    // Liberar los azimuts individuales (ya solo necesitamos el relativo)
-    dataf_destroy(&saa);
-    dataf_destroy(&vaa);
-
-    // Verificación final
-    if (!nav->sza.data_in || !nav->vza.data_in || !nav->raa.data_in) {
-        rayleigh_free_navigation(nav);
-        return false;
-    }
-    
-	if (target_width > 0 && target_height > 0) {
-        enforce_resolution(&nav->sza, target_width, target_height);
-        enforce_resolution(&nav->vza, target_width, target_height);
-        enforce_resolution(&nav->raa, target_width, target_height);
-
-        // Verificar si falló el redimensionado
-        if (nav->sza.width != target_width) {
-            LOG_ERROR("Falla redimensionando navegación Rayleigh: %dx%d != %dx%d",
-                      nav->sza.width, nav->sza.height, target_width, target_height);
-            rayleigh_free_navigation(nav);
-            return false;
-        }
-    }    
-    return true;
+    return ok;
 }
 
 // ============================================================================
@@ -600,4 +610,6 @@ void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t 
         img->fmax = new_max;
         LOG_DEBUG("  Rango post-Rayleigh: [%.6f, %.6f]", new_min, new_max);
     }
+
+    rayleigh_lut_destroy(&lut);
 }

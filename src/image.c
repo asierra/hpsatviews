@@ -120,7 +120,6 @@ ImageData blend_images(ImageData bg, ImageData fg, ImageData mask) {
     }
 
     double start = omp_get_wtime();
-
 #pragma omp parallel for shared(bg, fg, mask, imout)
     for (int i = 0; i < size; i++) {
         int p = i * bg.bpp;
@@ -133,8 +132,7 @@ ImageData blend_images(ImageData bg, ImageData fg, ImageData mask) {
         imout.data[p + 2] = (unsigned char)(w * bg.data[p + 2] + (1 - w) * fg.data[p + 2]);
     }
     double end = omp_get_wtime();
-    printf("Tiempo blend %lf\n", end - start);
-
+    LOG_DEBUG("Blend imágenes: %.3f s", end - start);
     return imout;
 }
 

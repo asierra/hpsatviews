@@ -35,6 +35,17 @@ void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lam
 bool rayleigh_load_navigation(const char *filename, RayleighNav *nav, 
 				unsigned int target_width, unsigned int target_height);
 
+/**
+ * @brief Igual que rayleigh_load_navigation pero reutiliza lat/lon ya calculados.
+ * Evita llamar a compute_navigation_nc cuando el contexto ya dispone de la
+ * navegación geográfica.
+ */
+bool rayleigh_load_navigation_from_latlon(const char *filename,
+                                          const DataF *navla, const DataF *navlo,
+                                          RayleighNav *nav,
+                                          unsigned int target_width,
+                                          unsigned int target_height);
+
 
 // Rayleigh Lookup Table structure (simple version with min/max/step)
 typedef struct {

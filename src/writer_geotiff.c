@@ -124,8 +124,9 @@ static int finalize_cog(GDALDatasetH mem_ds, const char* filename) {
     }
 
     char **opts = NULL;
-    opts = CSLSetNameValue(opts, "COMPRESS", "LZW");
+    opts = CSLSetNameValue(opts, "COMPRESS", "ZSTD");
     opts = CSLSetNameValue(opts, "PREDICTOR", "2");
+    opts = CSLSetNameValue(opts, "LEVEL", "15");
     opts = CSLSetNameValue(opts, "OVERVIEWS", "IGNORE_EXISTING");
 
     GDALDatasetH cog_ds = GDALCreateCopy(cog_driver, filename, mem_ds, FALSE, opts, NULL, NULL);

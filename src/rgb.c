@@ -51,6 +51,11 @@ void rgb_context_destroy(RgbContext *ctx) {
     dataf_destroy(&ctx->nav_lat);
     dataf_destroy(&ctx->nav_lon);
 
+    // Liberar canales intermedios
+    dataf_destroy(&ctx->comp_r);
+    dataf_destroy(&ctx->comp_g);
+    dataf_destroy(&ctx->comp_b);
+
     // Liberar resultados
     image_destroy(&ctx->final_image);
     image_destroy(&ctx->alpha_mask);
@@ -86,8 +91,17 @@ static bool compose_truecolor(RgbContext *ctx) {
             }
         }
         RayleighNav nav = {0};
+        // Reutilizar lat/lon ya calculados en process_geospatial para evitar
+        // recalcular la navegación (compute_navigation_nc es costosa).
+        bool nav_ok;
+        if (ctx->has_navigation && ctx->nav_lat.data_in && ctx->nav_lon.data_in) {
+            nav_ok = rayleigh_load_navigation_from_latlon(nav_file, &ctx->nav_lat, &ctx->nav_lon,
+                                                         &nav, ctx->comp_b.width, ctx->comp_b.height);
+        } else {
+            nav_ok = rayleigh_load_navigation(nav_file, &nav, ctx->comp_b.width, ctx->comp_b.height);
+        }
         // Cargar navegación ajustada al tamaño de la imagen azul (C01)
-        if (rayleigh_load_navigation(nav_file, &nav, ctx->comp_b.width, ctx->comp_b.height)) {
+        if (nav_ok) {
             apply_solar_zenith_correction(&ctx->comp_b, &nav.sza);
             apply_solar_zenith_correction(&ctx->comp_r, &nav.sza);
             apply_solar_zenith_correction(ch_nir, &nav.sza);
@@ -476,8 +490,20 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
 }
 
 static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
-    // 1. Calcular navegación (siempre, para GeoTIFF y/o reproyección)
-    const char *ref_filename = ctx->channel_set->channels[0].filename;
+    // Calcular navegación con el archivo del canal de referencia (ya en la
+    // resolución objetivo), evitando calcular a resolución máxima y luego
+    // remuestrear.
+    const char *ref_filename = NULL;
+    char ref_name[8];
+    snprintf(ref_name, sizeof(ref_name), "C%02d", ctx->ref_channel_idx);
+    for (int i = 0; i < ctx->channel_set->count; i++) {
+        if (strcmp(ctx->channel_set->channels[i].name, ref_name) == 0) {
+            ref_filename = ctx->channel_set->channels[i].filename;
+            break;
+        }
+    }
+    if (!ref_filename)
+        ref_filename = ctx->channel_set->channels[0].filename; // fallback
     if (compute_navigation_nc(ref_filename, &ctx->nav_lat, &ctx->nav_lon) == 0) {
         ctx->has_navigation = true;
     } else {
@@ -494,7 +520,8 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
         return false;
     }
 
-    // 3. Remuestrear navegación al tamaño del canal de referencia si es necesario
+    // 3. Remuestrear navegación si difiere del canal de referencia (no debería
+    //    ocurrir normalmente, ya que se calcula con ref_filename)
     if (ctx->has_navigation && ctx->ref_channel_idx > 0) {
         size_t nav_width = ctx->nav_lat.width;
         size_t ref_width = ctx->channels[ctx->ref_channel_idx].fdata.width;

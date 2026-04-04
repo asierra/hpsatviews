@@ -157,16 +157,12 @@ DataF downsample_simple(DataF datanc_big, int factor)
   datanc.fmin = datanc_big.fmin;
   datanc.fmax = datanc_big.fmax;
   
-  double start = omp_get_wtime();
-
   #pragma omp parallel for
   for (unsigned int j=0; j < datanc_big.height; j += factor)
     for (unsigned int i=0; i < datanc_big.width; i += factor) {
       int is = (j*datanc.width + i)/factor;
       datanc.data_in[is] = datanc_big.data_in[j*datanc_big.width + i];
     }
-  double end = omp_get_wtime();
-  printf("Tiempo downsampling simple %lf\n", end - start);
   return datanc;
 }
 
@@ -209,8 +205,7 @@ DataF downsample_boxfilter(DataF datanc_big, int factor)
     }
   }
   double end = omp_get_wtime();
-  printf("Tiempo downsampling boxfilter %lf\n", end - start);
-
+  LOG_DEBUG("Downsampling boxfilter (factor=%d): %.3f s", factor, end - start);
   return datanc;
 }
 
@@ -229,8 +224,6 @@ DataF upsample_bilinear(DataF datanc_small, int factor)
   
   float xrat = (float)(datanc_small.width - 1)/(datanc.width - 1);
   float yrat = (float)(datanc_small.height - 1)/(datanc.height - 1);
-
-  double start = omp_get_wtime();
 
   #pragma omp parallel for
   for (unsigned int j=0; j < datanc.height; j++) {
@@ -251,9 +244,6 @@ DataF upsample_bilinear(DataF datanc_small, int factor)
       datanc.data_in[j*datanc.width + i] = (float)d;
     }
   }
-  double end = omp_get_wtime();
-  printf("Tiempo upsampling bilinear %lf\n", end - start);
-
   return datanc;
 }
 

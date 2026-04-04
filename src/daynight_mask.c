@@ -5,6 +5,7 @@
  */
 #include "datanc.h"
 #include "image.h"
+#include "logger.h"
 #include <math.h>
 #include <omp.h>
 #include <stdio.h>
@@ -172,7 +173,7 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo, float *d
     }
     *dnratio = (nite == 0) ? 100 : 100.0 * day / navla.size;
     double end = omp_get_wtime();
-    printf("Tiempo mask %lf\n", end - start);
+    LOG_DEBUG("Máscara día/noche: %.3f s", end - start);
 
     return imout;
 }

@@ -126,11 +126,11 @@ int load_nc_sf(const char *filename, DataNC *datanc) {
     LOG_INFO("NetCDF dimensions: %lux%lu (total: %lu)", width, height, total_size);
 
     // Leer resolución espacial nativa del sensor (atributo global)
-    char spatial_res_str[128];
+    char spatial_res_str[128] = {0};
     datanc->native_resolution_km = 0.0f; // Por defecto
     if ((retval = nc_get_att_text(ncid, NC_GLOBAL, "spatial_resolution", spatial_res_str)) ==
         NC_NOERR) {
-        spatial_res_str[127] = '\0'; // Asegurar terminación
+        spatial_res_str[127] = '\0'; // Asegurar terminación ante atributos muy largos
         // El atributo típicamente es algo como "1km at nadir" o "2km at nadir"
         float res_val;
         if (sscanf(spatial_res_str, "%fkm", &res_val) == 1) {
@@ -507,35 +507,76 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
     // Apartamos memoria para los datos
     *navlo = dataf_create(width, height);
 
-    size_t k = 0;
+    // Precomputar sin/cos de cada columna (x) y fila (y) para evitar
+    // recalcularlos 'height' y 'width' veces respectivamente.
+    double *snx_arr = malloc(width  * sizeof(double));
+    double *csx_arr = malloc(width  * sizeof(double));
+    double *sny_arr = malloc(height * sizeof(double));
+    double *csy_arr = malloc(height * sizeof(double));
+    if (!snx_arr || !csx_arr || !sny_arr || !csy_arr) {
+        free(snx_arr); free(csx_arr); free(sny_arr); free(csy_arr);
+        free(x_vals_raw); free(y_vals_raw);
+        nc_close(ncid);
+        LOG_ERROR("Error de memoria al precomputar sin/cos de navegación");
+        return -1;
+    }
+    for (size_t i = 0; i < width; i++) {
+        double x = (double)x_vals_raw[i] * x_sf + x_ao;
+        snx_arr[i] = sin(x);
+        csx_arr[i] = cos(x);
+    }
+    for (size_t j = 0; j < height; j++) {
+        double y = (double)y_vals_raw[j] * y_sf + y_ao;
+        sny_arr[j] = sin(y);
+        csy_arr[j] = cos(y);
+    }
+
+    const double sm_maj2 = sm_maj * sm_maj;
+    const double sm_min2 = sm_min * sm_min;
+    const double ratio   = sm_maj2 / sm_min2;
+    const double H2_maj2 = H * H - sm_maj2;
+
     double lomin = 1e10, lamin = 1e10, lomax = -lomin, lamax = -lamin;
     size_t valid_count = 0;
 
+    double t0 = omp_get_wtime();
+#pragma omp parallel for schedule(static) \
+    reduction(min : lamin, lomin) reduction(max : lamax, lomax) reduction(+ : valid_count)
     for (size_t j = 0; j < navla->height; j++) {
-        double y = (double)y_vals_raw[j] * y_sf + y_ao;
+        double sny = sny_arr[j], csy = csy_arr[j];
+        double csy2 = csy * csy, rat_sny2 = ratio * sny * sny;
         for (size_t i = 0; i < navla->width; i++) {
-            double la, lo;
-            double x = (double)x_vals_raw[i] * x_sf + x_ao;
-            compute_lalo(x, y, &la, &lo);
-            if (isnan(la) || isnan(lo)) {
+            double snx = snx_arr[i], csx = csx_arr[i];
+            double a   = snx * snx + csx * csx * (csy2 + rat_sny2);
+            double b   = -2.0 * H * csx * csy;
+            double disc = b * b - 4.0 * a * H2_maj2;
+            size_t k = j * navla->width + i;
+            if (disc < 0.0) {
                 navla->data_in[k] = NonData;
                 navlo->data_in[k] = NonData;
             } else {
-                if (la < lamin)
-                    lamin = la;
-                if (la > lamax)
-                    lamax = la;
-                if (lo < lomin)
-                    lomin = lo;
-                if (lo > lomax)
-                    lomax = lo;
+                double rs  = (-b - sqrt(disc)) / (2.0 * a);
+                double px  = rs * csx * csy;
+                double py  = -rs * snx;
+                double pz  = rs * csx * sny;
+                double la  = atan2(sm_maj2 * pz,
+                                   sm_min2 * sqrt((H - px) * (H - px) + py * py)) * rad2deg;
+                double lon_rad = lambda_0 - atan2(py, H - px);
+                lon_rad = fmod(lon_rad + M_PI, 2.0 * M_PI);
+                if (lon_rad < 0.0) lon_rad += 2.0 * M_PI;
+                double lo = (lon_rad - M_PI) * rad2deg;
                 navla->data_in[k] = (float)la;
                 navlo->data_in[k] = (float)lo;
+                if (la < lamin) lamin = la;
+                if (la > lamax) lamax = la;
+                if (lo < lomin) lomin = lo;
+                if (lo > lomax) lomax = lo;
                 valid_count++;
             }
-            k++;
         }
     }
+    free(snx_arr); free(csx_arr); free(sny_arr); free(csy_arr);
+    LOG_DEBUG("compute_navigation_nc %zux%zu: %.3f s", navla->width, navla->height, omp_get_wtime() - t0);
 
     // Solo actualizar los límites si encontramos al menos un píxel válido
     if (valid_count > 0) {
