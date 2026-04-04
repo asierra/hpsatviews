@@ -46,6 +46,7 @@ struct MetadataContext {
     float bbox[4];
     char projection[32];
     bool has_bbox;
+    bool has_clip;  // true solo cuando hay recorte explícito del usuario
     
     ChannelInfo channels[MAX_CHANNELS];
     int channel_count;
@@ -100,7 +101,13 @@ void metadata_from_nc(MetadataContext *ctx, const DataNC *nc) {
     // 3. Agregar información del canal
     if (ctx->channel_count < MAX_CHANNELS && nc->varname) {
         ChannelInfo *ch = &ctx->channels[ctx->channel_count];
-        strncpy(ch->name, nc->varname, sizeof(ch->name) - 1);
+        
+        // Usar band_id (ej. "C13") si está disponible, sino varname
+        if (nc->band_id > 0 && nc->band_id <= 16) {
+            snprintf(ch->name, sizeof(ch->name), "C%02d", nc->band_id);
+        } else {
+            strncpy(ch->name, nc->varname, sizeof(ch->name) - 1);
+        }
         
         // Determinar quantity basado en el tipo de datos
         if (nc->is_float) {
@@ -135,6 +142,11 @@ void metadata_set_geometry(MetadataContext *ctx, float x1, float y1, float x2, f
     ctx->bbox[0] = x1; ctx->bbox[1] = y1;
     ctx->bbox[2] = x2; ctx->bbox[3] = y2;
     ctx->has_bbox = true;
+}
+
+void metadata_set_clip(MetadataContext *ctx, bool clipped) {
+    if (!ctx) return;
+    ctx->has_clip = clipped;
 }
 
 // Implementación de los adders
@@ -220,7 +232,7 @@ static bool build_ops_string(const MetadataContext *ctx, char* buffer, size_t si
         }
         ops_list[op_count++] = gamma_str;
     }
-    if (ctx->has_bbox) ops_list[op_count++] = "clip";
+    if (ctx->has_clip) ops_list[op_count++] = "clip";
     
     // Buscar "reprojection" o "geographics" en extra_fields
     for (int i = 0; i < ctx->count; i++) {
@@ -266,18 +278,40 @@ char* metadata_build_filename(const MetadataContext *ctx, const char *extension)
     char instant[20];
     format_timestamp_julian(ctx->timestamp, instant, sizeof(instant));
     
-    // 3. Tipo de producto (basado en command)
-    const char *type = "output";
+    // 3. Tipo de producto (basado en command + mode para rgb)
+    char type[64] = "output";
     if (ctx->command[0]) {
-        if (strcmp(ctx->command, "gray") == 0) type = "gray";
-        else if (strcmp(ctx->command, "pseudocolor") == 0) type = "pseudo";
-        else if (strcmp(ctx->command, "rgb") == 0) type = "rgb";
-        else type = ctx->command;
+        if (strcmp(ctx->command, "gray") == 0) {
+            strcpy(type, "gray");
+        } else if (strcmp(ctx->command, "pseudocolor") == 0) {
+            strcpy(type, "pseudo");
+        } else if (strcmp(ctx->command, "rgb") == 0) {
+            // Buscar el modo en extra_fields
+            const char *mode = NULL;
+            for (int i = 0; i < ctx->count; i++) {
+                if (strcmp(ctx->extra_fields[i].key, "mode") == 0 && 
+                    ctx->extra_fields[i].type == 1) {
+                    mode = ctx->extra_fields[i].val_s;
+                    break;
+                }
+            }
+            if (mode && mode[0] && strcmp(mode, "truecolor") != 0 && strcmp(mode, "composite") != 0) {
+                snprintf(type, sizeof(type), "%s", mode);
+            } else {
+                strcpy(type, "rgb");
+            }
+        } else {
+            strncpy(type, ctx->command, sizeof(type) - 1);
+        }
     }
     
-    // 4. Bandas (simplificado: usar el primer canal)
-    char bands[32] = "NA";
-    if (ctx->channel_count > 0 && ctx->channels[0].valid) {
+    // 4. Bandas
+    char bands[32] = "";
+    if (strcmp(ctx->command, "rgb") == 0) {
+        // Para modos RGB semánticos no repetir bandas (ya está en tipo)
+        bands[0] = '\0';
+    } else if (ctx->channel_count > 0 && ctx->channels[0].valid) {
+        // Para gray/pseudo: usar band_id si disponible (ej. "C13"), sino varname
         strncpy(bands, ctx->channels[0].name, sizeof(bands) - 1);
     }
     
@@ -286,12 +320,19 @@ char* metadata_build_filename(const MetadataContext *ctx, const char *extension)
     bool has_ops = build_ops_string(ctx, ops, sizeof(ops));
     
     // 6. Construir nombre final
-    if (has_ops) {
+    //    Formato: hpsv_<SAT>_<INSTANT>_<TIPO>[_<BANDAS>][_<OPS>].<ext>
+    if (bands[0] && has_ops) {
         snprintf(filename, 512, "hpsv_%s_%s_%s_%s_%s%s",
                  sat, instant, type, bands, ops, extension);
-    } else {
+    } else if (bands[0]) {
         snprintf(filename, 512, "hpsv_%s_%s_%s_%s%s",
                  sat, instant, type, bands, extension);
+    } else if (has_ops) {
+        snprintf(filename, 512, "hpsv_%s_%s_%s_%s%s",
+                 sat, instant, type, ops, extension);
+    } else {
+        snprintf(filename, 512, "hpsv_%s_%s_%s%s",
+                 sat, instant, type, extension);
     }
     
     return filename;

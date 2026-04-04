@@ -53,6 +53,11 @@ void metadata_set_command(MetadataContext *ctx, const char *command);
 void metadata_set_projection(MetadataContext *ctx, const char *proj);
 
 /**
+ * Marca que la imagen fue recortada explícitamente por el usuario.
+ */
+void metadata_set_clip(MetadataContext *ctx, bool clipped);
+
+/**
  * Registra la geometría final de la imagen.
  * @param x1 lon_min
  * @param y1 lat_max

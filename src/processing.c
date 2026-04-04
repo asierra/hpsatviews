@@ -66,6 +66,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     bool minmax_provided = false;
     
     // Registrar parámetros básicos en metadatos
+    metadata_set_command(meta, cfg->command);
     metadata_add(meta, "command", cfg->command);
     metadata_add(meta, "gamma", cfg->gamma);
     metadata_add(meta, "apply_clahe", cfg->apply_clahe);
@@ -234,6 +235,8 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     
     // Poblar metadatos desde DataNC
     metadata_from_nc(meta, &c01);
+    if (cfg->has_clip)
+        metadata_set_clip(meta, true);
     
     // Generar nombre de archivo si no se especificó
     const char* outfn = cfg->output_path_override;

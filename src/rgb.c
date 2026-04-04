@@ -784,6 +784,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     char **custom_channels = NULL;
 
     // Registrar metadatos básicos
+    metadata_set_command(meta, "rgb");
     metadata_add(meta, "command", "rgb");
     metadata_add(meta, "mode", ctx.opts.mode ? ctx.opts.mode : "unknown");
     metadata_add(meta, "gamma", ctx.opts.gamma);
@@ -791,6 +792,8 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     metadata_add(meta, "apply_rayleigh", ctx.opts.apply_rayleigh);
     metadata_add(meta, "apply_histogram", ctx.opts.apply_histogram);
     metadata_add(meta, "do_reprojection", ctx.opts.do_reprojection);
+    if (ctx.opts.has_clip)
+        metadata_set_clip(meta, true);
 
     if (ctx.opts.apply_clahe) {
         metadata_add(meta, "clahe_limit", ctx.opts.clahe_clip_limit);
