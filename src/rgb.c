@@ -899,9 +899,12 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
 
         LOG_INFO("Iniciando reproyección...");
         ImageData reprojected =
-            reproject_image_to_geographics(&ctx.final_image, &ctx.nav_lat, &ctx.nav_lon,
-                                           ctx.channels[ctx.ref_channel_idx].native_resolution_km,
-                                           ctx.opts.has_clip ? ctx.opts.clip_coords : NULL);
+            reproject_image_analytical(&ctx.final_image,
+                                       &ctx.channels[ctx.ref_channel_idx],
+                                       ctx.nav_lat.fmin, ctx.nav_lat.fmax,
+                                       ctx.nav_lon.fmin, ctx.nav_lon.fmax,
+                                       ctx.channels[ctx.ref_channel_idx].native_resolution_km,
+                                       ctx.opts.has_clip ? ctx.opts.clip_coords : NULL);
 
         if (reprojected.data == NULL) {
             LOG_ERROR("Falla durante reproyección");

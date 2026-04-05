@@ -63,4 +63,26 @@ int reprojection_find_bounding_box(const DataF* navla, const DataF* navlo,
  */
 ImageData reproject_image_to_geographics(const ImageData* src_image, const DataF* navla, const DataF* navlo, float native_resolution_km, const float* clip_coords);
 
+/**
+ * @brief Reproyecta una imagen usando proyección analítica inversa GOES-R (sin mallas de navegación).
+ *
+ * Para cada píxel destino calcula lat/lon → ángulo de escaneo → píxel fuente usando
+ * las ecuaciones del GOES-R PUG Vol 4. Interpolación bilineal. Sin relleno de huecos.
+ *
+ * @param src_image La imagen de origen (en proyección geoestacionaria).
+ * @param data_nc Puntero a DataNC con proj_info y geotransform del canal de referencia.
+ * @param lat_min Latitud mínima de la extensión geográfica (grados).
+ * @param lat_max Latitud máxima de la extensión geográfica (grados).
+ * @param lon_min Longitud mínima de la extensión geográfica (grados).
+ * @param lon_max Longitud máxima de la extensión geográfica (grados).
+ * @param native_resolution_km Resolución nativa del sensor en km.
+ * @param clip_coords Opcional, para recortar la salida a un dominio geográfico.
+ * @return Una nueva ImageData reproyectada. El llamador debe liberarla.
+ */
+ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* data_nc,
+                                     float lat_min, float lat_max,
+                                     float lon_min, float lon_max,
+                                     float native_resolution_km,
+                                     const float* clip_coords);
+
 #endif /* HPSATVIEWS_REPROJECTION_H_ */

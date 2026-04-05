@@ -151,6 +151,8 @@ ImageData reproject_image_to_geographics(const ImageData* src_image, const DataF
     float lon_scale = (width > 1) ? (width - 1) / lon_range : 0;
     float lat_scale = (height > 1) ? (height - 1) / lat_range : 0;
 
+    double t_scatter_start = omp_get_wtime();
+
     #pragma omp parallel for collapse(2)
     for (unsigned y = 0; y < src_image->height; y++) {
         for (unsigned x = 0; x < src_image->width; x++) {
@@ -177,6 +179,8 @@ ImageData reproject_image_to_geographics(const ImageData* src_image, const DataF
     }
 
     LOG_INFO("Iniciando relleno de huecos (interpolación de vecinos)...");
+    double t_scatter_end = omp_get_wtime();
+    LOG_INFO("Scatter completado en %.2f s", t_scatter_end - t_scatter_start);
     
     // Usar 8 vecinos para mejor cobertura y múltiples iteraciones
     const int dx[] = {-1, 0, 1, -1, 1, -1, 0, 1};
@@ -284,13 +288,174 @@ ImageData reproject_image_to_geographics(const ImageData* src_image, const DataF
         next.data = temp_ptr;
     }
     
-    LOG_INFO("Relleno de huecos terminado.");
+    LOG_INFO("Relleno de huecos terminado en %.2f s", omp_get_wtime() - t_scatter_end);
 
     // Liberar memoria auxiliar (next tiene el buffer viejo tras el último swap o el inicial)
     image_destroy(&next);
 
     // Devolvemos la imagen rellena (current tiene el resultado final)
     return current;
+}
+
+ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* data_nc,
+                                     float lat_min, float lat_max,
+                                     float lon_min, float lon_max,
+                                     float native_resolution_km,
+                                     const float* clip_coords) {
+    if (!src_image || !src_image->data || !data_nc || !data_nc->proj_info.valid) {
+        LOG_ERROR("Parámetros inválidos para reproject_image_analytical.");
+        return image_create(0, 0, 0);
+    }
+
+    // Parámetros de proyección
+    double a   = data_nc->proj_info.semi_major;
+    double b   = data_nc->proj_info.semi_minor;
+    double H   = a + data_nc->proj_info.sat_height;
+    double e2  = (a * a - b * b) / (a * a);
+    double a2  = a * a;
+    double b2  = b * b;
+    double a2_over_b2 = a2 / b2;
+    double lambda0 = data_nc->proj_info.lon_origin * (M_PI / 180.0);
+
+    const double *gt = data_nc->geotransform;
+    unsigned int src_w = data_nc->fdata.width > 0 ? data_nc->fdata.width :
+                         (data_nc->bdata.width > 0 ? data_nc->bdata.width : src_image->width);
+    unsigned int src_h = data_nc->fdata.height > 0 ? data_nc->fdata.height :
+                         (data_nc->bdata.height > 0 ? data_nc->bdata.height : src_image->height);
+
+    // Extensión geográfica destino
+    float target_lon_min, target_lon_max, target_lat_min, target_lat_max;
+    if (clip_coords) {
+        target_lon_min = (clip_coords[0] > lon_min) ? clip_coords[0] : lon_min;
+        target_lon_max = (clip_coords[2] < lon_max) ? clip_coords[2] : lon_max;
+        target_lat_min = (clip_coords[3] > lat_min) ? clip_coords[3] : lat_min;
+        target_lat_max = (clip_coords[1] < lat_max) ? clip_coords[1] : lat_max;
+    } else {
+        target_lon_min = lon_min;
+        target_lon_max = lon_max;
+        target_lat_min = lat_min;
+        target_lat_max = lat_max;
+    }
+
+    float lon_range = target_lon_max - target_lon_min;
+    float lat_range = target_lat_max - target_lat_min;
+    float lat_center = (target_lat_min + target_lat_max) / 2.0f;
+    float lat_rad_c = lat_center * (float)(M_PI / 180.0);
+    float km_per_deg_lat = 111.132954f - 0.559822f * cosf(2.0f * lat_rad_c);
+    float target_res_km = (native_resolution_km > 0.0f) ? native_resolution_km : 1.0f;
+    float target_res_deg = target_res_km / km_per_deg_lat;
+
+    size_t width  = (size_t)(lon_range / target_res_deg + 0.5f);
+    size_t height = (size_t)(lat_range / target_res_deg + 0.5f);
+
+    if (width  < 10) width  = 10;
+    if (height < 10) height = 10;
+
+    const size_t MAX_DIM = 10000;
+    if (width  > MAX_DIM) width  = MAX_DIM;
+    if (height > MAX_DIM) height = MAX_DIM;
+
+    LOG_INFO("Reproyección analítica: %ux%u (bpp:%u) -> %zux%zu",
+             src_image->width, src_image->height, src_image->bpp, width, height);
+
+    ImageData geo_image = image_create(width, height, src_image->bpp);
+    if (!geo_image.data) {
+        LOG_FATAL("Falla de memoria al crear la imagen geográfica de destino.");
+        return geo_image;
+    }
+    memset(geo_image.data, 0, width * height * src_image->bpp);
+
+    double t_start = omp_get_wtime();
+    unsigned int bpp = src_image->bpp;
+
+    // Resolución por píxel de salida
+    double deg_per_px_lon = (double)lon_range / (double)width;
+    double deg_per_px_lat = (double)lat_range / (double)height;
+
+    #pragma omp parallel for collapse(2)
+    for (size_t oy = 0; oy < height; oy++) {
+        for (size_t ox = 0; ox < width; ox++) {
+            // Coordenada geográfica del centro del píxel destino (en grados)
+            double lon_deg = (double)target_lon_min + ((double)ox + 0.5) * deg_per_px_lon;
+            double lat_deg = (double)target_lat_max - ((double)oy + 0.5) * deg_per_px_lat;
+
+            // Convertir a radianes
+            double phi    = lat_deg * (M_PI / 180.0);
+            double lambda = lon_deg * (M_PI / 180.0);
+
+            // Latitud geocéntrica
+            double phi_c = atan((b2 / a2) * tan(phi));
+            double cos_phi_c = cos(phi_c);
+            double sin_phi_c = sin(phi_c);
+
+            // Radio geocéntrico
+            double r_c = b / sqrt(1.0 - e2 * cos_phi_c * cos_phi_c);
+
+            // Vector de posición del punto en la Tierra visto desde el satélite
+            double d_lambda = lambda - lambda0;
+            double cos_dl   = cos(d_lambda);
+            double sin_dl   = sin(d_lambda);
+
+            double s_x = H - r_c * cos_phi_c * cos_dl;
+            double s_y = -r_c * cos_phi_c * sin_dl;
+            double s_z = r_c * sin_phi_c;
+
+            // Verificación de visibilidad desde el satélite
+            if (H * (H - s_x) < s_y * s_y + a2_over_b2 * s_z * s_z) {
+                continue; // El punto no es visible — píxel queda negro
+            }
+
+            // Ángulos de escaneo (GOES-R PUG)
+            double s_n = sqrt(s_x * s_x + s_y * s_y + s_z * s_z);
+            double x_rad = asin(-s_y / s_n);
+            double y_rad = atan2(s_z, s_x);
+
+            // Convertir ángulos de escaneo a coordenadas píxel fuente
+            double col = (x_rad - gt[0]) / gt[1];
+            double row = (y_rad - gt[3]) / gt[5];
+
+            // Verificar límites (con margen de 1 píxel para bilineal)
+            if (col < 0.0 || col >= (double)(src_w - 1) ||
+                row < 0.0 || row >= (double)(src_h - 1)) {
+                continue;
+            }
+
+            // Interpolación bilineal
+            int c0 = (int)col;
+            int r0 = (int)row;
+            double dc = col - c0;
+            double dr = row - r0;
+
+            int c1 = c0 + 1;
+            int r1 = r0 + 1;
+
+            double w00 = (1.0 - dc) * (1.0 - dr);
+            double w10 = dc * (1.0 - dr);
+            double w01 = (1.0 - dc) * dr;
+            double w11 = dc * dr;
+
+            size_t i00 = ((size_t)r0 * src_w + (size_t)c0) * bpp;
+            size_t i10 = ((size_t)r0 * src_w + (size_t)c1) * bpp;
+            size_t i01 = ((size_t)r1 * src_w + (size_t)c0) * bpp;
+            size_t i11 = ((size_t)r1 * src_w + (size_t)c1) * bpp;
+
+            size_t dst_idx = (oy * width + ox) * bpp;
+
+            for (unsigned int ch = 0; ch < bpp; ch++) {
+                double val = w00 * src_image->data[i00 + ch]
+                           + w10 * src_image->data[i10 + ch]
+                           + w01 * src_image->data[i01 + ch]
+                           + w11 * src_image->data[i11 + ch];
+                int ival = (int)(val + 0.5);
+                geo_image.data[dst_idx + ch] = (uint8_t)(ival < 0 ? 0 : (ival > 255 ? 255 : ival));
+            }
+        }
+    }
+
+    double elapsed = omp_get_wtime() - t_start;
+    LOG_INFO("Reproyección analítica completada en %.2f s", elapsed);
+
+    return geo_image;
 }
 
 int reprojection_find_bounding_box(const DataF* navla, const DataF* navlo,
