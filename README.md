@@ -168,7 +168,7 @@ Genera una vista en escala de grises del canal C13.
   # → ir_G19_C15_20251221.png
   ``` 
 
-* `-r, --geographics`
+* `-g, --geographics`
   Reproyecta la salida a coordenadas geográficas (latitud/longitud) equirrectangulares.
 
 * `-s, --scale <factor>`
