@@ -19,7 +19,7 @@ static const char *HPSATVIEWS_HELP =
 "  -o, --out <f>       Archivo de salida. Acepta patrones (ver abajo).\n"
 "  -t, --geotiff       Salida en GeoTIFF (PNG por omisión).\n"
 "  -c, --clip <val>    Recorte por clave o coordenadas.\n"
-"  -r, --geographics   Reproyección a Lat/Lon.\n"
+"  -g, --geographics   Reproyección a Lat/Lon.\n"
 "  -s, --scale <n>     Factor de escala entero (negativo reduce).\n"
 "  -a, --alpha         Añade canal alfa para regiones sin datos o umbral.\n"
 "  -g, --gamma <valor> Corrección gamma.\n"

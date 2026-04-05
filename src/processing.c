@@ -13,7 +13,6 @@
 #include "reader_cpt.h"
 #include "writer_png.h"
 #include "writer_geotiff.h"
-#include "filename_utils.h"
 #include "reprojection.h"
 #include "image.h"
 #include "datanc.h"
@@ -72,7 +71,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     metadata_add(meta, "apply_clahe", cfg->apply_clahe);
     metadata_add(meta, "apply_histogram", cfg->apply_histogram);
     metadata_add(meta, "invert_values", cfg->invert_values);
-    metadata_add(meta, "do_reprojection", cfg->do_reprojection);
+    metadata_add(meta, "geographics", cfg->do_reprojection);
     metadata_add(meta, "scale", cfg->scale);
     
     // --- Modo pseudocolor: cargar paleta ---

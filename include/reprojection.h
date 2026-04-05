@@ -61,7 +61,6 @@ int reprojection_find_bounding_box(const DataF* navla, const DataF* navlo,
  * @param clip_coords Opcional, para recortar la salida a un dominio geográfico.
  * @return Una nueva ImageData reproyectada. El llamador debe liberarla.
  */
-ImageData reproject_image_to_geographics(const ImageData* src_image, const DataF* navla, const DataF* navlo, float native_resolution_km, const float* clip_coords);
 
 /**
  * @brief Reproyecta una imagen usando proyección analítica inversa GOES-R (sin mallas de navegación).

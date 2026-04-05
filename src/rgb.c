@@ -8,7 +8,6 @@
 #include "config.h"
 #include "datanc.h"
 #include "daynight_mask.h"
-#include "filename_utils.h"
 #include "image.h"
 #include "logger.h"
 #include "metadata.h"
@@ -791,7 +790,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     metadata_add(meta, "apply_clahe", ctx.opts.apply_clahe);
     metadata_add(meta, "apply_rayleigh", ctx.opts.apply_rayleigh);
     metadata_add(meta, "apply_histogram", ctx.opts.apply_histogram);
-    metadata_add(meta, "do_reprojection", ctx.opts.do_reprojection);
+    metadata_add(meta, "geographics", ctx.opts.do_reprojection);
     if (ctx.opts.has_clip)
         metadata_set_clip(meta, true);
 

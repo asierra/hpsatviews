@@ -16,7 +16,7 @@ static const char *HPSATVIEWS_HELP =
 "  -o, --out <f>       Output file. Accepts patterns (see below).\n"
 "  -t, --geotiff       GeoTIFF output (default: PNG).\n"
 "  -c, --clip <val>    Crop by key name or coordinates.\n"
-"  -r, --geographics   Reprojection to Lat/Lon.\n"
+"  -g, --geographics   Reprojection to Lat/Lon.\n"
 "  -s, --scale <n>     Scale factor.\n"
 "\n"
 "Patterns for --out and Automatic Naming:\n"
