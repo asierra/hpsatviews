@@ -69,7 +69,7 @@ derecha y con ellas asignar la esquina superior izquierda.
 
 Encontrar una manera de tener en memoria los bin de raleigh para no
 tener que leerlos de disco en tiempo de ejecución. Y falta corregir el
-brillo al final pues salel un poco oscuras.
+brillo al final pues salen un poco oscuras.
 
 
 Fri Dec  5 12:05:02 PM CST 2025
@@ -178,3 +178,13 @@ Wed Feb 11 09:49:37 PM CST 2026
 Hoy resolvimos el problema del crepúsculo. Ya funciona bien el
 programa, solo falta limpiar el código y optimizar.
 
+
+Sun Apr  5 12:36:23 PM CST 2026
+
+Esta semana santa logramos que hpsv iguale la calidad de geo2grid y
+optimizamos varios procesos, notablemente el calculo de la navegación,
+de la máscara y la reproyección inversa. Pendientes: revisar el nombre
+"reproyección inversa", hacer los ejemplos y la presentación de hpsv
+para presentarlo en el lanot y como base para el paper.
+
+Creación simultanea de fd y fd_geo
