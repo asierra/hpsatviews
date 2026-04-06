@@ -88,7 +88,8 @@ static char* expand_filename_pattern(const char* pattern, const char* input_file
 
     int year = atoi(s_year), jday = atoi(s_jday), month = 1, day = 1;
     julian_to_date(year, jday, &month, &day);
-    char s_month[3], s_day[3], s_yy[3];
+    // Usamos 12 bytes para asegurar espacio para cualquier int32 (10 dígitos + signo + null)
+    char s_month[12], s_day[12], s_yy[8];
     snprintf(s_month, sizeof(s_month), "%02d", month);
     snprintf(s_day,   sizeof(s_day),   "%02d", day);
     strncpy(s_yy, s_year + 2, 2); s_yy[2] = '\0';
