@@ -77,9 +77,11 @@ void logger_log(LogLevel level, const char *file, int line,
     } \
 } while(0)
 
-// Performance timing helpers
-#define LOG_TIMING(name, start_time, end_time) \
-    LOG_DEBUG("Performance: %s took %.6f seconds", (name), (end_time) - (start_time))
+// Performance timing — grep en logs: grep '\[PERF\]'
+// Uso básico:    LOG_TIMING(end - start, "Nombre etapa")
+// Con contexto:  LOG_TIMING(end - start, "Upsampling (factor=%d)", factor)
+#define LOG_TIMING(elapsed_s, fmt, ...) \
+    LOG_DEBUG("[PERF] " fmt ": %.3f s", ##__VA_ARGS__, (double)(elapsed_s))
 
 // Conditional logging (only if condition is true)
 #define LOG_IF(condition, level, ...) do { \

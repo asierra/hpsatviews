@@ -65,7 +65,7 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha, const
     }
   }
   double end = omp_get_wtime();
-  LOG_INFO("Tiempo Single Gray %lf", end - start);
+  LOG_TIMING(end - start, "Single Gray");
   return imout;
 }
 
@@ -127,7 +127,7 @@ ImageData create_single_gray_range(DataF c01, bool invert_value, bool use_alpha,
   }
 
   double end = omp_get_wtime();
-  LOG_INFO("Tiempo Single Gray con rango personalizado: %lf", end - start);
+  LOG_TIMING(end - start, "Single Gray (rango)");
   return imout;
 }
 
@@ -184,6 +184,6 @@ ImageData create_single_grayb(DataB c01, bool invert_value, bool use_alpha, cons
     }
   }
   double end = omp_get_wtime();
-  LOG_INFO("Tiempo Single Gray (byte) %lf", end - start);
+  LOG_TIMING(end - start, "Single Gray (byte)");
   return imout;
 }

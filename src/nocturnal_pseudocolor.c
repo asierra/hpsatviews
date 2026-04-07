@@ -73,7 +73,7 @@ ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* 
   }
 
   double end = omp_get_wtime();
-  LOG_INFO("Pseudocolor nocturno generado en %.3f segundos.", end - start);
+  LOG_TIMING(end - start, "Pseudocolor nocturno");
 
   return imout;
 }

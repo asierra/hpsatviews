@@ -132,7 +132,7 @@ ImageData blend_images(ImageData bg, ImageData fg, ImageData mask) {
         imout.data[p + 2] = (unsigned char)(w * bg.data[p + 2] + (1 - w) * fg.data[p + 2]);
     }
     double end = omp_get_wtime();
-    LOG_DEBUG("Blend imágenes: %.3f s", end - start);
+    LOG_TIMING(end - start, "Blend imágenes");
     return imout;
 }
 
@@ -476,7 +476,7 @@ ImageData image_upsample_bilinear(const ImageData *src, int factor) {
     }
 
     double end = omp_get_wtime();
-    LOG_INFO("Upsampling bilinear (factor=%d): %.3f segundos", factor, end - start);
+    LOG_TIMING(end - start, "Upsampling bilinear (factor=%d)", factor);
 
     return result;
 }
@@ -531,7 +531,7 @@ ImageData image_downsample_boxfilter(const ImageData *src, int factor) {
     }
 
     double end = omp_get_wtime();
-    LOG_INFO("Downsampling box filter (factor=%d): %.3f segundos", factor, end - start);
+    LOG_TIMING(end - start, "Downsampling box filter (factor=%d)", factor);
 
     return result;
 }

@@ -132,7 +132,7 @@ static int finalize_cog(GDALDatasetH mem_ds, const char* filename) {
 
     double t0 = omp_get_wtime();
     GDALDatasetH cog_ds = GDALCreateCopy(cog_driver, filename, mem_ds, FALSE, opts, NULL, NULL);
-    LOG_INFO("COG escrito en %.2f s: %s", omp_get_wtime() - t0, filename);
+    LOG_TIMING(omp_get_wtime() - t0, "COG escrito: %s", filename);
     CSLDestroy(opts);
     GDALClose(mem_ds);
 

@@ -205,7 +205,7 @@ DataF downsample_boxfilter(DataF datanc_big, int factor)
     }
   }
   double end = omp_get_wtime();
-  LOG_DEBUG("Downsampling boxfilter (factor=%d): %.3f s", factor, end - start);
+  LOG_TIMING(end - start, "Downsampling boxfilter (factor=%d)", factor);
   return datanc;
 }
 

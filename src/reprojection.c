@@ -255,7 +255,7 @@ ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* d
     }
 
     double elapsed = omp_get_wtime() - t_start;
-    LOG_DEBUG("Reproyección analítica completada en: %.2f s", elapsed);
+    LOG_TIMING(elapsed, "Reproyección analítica");
 
     return geo_image;
 }

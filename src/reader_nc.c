@@ -576,7 +576,7 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
         }
     }
     free(snx_arr); free(csx_arr); free(sny_arr); free(csy_arr);
-    LOG_DEBUG("compute_navigation_nc %zux%zu: %.3f s", navla->width, navla->height, omp_get_wtime() - t0);
+    LOG_TIMING(omp_get_wtime() - t0, "Navegación (%zux%zu)", navla->width, navla->height);
 
     // Solo actualizar los límites si encontramos al menos un píxel válido
     if (valid_count > 0) {
@@ -892,7 +892,7 @@ int compute_solar_angles_nc(const char *filename, const DataF *navla, const Data
     }
 
     double elapsed = omp_get_wtime() - start_time;
-    LOG_INFO("Geometría solar calculada en %.3f segundos.", elapsed);
+    LOG_TIMING(elapsed, "Geometría solar");
 
     return 0;
 }
@@ -950,7 +950,7 @@ int compute_satellite_angles_nc(const char *filename, const DataF *navla, const 
     }
 
     double elapsed = omp_get_wtime() - start_time;
-    LOG_INFO("Geometría del satélite calculada en %.3f segundos.", elapsed);
+    LOG_TIMING(elapsed, "Geometría del satélite");
 
     return 0;
 }
