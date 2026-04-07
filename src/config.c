@@ -407,8 +407,8 @@ bool config_validate(const ProcessConfig* cfg) {
     }
     
     // Validar scale
-    if (cfg->scale == 0 || cfg->scale > 10 || cfg->scale < -10) {
-        LOG_ERROR("scale debe estar en [-10, -1] o [1, 10], valor: %d", cfg->scale);
+    if (cfg->scale == 0 || cfg->scale > 20 || cfg->scale < -20) {
+        LOG_ERROR("scale debe ser entero en el rango [-20, 20], valor: %d", cfg->scale);
         return false;
     }
     
