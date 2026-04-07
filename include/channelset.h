@@ -25,6 +25,7 @@ typedef struct {
     ChannelInfo *channels;      // Array de canales
     int count;                  // Número de canales en el conjunto
     char id_signature[40];      // ID del satélite/producto (ej. "s20253231800")
+    char scan_mode[4];          // Modo de escaneo del archivo ancla (ej. "M3", "M6")
 } ChannelSet;
 
 /**
@@ -63,5 +64,16 @@ int find_channel_filenames(const char *directory, ChannelSet *set, bool is_l2_pr
  * @return 0 si se extrajo correctamente, -1 si hubo error
  */
 int find_id_from_name(const char *filename, char *id_out, size_t id_size);
+
+/**
+ * @brief Extrae el modo de escaneo de un nombre de archivo GOES.
+ * Ejemplo: "OR_ABI-L2-CMIPC-M3C13_G16_..." -> "M3"
+ *
+ * @param filename Nombre del archivo
+ * @param mode_out Buffer de salida (debe tener al menos 4 bytes)
+ * @param mode_size Tamaño del buffer
+ * @return 0 si se extrajo correctamente, -1 si no se encontró
+ */
+int find_scan_mode_from_name(const char *filename, char *mode_out, size_t mode_size);
 
 #endif /* HPSATVIEWS_CHANNELSET_H_ */

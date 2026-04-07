@@ -137,6 +137,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             free(input_dup); channelset_destroy(cset); goto cleanup;
         }
         strcpy(cset->id_signature, id_signature);
+        find_scan_mode_from_name(basename_input, cset->scan_mode, sizeof(cset->scan_mode));
         free(input_dup);
         
         // Buscar archivos

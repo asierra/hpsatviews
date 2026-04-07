@@ -6,6 +6,7 @@
  */
 #include "channelset.h"
 #include "logger.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,6 +32,7 @@ ChannelSet* channelset_create(const char **channel_names, int count) {
     
     set->count = count;
     set->id_signature[0] = '\0';
+    set->scan_mode[0] = '\0';
     
     // Copiar nombres de canales
     for (int i = 0; i < count; i++) {
@@ -57,6 +59,23 @@ void channelset_destroy(ChannelSet *set) {
     }
     
     free(set);
+}
+
+int find_scan_mode_from_name(const char *filename, char *mode_out, size_t mode_size) {
+    if (!filename || !mode_out || mode_size < 3) return -1;
+    // Buscar patrón "-M[dígito]C" en el nombre (ej. "-M3C13_" o "-M6C01_")
+    const char *p = filename;
+    while ((p = strchr(p, 'M')) != NULL) {
+        if (p > filename && *(p - 1) == '-' &&
+            isdigit((unsigned char)*(p + 1)) && *(p + 2) == 'C') {
+            mode_out[0] = 'M';
+            mode_out[1] = *(p + 1);
+            mode_out[2] = '\0';
+            return 0;
+        }
+        p++;
+    }
+    return -1;
 }
 
 int find_id_from_name(const char *filename, char *id_out, size_t id_size) {
@@ -121,9 +140,10 @@ int find_channel_filenames(const char *directory, ChannelSet *set, bool is_l2_pr
         
         // Buscar qué canal es este archivo
         for (int i = 0; i < set->count; i++) {
-            // Construir patrón: M6C01, M6C13, etc.
+            // Construir patrón: M3C01_, M6C13_, etc. usando el modo del archivo ancla
             char pattern[16];
-            snprintf(pattern, sizeof(pattern), "M6%s_", set->channels[i].name);
+            const char *mode = (set->scan_mode[0] != '\0') ? set->scan_mode : "M6";
+            snprintf(pattern, sizeof(pattern), "%s%s_", mode, set->channels[i].name);
             
             if (strstr(entry->d_name, pattern) != NULL) {
                 // Construir ruta completa

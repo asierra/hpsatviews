@@ -376,6 +376,8 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
         return false;
     }
     strcpy(ctx->channel_set->id_signature, ctx->id_signature);
+    find_scan_mode_from_name(basename_input, ctx->channel_set->scan_mode,
+                             sizeof(ctx->channel_set->scan_mode));
     free(input_dup_id);
 
     // 3. Buscar archivos de canales
