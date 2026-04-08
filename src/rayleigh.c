@@ -210,6 +210,8 @@ void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lam
     
     LOG_DEBUG("Rayleigh analítico: Lambda=%.3f um, Tau=%.4f", lambda_um, tau_r);
 
+    double start_time = omp_get_wtime();
+    
     size_t night_pixels = 0;
     size_t valid_pixels = 0;
     size_t clamped_pixels = 0;
@@ -270,9 +272,12 @@ void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lam
         band->data_in[i] = corrected;
     }
 
+    double end_time = omp_get_wtime();
+    LOG_TIMING(end_time - start_time, "Rayleigh analítico (λ=%.3fμm, %zu px)", lambda_um, valid_pixels);
+    
     if (valid_pixels > 0) {
-        LOG_DEBUG("Rayleigh analítico: %zu px, media %.4f -> %.4f, clamped %.1f%%",
-            valid_pixels, sum_orig/valid_pixels, sum_corr/valid_pixels, 
+        LOG_DEBUG("  media %.4f -> %.4f, clamped %.1f%%",
+            sum_orig/valid_pixels, sum_corr/valid_pixels, 
             100.0 * (double)clamped_pixels / valid_pixels);
     }
 }
@@ -584,7 +589,7 @@ void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t 
     }
 
     double end_time = omp_get_wtime();
-    LOG_INFO("Rayleigh LUT C%02d: %zu px en %.3fs", channel, valid_pixels, end_time - start_time);
+    LOG_TIMING(end_time - start_time, "Rayleigh LUT C%02d (%zu px)", channel, valid_pixels);
     LOG_DEBUG("  noche=%zu clamped=%zu media=%.4f->%.4f corr_max=%.4f",
              night_pixels, negative_pixels,
              valid_pixels > 0 ? sum_original/valid_pixels : 0.0,
