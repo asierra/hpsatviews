@@ -61,6 +61,12 @@ static char* expand_filename_pattern(const char* pattern, const char* input_file
         }
     }
 
+    const char* sector = "";
+    if      (strstr(input_filename, "RadM1") || strstr(input_filename, "CMIPM1")) sector = "m1";
+    else if (strstr(input_filename, "RadM2") || strstr(input_filename, "CMIPM2")) sector = "m2";
+    else if (strstr(input_filename, "RadC-") || strstr(input_filename, "CMIPC-")) sector = "conus";
+    else if (strstr(input_filename, "RadF-") || strstr(input_filename, "CMIPF-")) sector = "fd";
+
     char satellite[4] = "GXX";
     const char* sat_ptr = strstr(input_filename, "_G");
     if (sat_ptr) {
@@ -98,7 +104,8 @@ static char* expand_filename_pattern(const char* pattern, const char* input_file
     struct { const char* key; const char* val; } replacements[] = {
         {"{YYYY}", s_year}, {"{YY}", s_yy}, {"{MM}", s_month}, {"{DD}", s_day},
         {"{hh}", s_hour},   {"{mm}", s_min}, {"{ss}", s_sec},  {"{TS}", s_timestamp},
-        {"{JJJ}", s_jday},  {"{CH}", channel}, {"{SAT}", satellite}, {NULL, NULL}
+        {"{JJJ}", s_jday},  {"{CH}", channel}, {"{SAT}", satellite}, {"{SECTOR}", sector},
+        {NULL, NULL}
     };
     for (int i = 0; replacements[i].key != NULL; i++) {
         next = str_replace(current, replacements[i].key, replacements[i].val);

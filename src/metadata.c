@@ -40,6 +40,7 @@ struct MetadataContext {
     char version[16];
     char command[32];
     const char *satellite;
+    const char *sector;
     char time_iso[32];
     time_t timestamp;
     
@@ -62,6 +63,14 @@ static const char *SAT_NAMES[] = {
     [SAT_GOES17]  = "G17",
     [SAT_GOES18]  = "G18",
     [SAT_GOES19]  = "G19"
+};
+
+static const char *SECTOR_NAMES[] = {
+    [SECTOR_UNKNOWN] = "",
+    [SECTOR_FD]      = "fd",
+    [SECTOR_CONUS]   = "conus",
+    [SECTOR_M1]      = "m1",
+    [SECTOR_M2]      = "m2",
 };
 
 static const char* get_sat_name(SatelliteID id) {
@@ -98,7 +107,12 @@ void metadata_from_nc(MetadataContext *ctx, const DataNC *nc) {
 	ctx->satellite = get_sat_name(nc->sat_id);
 	LOG_DEBUG("Satélite ID %d nombre %s", nc->sat_id, ctx->satellite);
 
-    // 3. Agregar información del canal
+    // 3. Sector
+    if (nc->sector_id >= SECTOR_UNKNOWN && nc->sector_id <= SECTOR_M2) {
+        ctx->sector = SECTOR_NAMES[nc->sector_id];
+    }
+
+    // 4. Agregar información del canal
     if (ctx->channel_count < MAX_CHANNELS && nc->varname) {
         ChannelInfo *ch = &ctx->channels[ctx->channel_count];
         
@@ -272,13 +286,16 @@ char* metadata_build_filename(const MetadataContext *ctx, const char *extension)
     if (!filename) return NULL;
     
     // 1. Satélite
-    const char *sat = ctx->satellite[0] ? ctx->satellite : "GXX";
-    
-    // 2. Timestamp (formato juliano)
+    const char *sat = ctx->satellite && ctx->satellite[0] ? ctx->satellite : "GXX";
+
+    // 2. Sector (opcional, omitido si desconocido)
+    const char *sector = (ctx->sector && ctx->sector[0]) ? ctx->sector : NULL;
+
+    // 3. Timestamp (formato juliano)
     char instant[20];
     format_timestamp_julian(ctx->timestamp, instant, sizeof(instant));
-    
-    // 3. Tipo de producto (basado en command + mode para rgb)
+
+    // 4. Tipo de producto (basado en command + mode para rgb)
     char type[64] = "output";
     if (ctx->command[0]) {
         if (strcmp(ctx->command, "gray") == 0) {
@@ -318,21 +335,28 @@ char* metadata_build_filename(const MetadataContext *ctx, const char *extension)
     // 5. Operaciones aplicadas
     char ops[128] = "";
     bool has_ops = build_ops_string(ctx, ops, sizeof(ops));
-    
-    // 6. Construir nombre final
-    //    Formato: hpsv_<SAT>_<INSTANT>_<TIPO>[_<BANDAS>][_<OPS>].<ext>
+
+    // 6. Construir prefijo sat[_sector]
+    char sat_prefix[32];
+    if (sector)
+        snprintf(sat_prefix, sizeof(sat_prefix), "%s_%s", sat, sector);
+    else
+        snprintf(sat_prefix, sizeof(sat_prefix), "%s", sat);
+
+    // 7. Construir nombre final
+    //    Formato: hpsv_<SAT>[_<SECTOR>]_<INSTANT>_<TIPO>[_<BANDAS>][_<OPS>].<ext>
     if (bands[0] && has_ops) {
         snprintf(filename, 512, "hpsv_%s_%s_%s_%s_%s%s",
-                 sat, instant, type, bands, ops, extension);
+                 sat_prefix, instant, type, bands, ops, extension);
     } else if (bands[0]) {
         snprintf(filename, 512, "hpsv_%s_%s_%s_%s%s",
-                 sat, instant, type, bands, extension);
+                 sat_prefix, instant, type, bands, extension);
     } else if (has_ops) {
         snprintf(filename, 512, "hpsv_%s_%s_%s_%s%s",
-                 sat, instant, type, ops, extension);
+                 sat_prefix, instant, type, ops, extension);
     } else {
         snprintf(filename, 512, "hpsv_%s_%s_%s%s",
-                 sat, instant, type, extension);
+                 sat_prefix, instant, type, extension);
     }
     
     return filename;
@@ -347,6 +371,7 @@ int metadata_save_json(MetadataContext *ctx, const char *filename) {
     json_write(w, "version", "1.0");  // TODO: usar HPSV_VERSION_STRING
     if (ctx->command[0]) json_write(w, "command", ctx->command);
     if (ctx->satellite) json_write(w, "satellite", ctx->satellite);
+    if (ctx->sector && ctx->sector[0]) json_write(w, "sector", ctx->sector);
     if (ctx->time_iso[0]) json_write(w, "timestamp", ctx->time_iso);
 
     // Campos para mapdrawer (CRS y Bounds en raíz)

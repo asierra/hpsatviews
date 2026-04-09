@@ -49,6 +49,14 @@ typedef enum {
 } SatelliteID;
 
 typedef enum {
+    SECTOR_UNKNOWN = 0,
+    SECTOR_FD,    // Full Disk
+    SECTOR_CONUS, // CONUS
+    SECTOR_M1,    // Mesoscale 1
+    SECTOR_M2,    // Mesoscale 2
+} SectorID;
+
+typedef enum {
     LEVEL_UNKNOWN = 0,
     LEVEL_L1b,
     LEVEL_L2
@@ -66,6 +74,7 @@ typedef struct {
   DataB bdata; // Used if the data is byte
   bool is_float; // True if fdata is valid, false if bdata is valid
   SatelliteID sat_id;
+  SectorID sector_id;
   Level level;
   const char* varname;
   time_t timestamp;

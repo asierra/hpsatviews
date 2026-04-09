@@ -44,6 +44,16 @@ SatelliteID detect_satellite_from_filename(const char* filename) {
     return SAT_UNKNOWN;
 }
 
+SectorID detect_sector_from_filename(const char *filename) {
+    if (!filename) return SECTOR_UNKNOWN;
+    /* Mesoscale checked first: RadM1/RadM2 must not match RadC/RadF partially */
+    if (strstr(filename, "RadM1") || strstr(filename, "CMIPM1")) return SECTOR_M1;
+    if (strstr(filename, "RadM2") || strstr(filename, "CMIPM2")) return SECTOR_M2;
+    if (strstr(filename, "RadC-") || strstr(filename, "CMIPC-")) return SECTOR_CONUS;
+    if (strstr(filename, "RadF-") || strstr(filename, "CMIPF-")) return SECTOR_FD;
+    return SECTOR_UNKNOWN;
+}
+
 const char *detect_variable_from_filename(const char *filename) {
     if (filename == NULL)
         return NULL;
@@ -108,7 +118,8 @@ int load_nc_sf(const char *filename, DataNC *datanc) {
     bool is_l1b = (varname == VAR_NAME_RAD);
     
 	datanc->sat_id = detect_satellite_from_filename(filename);
-	
+	datanc->sector_id = detect_sector_from_filename(filename);
+
     int xid;
     if ((retval = nc_inq_dimid(ncid, "x", &xid)))
         ERR(retval);

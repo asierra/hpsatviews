@@ -16,6 +16,44 @@
 // --- Funciones Auxiliares Privadas ---
 
 /**
+ * Escribe metadatos del satélite/sector/banda en el dataset GDAL.
+ * Se almacenan como items XML dentro del TIFF (dominio por defecto).
+ */
+static void set_gdal_metadata(GDALDatasetH ds, const DataNC *meta) {
+    if (!ds || !meta) return;
+
+    static const char *sat_names[] = {
+        [SAT_UNKNOWN] = "unknown",
+        [SAT_GOES16]  = "G16",
+        [SAT_GOES17]  = "G17",
+        [SAT_GOES18]  = "G18",
+        [SAT_GOES19]  = "G19",
+    };
+    static const char *sector_names[] = {
+        [SECTOR_UNKNOWN] = "",
+        [SECTOR_FD]      = "fd",
+        [SECTOR_CONUS]   = "conus",
+        [SECTOR_M1]      = "m1",
+        [SECTOR_M2]      = "m2",
+    };
+
+    GDALSetMetadataItem(ds, "tool", "hpsatviews", "");
+
+    if (meta->sat_id >= SAT_UNKNOWN && meta->sat_id <= SAT_GOES19)
+        GDALSetMetadataItem(ds, "satellite", sat_names[meta->sat_id], "");
+
+    if (meta->sector_id >= SECTOR_UNKNOWN && meta->sector_id <= SECTOR_M2 &&
+            sector_names[meta->sector_id][0])
+        GDALSetMetadataItem(ds, "sector", sector_names[meta->sector_id], "");
+
+    if (meta->band_id > 0 && meta->band_id <= 16) {
+        char band_str[8];
+        snprintf(band_str, sizeof(band_str), "C%02d", meta->band_id);
+        GDALSetMetadataItem(ds, "band", band_str, "");
+    }
+}
+
+/**
  * Genera el string WKT usando PROJ.4 para máxima compatibilidad.
  * Reemplaza a OSRSetGeostationary para evitar errores de compilación.
  */
@@ -106,6 +144,9 @@ static GDALDatasetH create_mem_dataset(int width,
         gt[3] = gt[3] + (offset_y * gt[5]);
 
         GDALSetGeoTransform(ds, gt);
+
+        // 3. Metadatos internos (satélite, sector, banda)
+        set_gdal_metadata(ds, meta);
     }
 
     return ds;
