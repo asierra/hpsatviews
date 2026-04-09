@@ -91,7 +91,14 @@ Nombre del archivo de salida. Si se omite, se genera un nombre
 determinista automáticamente a partir de los metadatos   de la escena
 y las operaciones aplicadas.
 Se soportan marcadores como
-{YYYY}, {JJJ}, {hh}, {mm}, {TS}, {CH}, {SAT}.
+{YYYY}, {YY}, {MM}, {DD}, {hh}, {mm}, {ss}, {JJJ}, {TS}, {CH}, {SAT}, {SECTOR}.
+.br
+{SECTOR} se expande al sector de escaneo derivado del nombre del archivo:
+.BR fd ,
+.BR conus ,
+.BR m1
+o
+.BR m2 .
 
 .TP
 .B "-t, --geotiff"
@@ -190,7 +197,7 @@ y las operaciones aplicadas.
 
 Formato:
 .EX
-hpsv_<SAT>_<YYYYJJJ>_<hhmm>_<MODO>[_<OPS>].<ext>
+hpsv_<SAT>[_<SECTOR>]_<YYYYJJJ>_<hhmm>_<MODO>[_<OPS>].<ext>
 .EE
 
 Ejemplo:

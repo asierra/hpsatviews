@@ -86,7 +86,14 @@ The following options are available for all commands.
 Output filename. If omitted, a deterministic name is generated automatically
 from scene metadata and applied operations.
 Supports template markers such as
-{YYYY}, {JJJ}, {hh}, {mm}, {CH}, {SAT}.
+{YYYY}, {YY}, {MM}, {DD}, {hh}, {mm}, {ss}, {JJJ}, {TS}, {CH}, {SAT}, {SECTOR}.
+.br
+{SECTOR} expands to the scan sector derived from the filename:
+.BR fd ,
+.BR conus ,
+.BR m1 ,
+or
+.BR m2 .
 
 .TP
 .B "-t, --geotiff"
@@ -176,7 +183,7 @@ name based on the scene instant, satellite, processing mode, and operations.
 
 Format:
 .EX
-hpsv_<SAT>_<YYYYJJJ>_<hhmm>_<MODE>[_<OPS>].<ext>
+hpsv_<SAT>[_<SECTOR>]_<YYYYJJJ>_<hhmm>_<MODE>[_<OPS>].<ext>
 .EE
 
 Example:

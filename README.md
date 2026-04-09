@@ -159,13 +159,14 @@ Genera una vista en escala de grises del canal C13.
   * `{TS}` Instante (timestamp) YYYYJJJhhmm
   * `{CH}` canal o banda (C01, C02, etc.)
   * `{SAT}` satélite (por ejemplo: `G16`, `G19`)
+  * `{SECTOR}` sector de escaneo: `fd`, `conus`, `m1` o `m2`
 
   Ejemplo:
 
   ```bash
-  hpsv gray -o "ir_{SAT}_{CH}_{YYYY}{MM}{DD}.png" \
-        OR_ABI-L1b-RadF-M6C13_G19_s20253551801183.nc
-  # → ir_G19_C15_20251221.png
+  hpsv gray -o "ir_{SAT}_{SECTOR}_{CH}_{YYYY}{MM}{DD}.png" \\
+        OR_ABI-L1b-RadC-M6C13_G19_s20253551801183.nc
+  # → ir_G19_conus_C13_20251221.png
   ``` 
 
 * `-G, --geographics`
@@ -309,13 +310,13 @@ Para modo `custom` ver **Álgebra de bandas**.
 
 Si no se especifica la opción `-o` o `--out`, se genera un nombre determinista basado en los metadatos del archivo "ancla", las bandas y las operaciones aplicadas:
 
-**Formato:** `hpsv_<SAT>_<YYYYJJJ>_<hhmm>_<COMMAND>_<CH>[_<OPS>].<ext>`
+**Formato:** `hpsv_<SAT>[_<SECTOR>]_<YYYYJJJ>_<hhmm>_<COMMAND>_<CH>[_<OPS>].<ext>`
 
 Ejemplo:
   ```bash
-  hpsv gray OR_ABI-L1b-RadF-M6C13_G16_s20242190300217.nc
-  # → hpsv_G16_2024219_0300_gray_C13.png
-  # → hpsv_G16_2024219_0300_gray_C13.json (metadatos)
+  hpsv gray OR_ABI-L1b-RadC-M6C13_G16_s20242190300217.nc
+  # → hpsv_G16_conus_2024219_0300_gray_C13.png
+  # → hpsv_G16_conus_2024219_0300_gray_C13.json (metadatos)
   ```
   
 ### 4.9 Álgebra de bandas y composiciones personalizadas
