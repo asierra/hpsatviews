@@ -182,7 +182,11 @@ static int finalize_cog(GDALDatasetH mem_ds, const char* filename) {
         return -1;
     }
 
+    int w = GDALGetRasterXSize(cog_ds);
+    int h = GDALGetRasterYSize(cog_ds);
+    int b = GDALGetRasterCount(cog_ds);
     GDALClose(cog_ds);
+    LOG_INFO("GeoTIFF guardado: %s (%dx%d, %d banda%s)", filename, w, h, b, b == 1 ? "" : "s");
     return 0;
 }
 
