@@ -457,10 +457,11 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     
     // Guardar imagen
     if (is_geotiff) {
-        DataNC meta_out = {0};
+        DataNC meta_out = c01;  // Preserva sat_id, sector_id, band_id, timestamp, etc.
         
         if (cfg->do_reprojection) {
             meta_out.proj_code = PROJ_LATLON;
+            meta_out.proj_info.valid = false;  // No aplica para lat/lon
             meta_out.geotransform[0] = final_lon_min;
             meta_out.geotransform[1] = (final_lon_max - final_lon_min) / (double)final_image.width;
             meta_out.geotransform[2] = 0.0;

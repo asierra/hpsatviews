@@ -663,9 +663,10 @@ static bool write_output(RgbContext *ctx) {
 
     if (is_geotiff) {
         LOG_DEBUG("Formato de salida: GeoTIFF");
-        DataNC meta_out = {0};
+        DataNC meta_out = ctx->channels[ctx->ref_channel_idx];  // Preserva sat_id, sector_id, band_id, timestamp, etc.
         if (ctx->opts.do_reprojection) {
             meta_out.proj_code = PROJ_LATLON;
+            meta_out.proj_info.valid = false;  // No aplica para lat/lon
             meta_out.geotransform[0] = ctx->final_lon_min;
             meta_out.geotransform[1] = (ctx->final_lon_max - ctx->final_lon_min) / (double)ctx->final_image.width;
             meta_out.geotransform[2] = 0.0;

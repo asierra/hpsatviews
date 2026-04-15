@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <time.h>
 
 // --- Funciones Auxiliares Privadas ---
 
@@ -50,6 +51,20 @@ static void set_gdal_metadata(GDALDatasetH ds, const DataNC *meta) {
         char band_str[8];
         snprintf(band_str, sizeof(band_str), "C%02d", meta->band_id);
         GDALSetMetadataItem(ds, "band", band_str, "");
+    }
+
+    if (meta->timestamp > 0) {
+        struct tm *tm_info = gmtime(&meta->timestamp);
+        if (tm_info) {
+            char ts_iso[32];
+            strftime(ts_iso, sizeof(ts_iso), "%Y-%m-%dT%H:%M:%SZ", tm_info);
+            GDALSetMetadataItem(ds, "scan_time", ts_iso, "");
+
+            // TIFF standard datetime tag: "YYYY:MM:DD HH:MM:SS"
+            char ts_tiff[20];
+            strftime(ts_tiff, sizeof(ts_tiff), "%Y:%m:%d %H:%M:%S", tm_info);
+            GDALSetMetadataItem(ds, "TIFFTAG_DATETIME", ts_tiff, "");
+        }
     }
 }
 
