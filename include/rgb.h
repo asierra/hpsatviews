@@ -30,6 +30,7 @@ typedef struct {
     
     // Reproyección y recorte
     bool do_reprojection;          // --geographics
+    bool save_both;                // --both: guardar fixed-grid y reproyectado
     bool has_clip;                 // --clip presente
     float clip_coords[4];          // [lon_min, lat_max, lon_max, lat_min]
     

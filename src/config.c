@@ -217,6 +217,35 @@ static void config_parse_clahe(ArgParser* parser, ProcessConfig* cfg) {
  * @return String dinámico con el path de salida (NULL si no se especificó)
  *         El caller debe liberar la memoria si no es NULL
  */
+/**
+ * Inserta el sufijo "_geo" antes de la extensión del path dado.
+ * Ejemplo: "salida.png" -> "salida_geo.png", "img.tif" -> "img_geo.tif".
+ * El resultado es dinámico (malloc'd) y debe ser liberado por el llamador.
+ */
+char* insert_geo_suffix(const char *path) {
+    if (!path) return NULL;
+    const char *dot = strrchr(path, '.');
+    if (!dot) {
+        // Sin extensión: simplemente agregar "_geo"
+        size_t len = strlen(path);
+        char *result = malloc(len + 5); // "_geo\0"
+        if (result) {
+            memcpy(result, path, len);
+            memcpy(result + len, "_geo", 5);
+        }
+        return result;
+    }
+    size_t base_len = (size_t)(dot - path);
+    size_t ext_len  = strlen(dot);
+    char *result = malloc(base_len + 4 + ext_len + 1); // "_geo" + ext + NUL
+    if (result) {
+        memcpy(result, path, base_len);
+        memcpy(result + base_len, "_geo", 4);
+        memcpy(result + base_len + 4, dot, ext_len + 1);
+    }
+    return result;
+}
+
 static char* config_parse_output(ArgParser* parser, const char* input_file) {
     if (!ap_found(parser, "out")) {
         return NULL;
@@ -343,7 +372,8 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
     
     // --- Geometría ---
     config_parse_clip(parser, cfg);
-    cfg->do_reprojection = ap_found(parser, "geographics");
+    cfg->save_both      = ap_found(parser, "both");
+    cfg->do_reprojection = ap_found(parser, "geographics") || cfg->save_both;
     
     // --- Salida ---
     cfg->force_geotiff = ap_found(parser, "geotiff");

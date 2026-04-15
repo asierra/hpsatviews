@@ -48,6 +48,7 @@ typedef struct {
     bool has_clip;
     float clip_coords[4];       // [lon_min, lat_max, lon_max, lat_min]
     bool do_reprojection;
+    bool save_both;             // -B: guardar fixed-grid y reproyectado (implica do_reprojection)
     
     // --- Salida ---
     bool force_geotiff;
@@ -85,5 +86,11 @@ void config_print_debug(const ProcessConfig *cfg);
  * Solo libera campos alojados dinámicamente (output_path_override).
  */
 void config_destroy(ProcessConfig *cfg);
+
+/**
+ * Inserta el sufijo "_geo" antes de la extensión de un path.
+ * El resultado es dinámico (malloc'd) y debe ser liberado por el llamador.
+ */
+char* insert_geo_suffix(const char *path);
 
 #endif // HPSATVIEWS_CONFIG_H_

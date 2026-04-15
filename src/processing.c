@@ -71,7 +71,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     metadata_add(meta, "apply_clahe", cfg->apply_clahe);
     metadata_add(meta, "apply_histogram", cfg->apply_histogram);
     metadata_add(meta, "invert_values", cfg->invert_values);
-    metadata_add(meta, "geographics", cfg->do_reprojection);
+    metadata_add(meta, "geographics", cfg->do_reprojection && !cfg->save_both);
     metadata_add(meta, "scale", cfg->scale);
     
     // --- Modo pseudocolor: cargar paleta ---
@@ -288,11 +288,75 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         LOG_ERROR("Fallo al crear imagen");
         goto cleanup;
     }
-    
+
+    // -B: aplicar enhancements, escalar y guardar fixed-grid antes de reproyectar
+    if (cfg->save_both) {
+        if (!is_pseudocolor) {
+            if (cfg->apply_histogram) image_apply_histogram(final_image);
+            if (cfg->apply_clahe)
+                image_apply_clahe(final_image, cfg->clahe_tiles_x, cfg->clahe_tiles_y, cfg->clahe_clip_limit);
+        }
+        if (cfg->scale < 0) {
+            temp_image = image_downsample_boxfilter(&final_image, -cfg->scale);
+            image_destroy(&final_image); final_image = temp_image;
+        } else if (cfg->scale > 1) {
+            temp_image = image_upsample_bilinear(&final_image, cfg->scale);
+            image_destroy(&final_image); final_image = temp_image;
+        }
+        LOG_INFO("Guardando fixed-grid: %s", outfn);
+        if (is_geotiff) {
+            DataNC meta_fg = c01;
+            if (cfg->scale != 1) {
+                double sf = (cfg->scale < 0) ? -(double)cfg->scale : (double)cfg->scale;
+                if (cfg->scale > 1) {
+                    meta_fg.geotransform[1] /= sf;
+                    meta_fg.geotransform[5] /= sf;
+                } else {
+                    meta_fg.geotransform[1] *= sf;
+                    meta_fg.geotransform[5] *= sf;
+                }
+            }
+            if (is_pseudocolor && color_array) {
+                if (cfg->use_alpha) {
+                    temp_image = image_expand_palette(&final_image, color_array);
+                    write_geotiff_rgb(outfn, &temp_image, &meta_fg, 0, 0);
+                    image_destroy(&temp_image);
+                } else {
+                    write_geotiff_indexed(outfn, &final_image, color_array, &meta_fg, 0, 0);
+                }
+            } else {
+                write_geotiff_gray(outfn, &final_image, &meta_fg, 0, 0);
+            }
+        } else {
+            if (is_pseudocolor && color_array)
+                writer_save_png_palette(outfn, &final_image, color_array);
+            else
+                writer_save_png(outfn, &final_image);
+        }
+        // Actualizar outfn al nombre del archivo reproyectado
+        if (generated_filename) {
+            free(generated_filename);
+            generated_filename = NULL;
+        }
+        metadata_add(meta, "geographics", true);
+        if (cfg->output_path_override) {
+            generated_filename = insert_geo_suffix(cfg->output_path_override);
+        } else {
+            const char* ext2 = (cfg->force_geotiff) ? ".tif" : ".png";
+            generated_filename = metadata_build_filename(meta, ext2);
+        }
+        outfn = generated_filename;
+        if (!outfn) {
+            LOG_ERROR("No se pudo generar nombre de archivo reproyectado");
+            goto cleanup;
+        }
+        LOG_INFO("Guardando reproyectado: %s", outfn);
+    }
+
     // Reproyección o recorte
     float final_lon_min = 0, final_lon_max = 0, final_lat_min = 0, final_lat_max = 0;
     unsigned crop_x_start = 0, crop_y_start = 0;
-    
+
     if (cfg->do_reprojection) {
         if (!nav_loaded) {
             LOG_ERROR("Navegación requerida para reproyección");
@@ -376,23 +440,25 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         }
     }
     
-    // Post-procesamiento (solo para gray)
-    if (!is_pseudocolor) {
+    // Post-procesamiento (solo para gray; save_both: ya aplicado antes de reproyectar)
+    if (!is_pseudocolor && !cfg->save_both) {
         if (cfg->apply_histogram) image_apply_histogram(final_image);
         if (cfg->apply_clahe) {
             image_apply_clahe(final_image, cfg->clahe_tiles_x, cfg->clahe_tiles_y, cfg->clahe_clip_limit);
         }
     }
-    
-    // Remuestreo
-    if (cfg->scale < 0) {
-        temp_image = image_downsample_boxfilter(&final_image, -cfg->scale);
-        image_destroy(&final_image);
-        final_image = temp_image;
-    } else if (cfg->scale > 1) {
-        temp_image = image_upsample_bilinear(&final_image, cfg->scale);
-        image_destroy(&final_image);
-        final_image = temp_image;
+
+    // Remuestreo (save_both: ya aplicado antes de reproyectar)
+    if (!cfg->save_both) {
+        if (cfg->scale < 0) {
+            temp_image = image_downsample_boxfilter(&final_image, -cfg->scale);
+            image_destroy(&final_image);
+            final_image = temp_image;
+        } else if (cfg->scale > 1) {
+            temp_image = image_upsample_bilinear(&final_image, cfg->scale);
+            image_destroy(&final_image);
+            final_image = temp_image;
+        }
     }
     
     // Guardar imagen

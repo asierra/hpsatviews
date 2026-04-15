@@ -5,7 +5,7 @@
  * General help
  * ========================= */
 static const char *HPSATVIEWS_HELP =
-"Usage: hpsatviews <command> <anchor> [options]\n"
+"Usage: hpsv <command> <anchor> [options]\n"
 "\n"
 "Commands:\n"
 "  rgb                Multichannel composites (True Color, AirMass, etc.).\n"
@@ -17,6 +17,8 @@ static const char *HPSATVIEWS_HELP =
 "  -t, --geotiff       GeoTIFF output (default: PNG).\n"
 "  -c, --clip <val>    Crop by key name or coordinates.\n"
 "  -G, --geographics   Reprojection to Lat/Lon.\n"
+"  -B, --both          Save both the native and the reprojected image.\n"
+"                      Appends '_geo' to the reprojected file name.\n"
 "  -s, --scale <n>     Scale factor.\n"
 "\n"
 "Patterns for --out and Automatic Naming:\n"
@@ -28,7 +30,7 @@ static const char *HPSATVIEWS_HELP =
 "    {OPS}  Operations performed (-h, --clahe, -r, s)\n"
 "\n"
 "Example:\n"
-"  hpsatviews pseudo file.nc -o \"{SAT}_{CLIP}.png\" -c mexico\n"
+"  hpsv pseudo file.nc -o \"{SAT}_{CLIP}.png\" -c mexico\n"
 "  -> G16_mexico.png\n"
 "\n"
 "Band Algebra Options:\n"
@@ -38,14 +40,14 @@ static const char *HPSATVIEWS_HELP =
 "  --minmax <m>    Range [min,max] to adjust the palette.\n"
 "                  If omitted, defaults to 0,255.\n"
 "\n"
-"Use 'hpsatviews help <command>' for command-specific help.\n";
+"Use 'hpsv help <command>' for command-specific help.\n";
 
 
 /* =========================
  * Command help: rgb
  * ========================= */
 static const char *HPSATVIEWS_HELP_RGB =
-"Usage: hpsatviews rgb <anchor> [options]\n"
+"Usage: hpsv rgb <anchor> [options]\n"
 "\n"
 "Modes (--mode):\n"
 "  daynite (def), truecolor, night, airmass, ash, so2, custom.\n"
@@ -66,7 +68,7 @@ static const char *HPSATVIEWS_HELP_RGB =
  * Command help: pseudocolor
  * ========================= */
 static const char *HPSATVIEWS_HELP_PSEUDOCOLOR =
-"Usage: hpsatviews pseudocolor <anchor> [options]\n"
+"Usage: hpsv pseudocolor <anchor> [options]\n"
 "\n"
 "Generates an image applying a color palette (CPT).\n"
 "\n"
@@ -79,7 +81,7 @@ static const char *HPSATVIEWS_HELP_PSEUDOCOLOR =
  * Command help: gray
  * ========================= */
 static const char *HPSATVIEWS_HELP_GRAY =
-"Usage: hpsatviews gray <anchor> [options]\n"
+"Usage: hpsv gray <anchor> [options]\n"
 "\n"
 "Generates a grayscale image.\n"
 "\n"

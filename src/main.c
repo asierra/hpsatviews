@@ -136,6 +136,7 @@ static void add_common_opts(ArgParser *cmd_parser) {
     ap_add_int_opt(cmd_parser, "scale s", 1);
     ap_add_flag(cmd_parser, "alpha a");
     ap_add_flag(cmd_parser, "geographics G");
+    ap_add_flag(cmd_parser, "both B");
     ap_add_flag(cmd_parser, "full-res f");
     ap_add_flag(cmd_parser, "json j");
     ap_add_flag(cmd_parser, "verbose v");

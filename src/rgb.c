@@ -727,6 +727,7 @@ static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
 
     // Opciones booleanas
     ctx->opts.do_reprojection = cfg->do_reprojection;
+    ctx->opts.save_both = cfg->save_both;
     ctx->opts.apply_histogram = cfg->apply_histogram;
     ctx->opts.force_geotiff = cfg->force_geotiff;
     ctx->opts.apply_rayleigh = cfg->apply_rayleigh;
@@ -792,7 +793,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     metadata_add(meta, "apply_clahe", ctx.opts.apply_clahe);
     metadata_add(meta, "apply_rayleigh", ctx.opts.apply_rayleigh);
     metadata_add(meta, "apply_histogram", ctx.opts.apply_histogram);
-    metadata_add(meta, "geographics", ctx.opts.do_reprojection);
+    metadata_add(meta, "geographics", ctx.opts.do_reprojection && !ctx.opts.save_both);
     if (ctx.opts.has_clip)
         metadata_set_clip(meta, true);
 
@@ -891,6 +892,49 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         goto cleanup;
     }
 
+    // -B: escalar y guardar fixed-grid antes de reproyectar
+    if (ctx.opts.save_both) {
+        if (!apply_scaling(&ctx)) {
+            LOG_ERROR("Falla en escalado (fixed-grid)");
+            goto cleanup;
+        }
+        if (ctx.opts.output_filename == NULL) {
+            const char *ext_fg = ctx.opts.force_geotiff ? ".tif" : ".png";
+            ctx.opts.output_filename = metadata_build_filename(meta, ext_fg);
+            ctx.opts.output_generated = true;
+            if (ctx.opts.output_filename == NULL) {
+                LOG_ERROR("Falla al generar nombre de archivo fixed-grid");
+                goto cleanup;
+            }
+        }
+        LOG_INFO("Guardando fixed-grid: %s", ctx.opts.output_filename);
+        // Desactivar temporalmente para que write_output use la proyección nativa
+        ctx.opts.do_reprojection = false;
+        if (!write_output(&ctx)) {
+            LOG_ERROR("Falla al guardar fixed-grid");
+            goto cleanup;
+        }
+        ctx.opts.do_reprojection = true;
+        // Actualizar filename al path reproyectado (con sufijo _geo)
+        metadata_add(meta, "geographics", true);
+        char *geo_filename;
+        if (ctx.opts.output_generated) {
+            free(ctx.opts.output_filename);
+            ctx.opts.output_generated = false;
+            const char *ext_geo = ctx.opts.force_geotiff ? ".tif" : ".png";
+            geo_filename = metadata_build_filename(meta, ext_geo);
+        } else {
+            geo_filename = insert_geo_suffix(ctx.opts.output_filename);
+        }
+        ctx.opts.output_filename = geo_filename;
+        ctx.opts.output_generated = true;
+        if (ctx.opts.output_filename == NULL) {
+            LOG_ERROR("Falla al generar nombre de archivo reproyectado");
+            goto cleanup;
+        }
+        LOG_INFO("Guardando reproyectado: %s", ctx.opts.output_filename);
+    }
+
     // Reproyección
     if (ctx.opts.do_reprojection) {
         if (!ctx.has_navigation) {
@@ -984,8 +1028,8 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         }
     }
 
-    // Escalado final - DESPUÉS de reproyección
-    if (!apply_scaling(&ctx)) {
+    // Escalado final - DESPUÉS de reproyección (save_both: ya aplicado antes de reproyectar)
+    if (!ctx.opts.save_both && !apply_scaling(&ctx)) {
         LOG_ERROR("Falla en escalado final");
         goto cleanup;
     }
