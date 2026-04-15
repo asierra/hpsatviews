@@ -572,10 +572,7 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
                 double pz  = rs * csx * sny;
                 double la  = atan2(sm_maj2 * pz,
                                    sm_min2 * sqrt((H - px) * (H - px) + py * py)) * rad2deg;
-                double lon_rad = lambda_0 - atan2(py, H - px);
-                lon_rad = fmod(lon_rad + M_PI, 2.0 * M_PI);
-                if (lon_rad < 0.0) lon_rad += 2.0 * M_PI;
-                double lo = (lon_rad - M_PI) * rad2deg;
+                double lo = (lambda_0 - atan2(py, H - px)) * rad2deg;
                 navla->data_in[k] = (float)la;
                 navlo->data_in[k] = (float)lo;
                 if (la < lamin) lamin = la;

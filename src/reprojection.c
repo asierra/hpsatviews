@@ -61,6 +61,9 @@ void reprojection_find_pixel_for_coord(const DataF* navla, const DataF* navlo,
                 local_valid++;
                 float lat_diff = current_lat - target_lat;
                 float lon_diff = current_lon - target_lon;
+                // Manejar cruce del antimeridiano
+                if (lon_diff > 180.0f) lon_diff -= 360.0f;
+                else if (lon_diff < -180.0f) lon_diff += 360.0f;
                 float dist_sq = lat_diff * lat_diff + lon_diff * lon_diff;
 
                 if (dist_sq < local_min_dist_sq) {

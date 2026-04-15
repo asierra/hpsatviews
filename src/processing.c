@@ -71,7 +71,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     metadata_add(meta, "apply_clahe", cfg->apply_clahe);
     metadata_add(meta, "apply_histogram", cfg->apply_histogram);
     metadata_add(meta, "invert_values", cfg->invert_values);
-    metadata_add(meta, "geographics", cfg->do_reprojection && !cfg->save_both);
+    metadata_add(meta, "geographics", (bool)(cfg->do_reprojection && !cfg->save_both));
     metadata_add(meta, "scale", cfg->scale);
     
     // --- Modo pseudocolor: cargar paleta ---
@@ -333,18 +333,12 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             else
                 writer_save_png(outfn, &final_image);
         }
-        // Actualizar outfn al nombre del archivo reproyectado
+        // Actualizar outfn al nombre del archivo reproyectado (sufijo _geo antes de la extensión)
+        char *geo_outfn = insert_geo_suffix(outfn);
         if (generated_filename) {
             free(generated_filename);
-            generated_filename = NULL;
         }
-        metadata_add(meta, "geographics", true);
-        if (cfg->output_path_override) {
-            generated_filename = insert_geo_suffix(cfg->output_path_override);
-        } else {
-            const char* ext2 = (cfg->force_geotiff) ? ".tif" : ".png";
-            generated_filename = metadata_build_filename(meta, ext2);
-        }
+        generated_filename = geo_outfn;
         outfn = generated_filename;
         if (!outfn) {
             LOG_ERROR("No se pudo generar nombre de archivo reproyectado");
