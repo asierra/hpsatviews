@@ -420,33 +420,32 @@ void dataf_apply_gamma(DataF *data, float gamma) {
     if (fabsf(gamma - 1.0f) < 1e-6) return;
 
     float inv_gamma = 1.0f / gamma;
+    float fmin = data->fmin;
+    float range = data->fmax - data->fmin;
 
+    // Si el rango es inválido no se puede normalizar
+    if (range <= 0.0f || IS_NONDATA(fmin)) return;
+
+    // El gamma debe aplicarse sobre valores normalizados [0,1].
+    // Aplicarlo sobre valores físicos crudos (e.g. BT en Kelvin con fmin != 0)
+    // produce (val^g - fmin^g)/(fmax^g - fmin^g) en vez de ((val-fmin)/(fmax-fmin))^g.
     #pragma omp parallel for
     for (size_t i = 0; i < data->size; i++) {
         float val = data->data_in[i];
-        
-        // Ignorar NonData
-        if (val == NonData) continue;
 
-        // Protección contra valores negativos (común en correcciones atmosféricas agresivas)
-        if (val < 0.0f) {
-            data->data_in[i] = 0.0f;
-        } else {
-            // powf es la versión float de pow (más rápida)
-            data->data_in[i] = powf(val, inv_gamma);
-        }
+        // Ignorar NonData
+        if (IS_NONDATA(val)) continue;
+
+        // Normalizar a [0,1] usando fmin/fmax, luego aplicar gamma
+        float norm = (val - fmin) / range;
+        if (norm < 0.0f) norm = 0.0f;
+        if (norm > 1.0f) norm = 1.0f;
+        data->data_in[i] = powf(norm, inv_gamma);
     }
 
-    // Actualizar min/max después de la transformación
-    // Nota: Como la función es monotónica creciente, fmin y fmax 
-    // simplemente se transforman igual, asumiendo que son positivos.
-    if (data->fmin != NonData && data->fmin > 0) 
-        data->fmin = powf(data->fmin, inv_gamma);
-    else 
-        data->fmin = 0.0f;
-        
-    if (data->fmax != NonData && data->fmax > 0) 
-        data->fmax = powf(data->fmax, inv_gamma);
+    // Después de la transformación los datos están en espacio [0,1]
+    data->fmin = 0.0f;
+    data->fmax = 1.0f;
 }
 
 

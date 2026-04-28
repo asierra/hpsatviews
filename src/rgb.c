@@ -874,6 +874,10 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
             dataf_apply_gamma(&ctx.comp_g, ctx.opts.gamma);
             dataf_apply_gamma(&ctx.comp_b, ctx.opts.gamma);
             ctx.opts.gamma = 1.0f;
+            // dataf_apply_gamma normaliza a [0,1]; actualizar rangos en consecuencia
+            ctx.min_r = ctx.comp_r.fmin;  ctx.max_r = ctx.comp_r.fmax;
+            ctx.min_g = ctx.comp_g.fmin;  ctx.max_g = ctx.comp_g.fmax;
+            ctx.min_b = ctx.comp_b.fmin;  ctx.max_b = ctx.comp_b.fmax;
         }
 
         // Renderizar a imagen
