@@ -342,6 +342,14 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
         if (cfg->scale == 0) cfg->scale = 1;
     }
     
+    // --- Álgebra de Bandas (Custom Mode) ---
+    // Disponible para gray, pseudocolor y rgb
+    cfg->is_custom_mode = ap_found(parser, "expr");
+    if (cfg->is_custom_mode) {
+        cfg->custom_expr = ap_get_str_value(parser, "expr");
+        cfg->custom_minmax = ap_found(parser, "minmax") ? ap_get_str_value(parser, "minmax") : NULL;
+    }
+
     // Opciones específicas de RGB
     bool is_rgb = (cfg->command && strcmp(cfg->command, "rgb") == 0);
     if (is_rgb) {
@@ -353,14 +361,6 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
         
         // Full resolution (para productos L2 que tienen baja resolución)
         cfg->use_full_res = ap_found(parser, "full-res");
-        
-        // --- Álgebra de Bandas (Custom Mode) ---
-        cfg->is_custom_mode = ap_found(parser, "expr");
-        
-        if (cfg->is_custom_mode) {
-            cfg->custom_expr = ap_get_str_value(parser, "expr");
-            cfg->custom_minmax = ap_get_str_value(parser, "minmax");
-        }
     }
     
     // --- Pseudocolor (Paletas CPT) ---
