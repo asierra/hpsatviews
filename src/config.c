@@ -347,8 +347,8 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
     cfg->is_custom_mode = ap_found(parser, "expr");
     if (cfg->is_custom_mode) {
         cfg->custom_expr = ap_get_str_value(parser, "expr");
-        cfg->custom_minmax = ap_found(parser, "minmax") ? ap_get_str_value(parser, "minmax") : NULL;
     }
+    cfg->custom_minmax = ap_found(parser, "minmax") ? ap_get_str_value(parser, "minmax") : NULL;
 
     // Opciones específicas de RGB
     bool is_rgb = (cfg->command && strcmp(cfg->command, "rgb") == 0);
@@ -518,8 +518,8 @@ void config_print_debug(const ProcessConfig* cfg) {
     LOG_DEBUG("  is_custom_mode: %s", cfg->is_custom_mode ? "true" : "false");
     if (cfg->is_custom_mode) {
         LOG_DEBUG("    expr: %s", cfg->custom_expr ? cfg->custom_expr : "NULL");
-        LOG_DEBUG("    minmax: %s", cfg->custom_minmax ? cfg->custom_minmax : "NULL");
     }
+    LOG_DEBUG("  minmax: %s", cfg->custom_minmax ? cfg->custom_minmax : "NULL");
     
     LOG_DEBUG("--- Pseudocolor ---");
     LOG_DEBUG("  palette_file: %s", cfg->palette_file ? cfg->palette_file : "NULL");

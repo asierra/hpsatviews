@@ -203,6 +203,20 @@ Genera una vista en escala de grises.
 * `-i, --invert`
   Invierte los valores (blanco a negro).
 
+* `--minmax "<min>,<max>"`
+  Fija el rango físico de valores que se mapean al rango 0–255, sin importar
+  el mínimo/máximo real de los datos. Útil para comparar imágenes a distintas
+  horas o escenas con distinto rango dinámico.
+
+  Ejemplo: imágenes IR nocturnas comparables entre sí fijando temperatura
+  en Kelvin:
+  ```bash
+  hpsv gray -i -s -4 archivo_G19_C13.nc -o ir_0600.png --minmax "193.15,313.15"
+  hpsv gray -i -s -4 archivo_G19_C13_1200.nc -o ir_1200.png --minmax "193.15,313.15"
+  ```
+  Sin esta opción, cada imagen escala de forma independiente a su propio
+  mínimo y máximo, impidiendo comparaciones visuales directas.
+
 ### 4.5 Opciones comando *pseudocolor*
 
 Asocia un mapa de color a una vista en grises.

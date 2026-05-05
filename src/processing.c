@@ -94,6 +94,14 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         }
     }
     
+    // --- Parsear --minmax si se proporcionó (aplica a todos los modos) ---
+    if (cfg->custom_minmax) {
+        if (sscanf(cfg->custom_minmax, "%f,%f", &minmax[0], &minmax[1]) == 2) {
+            minmax_provided = true;
+            LOG_INFO("Rango de salida especificado: [%.2f, %.2f]", minmax[0], minmax[1]);
+        }
+    }
+
     // --- Modo expr (álgebra de bandas) ---
     if (expr_mode) {
         LOG_INFO("Modo álgebra de bandas: %s", cfg->custom_expr);
@@ -108,13 +116,6 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         if (num_required_channels == 0) {
             LOG_ERROR("No se encontraron bandas válidas en la expresión.");
             goto cleanup;
-        }
-        
-        if (cfg->custom_minmax) {
-            if (sscanf(cfg->custom_minmax, "%f,%f", &minmax[0], &minmax[1]) == 2) {
-                minmax_provided = true;
-                LOG_INFO("Rango de salida especificado: [%.2f, %.2f]", minmax[0], minmax[1]);
-            }
         }
         
         // Cargar múltiples canales
@@ -231,6 +232,10 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             LOG_ERROR("No se pudo cargar: %s", cfg->input_file);
             goto cleanup;
         }
+        if (!minmax_provided) {
+            minmax[0] = c01.fdata.data_in ? c01.fdata.fmin : 0.0f;
+            minmax[1] = c01.fdata.data_in ? c01.fdata.fmax : 255.0f;
+        }
     }
     
     // Poblar metadatos desde DataNC
@@ -276,10 +281,8 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     }
     
     // Crear imagen
-    if (expr_mode) {
-        final_image = create_single_gray_range(c01.fdata, cfg->invert_values, cfg->use_alpha, minmax[0], minmax[1]);
-    } else if (c01.is_float) {
-        final_image = create_single_gray(c01.fdata, cfg->invert_values, cfg->use_alpha, is_pseudocolor ? cptdata : NULL);
+    if (c01.is_float) {
+        final_image = create_single_gray(c01.fdata, cfg->invert_values, cfg->use_alpha, minmax[0], minmax[1], is_pseudocolor ? cptdata : NULL);
     } else {
         final_image = create_single_grayb(c01.bdata, cfg->invert_values, cfg->use_alpha, is_pseudocolor ? cptdata : NULL);
     }
