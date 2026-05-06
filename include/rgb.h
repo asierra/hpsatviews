@@ -114,7 +114,7 @@ typedef bool (*RgbComposer)(RgbContext *ctx);
  */
 typedef struct {
     const char *mode_name;           // "ash", "truecolor", etc
-    const char *req_channels[6];     // {"C11", "C13", "C14", "C15", NULL}
+    const char *req_channels[8];     // {"C11", "C13", "C14", "C15", NULL}
     RgbComposer composer_func;       // Puntero a función
     const char *description;         // Para help/documentación
     bool needs_navigation;           // Si requiere navla/navlo

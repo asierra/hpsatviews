@@ -208,6 +208,19 @@ static bool compose_ash(RgbContext *ctx) {
     return true;
 }
 
+static bool compose_severestorm(RgbContext *ctx) {
+    ctx->comp_r = dataf_op_dataf(&ctx->channels[8].fdata, &ctx->channels[10].fdata, OP_SUB);
+    ctx->comp_g = dataf_op_dataf(&ctx->channels[7].fdata, &ctx->channels[13].fdata, OP_SUB);
+    ctx->comp_b = dataf_op_dataf(&ctx->channels[5].fdata, &ctx->channels[2].fdata, OP_SUB);
+    ctx->min_r = -35.0f;
+    ctx->max_r = 5.0f;
+    ctx->min_g = -5.0f;
+    ctx->max_g = 60.0f;
+    ctx->min_b = -0.75f;
+    ctx->max_b = 0.25f;
+    return true;
+}
+
 static bool compose_airmass(RgbContext *ctx) {
     ctx->comp_r = dataf_op_dataf(&ctx->channels[8].fdata, &ctx->channels[10].fdata, OP_SUB);
     ctx->comp_g = dataf_op_dataf(&ctx->channels[12].fdata, &ctx->channels[13].fdata, OP_SUB);
@@ -331,6 +344,7 @@ static const RgbStrategy STRATEGIES[] = {
     {"night", {"C13", NULL}, compose_night, "Nocturnal IR with temperature pseudocolor", false},
     {"ash", {"C11", "C13", "C14", "C15", NULL}, compose_ash, "Volcanic Ash RGB", false},
     {"airmass", {"C08", "C10", "C12", "C13", NULL}, compose_airmass, "Air Mass RGB", false},
+    {"severestorm", {"C02", "C05", "C07", "C08","C10", "C13", NULL}, compose_severestorm, "Severe Convection RGB", false},
     {"so2", {"C09", "C10", "C11", "C13", NULL}, compose_so2, "SO2 Detection RGB", false},
     {"daynite", {"C01", "C02", "C03", "C13", NULL}, compose_daynite, "Day/Night Composite", true},
     {"custom", {NULL}, compose_custom, "Custom mode", false},
