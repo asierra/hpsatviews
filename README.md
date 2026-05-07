@@ -234,7 +234,7 @@ Asocia un mapa de color a una vista en grises.
 Genera un compuesto RGB a partir de combinaciones lineales de varias bandas.
 
 * `-m, --mode <modo>`       Modo de operación. Opciones disponibles: 
-							`daynite` (predeterminado), `truecolor`, `night`, `ash`, `airmass`, `so2`, `custom`. 
+							`daynite` (predeterminado), `truecolor`, `night`, `ash`, `airmass`, `severestorm`, `so2`, `custom`. 
 
 * `--rayleigh`              Aplica corrección atmosférica de Rayleigh (solo modos visibles diurnos).
 							Por defecto usa LUTs de pyspectral (más precisas).

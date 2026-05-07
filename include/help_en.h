@@ -59,7 +59,7 @@ static const char *HPSATVIEWS_HELP_RGB =
 "Usage: hpsv rgb <anchor> [options]\n"
 "\n"
 "Modes (--mode):\n"
-"  daynite (def), truecolor, night, airmass, ash, so2, custom.\n"
+"  daynite (def), truecolor, night, airmass, ash, severestorm, so2, custom.\n"
 "\n"
 "General RGB Options:\n"
 "  --rayleigh      Atmospheric correction (for truecolor/daynite).\n"
