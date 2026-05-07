@@ -1,0 +1,89 @@
+[2026-04-05 12:26:08.793] INFO : (rgb.c:778) Procesando RGB: /data/input/abi/l1b/fd/OR_ABI-L1b-RadF-M6C01_G19_s20260791800203_e20260791809511_c20260791809540.nc
+[2026-04-05 12:26:08.793] INFO : (rgb.c:814) Modo seleccionado: daynite - Day/Night Composite
+[2026-04-05 12:26:08.793] DEBUG: (channelset.c:149) Encontrado C13: /data/input/abi/l1b/fd/OR_ABI-L1b-RadF-M6C13_G19_s20260791800203_e20260791809523_c20260791809560.nc
+[2026-04-05 12:26:08.793] DEBUG: (channelset.c:149) Encontrado C02: /data/input/abi/l1b/fd/OR_ABI-L1b-RadF-M6C02_G19_s20260791800203_e20260791809511_c20260791809545.nc
+[2026-04-05 12:26:08.793] DEBUG: (channelset.c:149) Encontrado C03: /data/input/abi/l1b/fd/OR_ABI-L1b-RadF-M6C03_G19_s20260791800203_e20260791809511_c20260791809557.nc
+[2026-04-05 12:26:08.793] DEBUG: (channelset.c:149) Encontrado C01: /data/input/abi/l1b/fd/OR_ABI-L1b-RadF-M6C01_G19_s20260791800203_e20260791809511_c20260791809540.nc
+[2026-04-05 12:26:08.793] INFO : (rgb.c:398) Cargando canales requeridos...
+[2026-04-05 12:26:08.793] DEBUG: (rgb.c:407) Cargando canal C01 desde /data/input/abi/l1b/fd/OR_ABI-L1b-RadF-M6C01_G19_s20260791800203_e20260791809511_c20260791809540.nc
+[2026-04-05 12:26:08.806] INFO : (reader_nc.c:126) NetCDF dimensions: 10848x10848 (total: 117679104)
+[2026-04-05 12:26:08.807] INFO : (reader_nc.c:138) Native sensor resolution: 1.0 km
+[2026-04-05 12:26:08.807] INFO : (reader_nc.c:156) NetCDF scaling: factor=0.812106, offset=-25.9366, fill_value=1023
+[2026-04-05 12:26:10.226] DEBUG: (reader_nc.c:200) ID de banda detectado en metadatos: C01
+[2026-04-05 12:26:10.226] INFO : (reader_nc.c:313) GeoTransform calculado: Origin (-0.151872, 0.151872) Res (0.000028, -0.000028)
+[2026-04-05 12:26:10.228] DEBUG: (reader_nc.c:351) Leyendo tipo de datos SHORT
+[2026-04-05 12:26:10.283] INFO : (reader_nc.c:392) Data range: min=0.0360188, max=1.17127, NonData=1e+32, invalid_count=25494980
+[2026-04-05 12:26:10.284] DEBUG: (rgb.c:407) Cargando canal C02 desde /data/input/abi/l1b/fd/OR_ABI-L1b-RadF-M6C02_G19_s20260791800203_e20260791809511_c20260791809545.nc
+[2026-04-05 12:26:10.293] INFO : (reader_nc.c:126) NetCDF dimensions: 21696x21696 (total: 470716416)
+[2026-04-05 12:26:10.294] INFO : (reader_nc.c:138) Native sensor resolution: 0.5 km
+[2026-04-05 12:26:10.294] INFO : (reader_nc.c:156) NetCDF scaling: factor=0.158592, offset=-20.2899, fill_value=4095
+[2026-04-05 12:26:15.550] DEBUG: (reader_nc.c:200) ID de banda detectado en metadatos: C02
+[2026-04-05 12:26:15.551] INFO : (reader_nc.c:313) GeoTransform calculado: Origin (-0.151872, 0.151872) Res (0.000014, -0.000014)
+[2026-04-05 12:26:15.552] DEBUG: (reader_nc.c:351) Leyendo tipo de datos SHORT
+[2026-04-05 12:26:15.794] INFO : (reader_nc.c:392) Data range: min=-0.0310575, max=1.20835, NonData=1e+32, invalid_count=101977948
+[2026-04-05 12:26:15.797] DEBUG: (rgb.c:407) Cargando canal C03 desde /data/input/abi/l1b/fd/OR_ABI-L1b-RadF-M6C03_G19_s20260791800203_e20260791809511_c20260791809557.nc
+[2026-04-05 12:26:15.801] INFO : (reader_nc.c:126) NetCDF dimensions: 10848x10848 (total: 117679104)
+[2026-04-05 12:26:15.801] INFO : (reader_nc.c:138) Native sensor resolution: 1.0 km
+[2026-04-05 12:26:15.802] INFO : (reader_nc.c:156) NetCDF scaling: factor=0.376913, offset=-12.0376, fill_value=1023
+[2026-04-05 12:26:17.132] DEBUG: (reader_nc.c:200) ID de banda detectado en metadatos: C03
+[2026-04-05 12:26:17.132] INFO : (reader_nc.c:313) GeoTransform calculado: Origin (-0.151872, 0.151872) Res (0.000028, -0.000028)
+[2026-04-05 12:26:17.134] DEBUG: (reader_nc.c:351) Leyendo tipo de datos SHORT
+[2026-04-05 12:26:17.201] INFO : (reader_nc.c:392) Data range: min=-0.0270323, max=1.21999, NonData=1e+32, invalid_count=25495000
+[2026-04-05 12:26:17.202] DEBUG: (rgb.c:407) Cargando canal C13 desde /data/input/abi/l1b/fd/OR_ABI-L1b-RadF-M6C13_G19_s20260791800203_e20260791809523_c20260791809560.nc
+[2026-04-05 12:26:17.210] INFO : (reader_nc.c:126) NetCDF dimensions: 5424x5424 (total: 29419776)
+[2026-04-05 12:26:17.211] INFO : (reader_nc.c:138) Native sensor resolution: 2.0 km
+[2026-04-05 12:26:17.211] INFO : (reader_nc.c:156) NetCDF scaling: factor=0.0457289, offset=-1.6443, fill_value=4095
+[2026-04-05 12:26:17.538] DEBUG: (reader_nc.c:200) ID de banda detectado en metadatos: C13
+[2026-04-05 12:26:17.539] INFO : (reader_nc.c:313) GeoTransform calculado: Origin (-0.151872, 0.151872) Res (0.000056, -0.000056)
+[2026-04-05 12:26:17.540] DEBUG: (reader_nc.c:351) Leyendo tipo de datos SHORT
+[2026-04-05 12:26:17.618] INFO : (reader_nc.c:392) Data range: min=186.672, max=326.667, NonData=1e+32, invalid_count=6373451
+[2026-04-05 12:26:17.619] DEBUG: (rgb.c:434) Canales cargados:
+[2026-04-05 12:26:17.619] DEBUG: (rgb.c:438)   C01: 1.0 km
+[2026-04-05 12:26:17.619] DEBUG: (rgb.c:438)   C02: 0.5 km
+[2026-04-05 12:26:17.619] DEBUG: (rgb.c:438)   C03: 1.0 km
+[2026-04-05 12:26:17.619] DEBUG: (rgb.c:438)   C13: 2.0 km
+[2026-04-05 12:26:17.619] INFO : (rgb.c:442) Canal de referencia: C13 (2.0km)
+[2026-04-05 12:26:17.619] INFO : (rgb.c:463) Downsampling C01 (1.0km -> 2.0km, factor 2)
+[2026-04-05 12:26:17.708] DEBUG: (datanc.c:208) Downsampling boxfilter (factor=2): 0.089 s
+[2026-04-05 12:26:17.709] INFO : (rgb.c:463) Downsampling C02 (0.5km -> 2.0km, factor 4)
+[2026-04-05 12:26:17.808] DEBUG: (datanc.c:208) Downsampling boxfilter (factor=4): 0.099 s
+[2026-04-05 12:26:17.853] INFO : (rgb.c:463) Downsampling C03 (1.0km -> 2.0km, factor 2)
+[2026-04-05 12:26:17.930] DEBUG: (datanc.c:208) Downsampling boxfilter (factor=2): 0.077 s
+[2026-04-05 12:26:17.931] DEBUG: (metadata.c:99) Satélite ID 4 nombre G19
+[2026-04-05 12:26:18.259] DEBUG: (reader_nc.c:579) compute_navigation_nc 5424x5424: 0.323 s
+[2026-04-05 12:26:18.260] INFO : (rgb.c:859) Generando compuesto 'daynite'...
+[2026-04-05 12:26:18.322] DEBUG: (rayleigh.c:67) Generando navegación Rayleigh (SZA, VZA, RAA) desde lat/lon precalculados...
+[2026-04-05 12:26:18.326] DEBUG: (reader_nc.c:843) Tiempo J2000 leído del NetCDF: 827301905.7 segundos
+[2026-04-05 12:26:18.327] DEBUG: (reader_nc.c:860) Fecha/hora para cálculo solar: 2026-03-20 18:05:05 UTC
+[2026-04-05 12:26:18.327] INFO : (reader_nc.c:872) Calculando geometría solar para 2026-03-20 18:05:05 UTC
+[2026-04-05 12:26:19.461] INFO : (reader_nc.c:895) Geometría solar calculada en 1.134 segundos.
+[2026-04-05 12:26:19.466] INFO : (reader_nc.c:920) Calculando geometría del satélite (subpunto: -75.0°E, altura: 35786024 km)
+[2026-04-05 12:26:19.889] INFO : (reader_nc.c:953) Geometría del satélite calculada en 0.423 segundos.
+[2026-04-05 12:26:19.907] INFO : (reader_nc.c:986) Azimut relativo calculado para 29419776 píxeles.
+[2026-04-05 12:26:20.000] INFO : (rgb.c:112) Aplicando Rayleigh LUT...
+[2026-04-05 12:26:20.000] DEBUG: (rayleigh.c:460) LUT C01: 96×9×19, rango [0.0632, 1.4256]
+[2026-04-05 12:26:20.170] INFO : (rayleigh.c:587) Rayleigh LUT C01: 22975453 px en 0.170s
+[2026-04-05 12:26:20.170] DEBUG: (rayleigh.c:588)   noche=6444323 clamped=107189 media=0.4004->0.2893 corr_max=0.4391
+[2026-04-05 12:26:20.178] DEBUG: (rayleigh.c:611)   Rango post-Rayleigh: [0.000075, 5.023510]
+[2026-04-05 12:26:20.178] DEBUG: (rayleigh.c:472) LUT de Rayleigh liberada.
+[2026-04-05 12:26:20.178] DEBUG: (rayleigh.c:460) LUT C02: 96×9×19, rango [0.0164, 0.6343]
+[2026-04-05 12:26:20.371] INFO : (rayleigh.c:587) Rayleigh LUT C02: 22975453 px en 0.193s
+[2026-04-05 12:26:20.371] DEBUG: (rayleigh.c:588)   noche=6444323 clamped=108154 media=0.3009->0.2564 corr_max=0.1371
+[2026-04-05 12:26:20.378] DEBUG: (rayleigh.c:611)   Rango post-Rayleigh: [0.000434, 5.400985]
+[2026-04-05 12:26:20.378] DEBUG: (rayleigh.c:472) LUT de Rayleigh liberada.
+[2026-04-05 12:26:20.403] DEBUG: (rgb.c:143) Aplicando piecewise stretch...
+[2026-04-05 12:26:20.446] DEBUG: (truecolor.c:231) Piecewise Stretch aplicado. Nuevo rango: [0.0000, 1.0000]
+[2026-04-05 12:26:20.482] DEBUG: (truecolor.c:231) Piecewise Stretch aplicado. Nuevo rango: [0.0000, 1.0000]
+[2026-04-05 12:26:20.525] DEBUG: (truecolor.c:231) Piecewise Stretch aplicado. Nuevo rango: [0.0000, 1.0000]
+[2026-04-05 12:26:20.525] INFO : (rgb.c:182) Cargando imagen de fondo: /usr/local/share/lanot/images/land_lights_2016_fd.webp
+[2026-04-05 12:26:20.768] INFO : (reader_webp.c:86) WebP cargado (RGB): /usr/local/share/lanot/images/land_lights_2016_fd.webp (5424x5424, 3 bpp)
+[2026-04-05 12:26:20.768] INFO : (nocturnal_pseudocolor.c:31) Iniciando generación de pseudocolor nocturno...
+[2026-04-05 12:26:21.218] INFO : (nocturnal_pseudocolor.c:76) Pseudocolor nocturno generado en 0.450 segundos.
+[2026-04-05 12:26:21.653] DEBUG: (daynight_mask.c:180) Máscara día/noche: 0.393 s
+[2026-04-05 12:26:21.653] INFO : (rgb.c:587) Mezclando imágenes diurna y nocturna (Noche: 23.29%)
+[2026-04-05 12:26:21.701] DEBUG: (image.c:135) Blend imágenes: 0.048 s
+[2026-04-05 12:26:21.702] INFO : (rgb.c:899) Iniciando reproyección...
+[2026-04-05 12:26:21.702] INFO : (reprojection.c:160) Reproyección analítica: 5424x5424 (bpp:3) -> 8978x8973
+[2026-04-05 12:26:23.352] DEBUG: (reprojection.c:258) Reproyección analítica completada en: 1.58 s
+[2026-04-05 12:26:23.353] DEBUG: (rgb.c:663) Formato de salida: GeoTIFF
+[2026-04-05 12:26:35.012] INFO : (writer_geotiff.c:135) COG escrito en 11.54 s: hpsv_G19_2026079_1805_daynite_geo.tif

@@ -35,7 +35,7 @@ typedef struct {
     float clip_coords[4];          // [lon_min, lat_max, lon_max, lat_min]
     
     // Post-procesamiento
-    float gamma;                   // --gamma (default=1.0)
+    float gamma[3];                // --gamma (default=1.0), o "v1;v2;v3" por canal R;G;B
     bool apply_histogram;          // --histo
     bool apply_clahe;              // --clahe o --clahe-params
     int clahe_tiles_x;             // default=8

@@ -325,12 +325,38 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
 
     // --- Parámetros Físicos y Realce ---
     
-    // Gamma (default: 1.0)
-    cfg->gamma = 1.0f;
+    // Gamma (default: 1.0) — acepta valor único o "v1;v2;v3" para R;G;B en modo RGB
+    cfg->gamma[0] = cfg->gamma[1] = cfg->gamma[2] = 1.0f;
     if (ap_found(parser, "gamma")) {
-        double gamma_val = ap_get_dbl_value(parser, "gamma");
-        if (gamma_val > 0.0) {
-            cfg->gamma = (float)gamma_val;
+        const char *gamma_str = ap_get_str_value(parser, "gamma");
+        if (gamma_str) {
+            char *gamma_copy = strdup(gamma_str);
+            if (!gamma_copy) { LOG_ERROR("Falla de memoria al parsear gamma."); return false; }
+            float vals[3] = {1.0f, 1.0f, 1.0f};
+            int count = 0;
+            char *tok = strtok(gamma_copy, ";");
+            while (tok != NULL && count < 4) {
+                if (count < 3) {
+                    if (sscanf(tok, "%f", &vals[count]) != 1) {
+                        LOG_ERROR("Gamma inválido: %s", tok);
+                        free(gamma_copy);
+                        return false;
+                    }
+                }
+                count++;
+                tok = strtok(NULL, ";");
+            }
+            free(gamma_copy);
+            if (count == 1) {
+                cfg->gamma[0] = cfg->gamma[1] = cfg->gamma[2] = vals[0];
+            } else if (count == 3) {
+                cfg->gamma[0] = vals[0];
+                cfg->gamma[1] = vals[1];
+                cfg->gamma[2] = vals[2];
+            } else {
+                LOG_ERROR("Gamma acepta 1 o 3 valores separados por ';', se proporcionaron %d.", count);
+                return false;
+            }
         }
     }
     
@@ -446,9 +472,11 @@ bool config_validate(const ProcessConfig* cfg) {
     }
     
     // Validar gamma
-    if (cfg->gamma <= 0.0f || cfg->gamma > 5.0f) {
-        LOG_ERROR("Gamma debe estar en el rango (0.0, 5.0], valor: %.2f", cfg->gamma);
-        return false;
+    for (int i = 0; i < 3; i++) {
+        if (cfg->gamma[i] <= 0.0f || cfg->gamma[i] > 5.0f) {
+            LOG_ERROR("Gamma[%d] debe estar en el rango (0.0, 5.0], valor: %.2f", i, cfg->gamma[i]);
+            return false;
+        }
     }
     
     // Validar CLAHE
@@ -521,7 +549,7 @@ void config_print_debug(const ProcessConfig* cfg) {
     LOG_DEBUG("  is_l2_product: %s", cfg->is_l2_product ? "true" : "false");
     
     LOG_DEBUG("--- Realce ---");
-    LOG_DEBUG("  gamma: %.2f", cfg->gamma);
+    LOG_DEBUG("  gamma: %.2f;%.2f;%.2f", cfg->gamma[0], cfg->gamma[1], cfg->gamma[2]);
     LOG_DEBUG("  apply_clahe: %s", cfg->apply_clahe ? "true" : "false");
     if (cfg->apply_clahe) {
         LOG_DEBUG("    tiles: %dx%d, clip_limit: %.2f", 

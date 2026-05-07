@@ -129,7 +129,7 @@ static void add_common_opts(ArgParser *cmd_parser) {
     ap_add_str_opt(cmd_parser, "out o", NULL);
     ap_add_flag(cmd_parser, "geotiff t");
     ap_add_str_opt(cmd_parser, "clip c", NULL);
-    ap_add_dbl_opt(cmd_parser, "gamma g", 1.0);
+    ap_add_str_opt(cmd_parser, "gamma g", "1.0");
     ap_add_flag(cmd_parser, "histo h");
     ap_add_flag(cmd_parser, "clahe");
     ap_add_str_opt(cmd_parser, "clahe-params", "8,8,4.0");

@@ -18,7 +18,7 @@ typedef struct {
     const char *strategy;       // "truecolor", "ch13", "ash", etc.
     
     // --- Parámetros Físicos y Realce ---
-    float gamma;
+    float gamma[3];
     bool apply_clahe;
     float clahe_clip_limit;
     int clahe_tiles_x;

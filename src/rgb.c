@@ -26,7 +26,7 @@
 void rgb_context_init(RgbContext *ctx) {
     memset(ctx, 0, sizeof(RgbContext));
     // Inicializar defaults de opciones
-    ctx->opts.gamma = 1.0f;
+    ctx->opts.gamma[0] = ctx->opts.gamma[1] = ctx->opts.gamma[2] = 1.0f;
     ctx->opts.clahe_tiles_x = 8;
     ctx->opts.clahe_tiles_y = 8;
     ctx->opts.clahe_clip_limit = 4.0f;
@@ -737,7 +737,9 @@ static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
     } else {
         ctx->opts.mode = cfg->strategy ? cfg->strategy : "daynite";
     }
-    ctx->opts.gamma = cfg->gamma;
+    ctx->opts.gamma[0] = cfg->gamma[0];
+    ctx->opts.gamma[1] = cfg->gamma[1];
+    ctx->opts.gamma[2] = cfg->gamma[2];
     ctx->opts.scale = cfg->scale;
 
     // Opciones booleanas
@@ -804,7 +806,15 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     metadata_set_command(meta, "rgb");
     metadata_add(meta, "command", "rgb");
     metadata_add(meta, "mode", ctx.opts.mode ? ctx.opts.mode : "unknown");
-    metadata_add(meta, "gamma", ctx.opts.gamma);
+    if (fabsf(ctx.opts.gamma[0] - ctx.opts.gamma[1]) < 1e-6f &&
+        fabsf(ctx.opts.gamma[0] - ctx.opts.gamma[2]) < 1e-6f) {
+        metadata_add(meta, "gamma", ctx.opts.gamma[0]);
+    } else {
+        char gamma_str[48];
+        snprintf(gamma_str, sizeof(gamma_str), "%.4g;%.4g;%.4g",
+                 ctx.opts.gamma[0], ctx.opts.gamma[1], ctx.opts.gamma[2]);
+        metadata_add(meta, "gamma", (const char*)gamma_str);
+    }
     metadata_add(meta, "apply_clahe", ctx.opts.apply_clahe);
     metadata_add(meta, "apply_rayleigh", ctx.opts.apply_rayleigh);
     metadata_add(meta, "apply_histogram", ctx.opts.apply_histogram);
@@ -886,12 +896,16 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
 
     // Preprocesar DataF
     if (ctx.comp_r.data_in && ctx.comp_g.data_in && ctx.comp_b.data_in) {
-        if (ctx.opts.gamma > 0.0f && fabsf(ctx.opts.gamma - 1.0f) > 1e-6) {
-            LOG_INFO("Aplicando Gamma %.2f", ctx.opts.gamma);
-            dataf_apply_gamma(&ctx.comp_r, ctx.opts.gamma);
-            dataf_apply_gamma(&ctx.comp_g, ctx.opts.gamma);
-            dataf_apply_gamma(&ctx.comp_b, ctx.opts.gamma);
-            ctx.opts.gamma = 1.0f;
+        bool any_gamma = fabsf(ctx.opts.gamma[0] - 1.0f) > 1e-6f ||
+                         fabsf(ctx.opts.gamma[1] - 1.0f) > 1e-6f ||
+                         fabsf(ctx.opts.gamma[2] - 1.0f) > 1e-6f;
+        if (any_gamma) {
+            LOG_INFO("Aplicando Gamma R=%.2f G=%.2f B=%.2f",
+                     ctx.opts.gamma[0], ctx.opts.gamma[1], ctx.opts.gamma[2]);
+            dataf_apply_gamma(&ctx.comp_r, ctx.opts.gamma[0]);
+            dataf_apply_gamma(&ctx.comp_g, ctx.opts.gamma[1]);
+            dataf_apply_gamma(&ctx.comp_b, ctx.opts.gamma[2]);
+            ctx.opts.gamma[0] = ctx.opts.gamma[1] = ctx.opts.gamma[2] = 1.0f;
             // dataf_apply_gamma normaliza a [0,1]; actualizar rangos en consecuencia
             ctx.min_r = ctx.comp_r.fmin;  ctx.max_r = ctx.comp_r.fmax;
             ctx.min_g = ctx.comp_g.fmin;  ctx.max_g = ctx.comp_g.fmax;

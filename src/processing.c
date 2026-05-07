@@ -67,7 +67,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     // Registrar parámetros básicos en metadatos
     metadata_set_command(meta, cfg->command);
     metadata_add(meta, "command", cfg->command);
-    metadata_add(meta, "gamma", cfg->gamma);
+    metadata_add(meta, "gamma", cfg->gamma[0]);
     metadata_add(meta, "apply_clahe", cfg->apply_clahe);
     metadata_add(meta, "apply_histogram", cfg->apply_histogram);
     metadata_add(meta, "invert_values", cfg->invert_values);
@@ -275,9 +275,13 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     }
     
     // Aplicar gamma
-    if (cfg->gamma != 1.0f && c01.is_float && c01.fdata.data_in) {
-        LOG_INFO("Aplicando gamma %.2f", cfg->gamma);
-        dataf_apply_gamma(&c01.fdata, cfg->gamma);
+    if (fabsf(cfg->gamma[1] - cfg->gamma[0]) > 1e-6f || fabsf(cfg->gamma[2] - cfg->gamma[0]) > 1e-6f) {
+        LOG_WARN("Modo canal único: se usará solo gamma[0]=%.2f (ignorando gamma[1]=%.2f, gamma[2]=%.2f)",
+                 cfg->gamma[0], cfg->gamma[1], cfg->gamma[2]);
+    }
+    if (fabsf(cfg->gamma[0] - 1.0f) > 1e-6f && c01.is_float && c01.fdata.data_in) {
+        LOG_INFO("Aplicando gamma %.2f", cfg->gamma[0]);
+        dataf_apply_gamma(&c01.fdata, cfg->gamma[0]);
     }
     
     // Crear imagen

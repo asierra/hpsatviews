@@ -138,6 +138,12 @@ Genera una vista en escala de grises del canal C13.
  
 * `-g, --gamma <valor>`
   Aplica corrección gamma (por omisión `1.0` y no se aplica).
+  En modo RGB acepta 3 valores separados por `;` para aplicar un gamma distinto
+  a cada canal (R;G;B):
+  ```
+  hpsv rgb -g "1.8;1.5;1.2" archivo.nc
+  ```
+  Con un solo valor se aplica igual a los 3 canales.
 
 
 * `-h, --histo`
@@ -313,7 +319,7 @@ Para modo `custom` ver **Álgebra de bandas**.
   "bounds": [-110.5, 30.0, -90.0, 15.0],
   "channels": ["C01", "C02", "C03"],
   "processing": {
-    "gamma": 1.0,
+    "gamma": "1.8;1.5;1.2",
     "clahe_applied": true,
     "rayleigh_corrected": true
   },
