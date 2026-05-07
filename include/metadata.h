@@ -50,6 +50,11 @@ void metadata_add_bool(MetadataContext *ctx, const char *key, bool value);
  */
 void metadata_set_command(MetadataContext *ctx, const char *command);
 
+/**
+ * Establece el nombre descriptivo del producto (ej: "True Color RGB (natural)").
+ */
+void metadata_set_product(MetadataContext *ctx, const char *product);
+
 void metadata_set_projection(MetadataContext *ctx, const char *proj);
 
 /**

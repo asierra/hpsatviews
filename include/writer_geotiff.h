@@ -17,13 +17,15 @@
  * @param meta Metadatos originales (contienen proyección y geotransform base).
  * @param offset_x Desplazamiento en X (píxeles) si la imagen es un recorte (crop).
  * @param offset_y Desplazamiento en Y (píxeles) si la imagen es un recorte (crop).
+ * @param product Nombre descriptivo del producto (ej: "True Color RGB"). NULL para omitir.
  * @return 0 en éxito, -1 en error.
  */
 int write_geotiff_rgb(const char* filename,
                       const ImageData* img,
                       const DataNC* meta,
                       int offset_x,
-                      int offset_y);
+                      int offset_y,
+                      const char* product);
 
 /**
  * @brief Escribe una imagen en escala de grises (1 canal) a formato GeoTIFF.

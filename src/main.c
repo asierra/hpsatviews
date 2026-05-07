@@ -174,6 +174,7 @@ int main(int argc, char *argv[]) {
         ap_set_helptext(rgb_cmd, HPSATVIEWS_HELP_RGB);
         ap_add_flag(rgb_cmd, "citylights l");
         ap_add_str_opt(rgb_cmd, "mode m", "daynite");
+        ap_add_str_opt(rgb_cmd, "name N", NULL);
         add_common_opts(rgb_cmd);
         ap_add_flag(rgb_cmd, "rayleigh");
         ap_add_flag(rgb_cmd, "ray-analytic");

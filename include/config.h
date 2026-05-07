@@ -40,6 +40,8 @@ typedef struct {
     bool is_custom_mode;
     const char *custom_expr;    // Expresión del usuario (ej: "0.5*C02+0.3*C03")
     const char *custom_minmax;  // Rango min,max opcional
+    const char *product_short;  // Token {PROD}: parte antes de ':' de --name, o el modo corto
+    const char *product_long;   // Campo 'product' en JSON/GeoTIFF: parte tras ':' de --name, o descripción del modo
     
     // --- Pseudocolor (Paletas) ---
     const char *palette_file;   // Path al archivo .cpt (NULL si no aplica)

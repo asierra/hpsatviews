@@ -322,7 +322,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             if (is_pseudocolor && color_array) {
                 if (cfg->use_alpha) {
                     temp_image = image_expand_palette(&final_image, color_array);
-                    write_geotiff_rgb(outfn, &temp_image, &meta_fg, 0, 0);
+                    write_geotiff_rgb(outfn, &temp_image, &meta_fg, 0, 0, NULL);
                     image_destroy(&temp_image);
                 } else {
                     write_geotiff_indexed(outfn, &final_image, color_array, &meta_fg, 0, 0);
@@ -475,7 +475,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             if (is_pseudocolor && color_array) {
                 if (cfg->use_alpha) {
                     temp_image = image_expand_palette(&final_image, color_array);
-                    write_geotiff_rgb(outfn, &temp_image, &meta_out, 0, 0);
+                    write_geotiff_rgb(outfn, &temp_image, &meta_out, 0, 0, NULL);
                     image_destroy(&temp_image);
                 } else {
                     write_geotiff_indexed(outfn, &final_image, color_array, &meta_out, 0, 0);
@@ -504,7 +504,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             if (is_pseudocolor && color_array) {
                 if (cfg->use_alpha) {
                     temp_image = image_expand_palette(&final_image, color_array);
-                    write_geotiff_rgb(outfn, &temp_image, &meta_out, 0, 0);
+                    write_geotiff_rgb(outfn, &temp_image, &meta_out, 0, 0, NULL);
                     image_destroy(&temp_image);
                 } else {
                     write_geotiff_indexed(outfn, &final_image, color_array, &meta_out, 0, 0);

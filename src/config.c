@@ -47,7 +47,7 @@ static char* str_replace(char *orig, const char *rep, const char *with) {
     return result;
 }
 
-static char* expand_filename_pattern(const char* pattern, const char* input_filename) {
+static char* expand_filename_pattern(const char* pattern, const char* input_filename, const char* product_label) {
     if (!pattern) return NULL;
     if (!input_filename) return strdup(pattern);
 
@@ -105,6 +105,7 @@ static char* expand_filename_pattern(const char* pattern, const char* input_file
         {"{YYYY}", s_year}, {"{YY}", s_yy}, {"{MM}", s_month}, {"{DD}", s_day},
         {"{hh}", s_hour},   {"{mm}", s_min}, {"{ss}", s_sec},  {"{TS}", s_timestamp},
         {"{JJJ}", s_jday},  {"{CH}", channel}, {"{SAT}", satellite}, {"{SECTOR}", sector},
+        {"{PROD}", product_label ? product_label : ""},
         {NULL, NULL}
     };
     for (int i = 0; replacements[i].key != NULL; i++) {
@@ -246,7 +247,7 @@ char* insert_geo_suffix(const char *path) {
     return result;
 }
 
-static char* config_parse_output(ArgParser* parser, const char* input_file) {
+static char* config_parse_output(ArgParser* parser, const char* input_file, const char* product_label) {
     if (!ap_found(parser, "out")) {
         return NULL;
     }
@@ -258,7 +259,7 @@ static char* config_parse_output(ArgParser* parser, const char* input_file) {
     
     // Detectar patrones con llaves y expandirlos
     if (strchr(user_out, '{') && strchr(user_out, '}')) {
-        return expand_filename_pattern(user_out, input_file);
+        return expand_filename_pattern(user_out, input_file, product_label);
     }
     
     // No hay patrón, devolver copia del string original
@@ -299,7 +300,29 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
     if (!cfg->strategy) {
         cfg->strategy = "default";
     }
-    
+
+    // Nombre del producto (solo para rgb, con --name)
+    // Acepta "short:Long description": {PROD} usa la parte corta, JSON/GeoTIFF la larga.
+    // Si no hay ':', ambas partes son iguales al valor completo.
+    if (cfg->command && strcmp(cfg->command, "rgb") == 0) {
+        if (ap_found(parser, "name")) {
+            const char *raw = ap_get_str_value(parser, "name");
+            if (raw) {
+                const char *colon = strchr(raw, ':');
+                if (colon) {
+                    size_t short_len = (size_t)(colon - raw);
+                    char *s = malloc(short_len + 1);
+                    if (s) { strncpy(s, raw, short_len); s[short_len] = '\0'; }
+                    cfg->product_short = s;
+                    cfg->product_long  = strdup(colon + 1);
+                } else {
+                    cfg->product_short = strdup(raw);
+                    cfg->product_long  = strdup(raw);
+                }
+            }
+        }
+    }
+
     // --- Parámetros Físicos y Realce ---
     
     // Gamma (default: 1.0)
@@ -377,7 +400,9 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
     
     // --- Salida ---
     cfg->force_geotiff = ap_found(parser, "geotiff");
-    cfg->output_path_override = config_parse_output(parser, cfg->input_file);
+    // {PROD} en patrones usa la parte corta de --name, o el modo corto si no se usó --name
+    const char *prod_for_pattern = cfg->product_short ? cfg->product_short : cfg->strategy;
+    cfg->output_path_override = config_parse_output(parser, cfg->input_file, prod_for_pattern);
     
     // Si se fuerza GeoTIFF y el output tiene extensión .png, cambiarla
     if (cfg->force_geotiff && cfg->output_path_override) {
@@ -545,10 +570,18 @@ void config_destroy(ProcessConfig* cfg) {
         return;
     }
     
-    // Solo output_path_override es dinámico (fue creado con strdup/malloc)
+    // Solo output_path_override, product_short y product_long son dinámicos
     if (cfg->output_path_override) {
         free((void*)cfg->output_path_override);
         cfg->output_path_override = NULL;
+    }
+    if (cfg->product_short) {
+        free((void*)cfg->product_short);
+        cfg->product_short = NULL;
+    }
+    if (cfg->product_long) {
+        free((void*)cfg->product_long);
+        cfg->product_long = NULL;
     }
     
     // Los demás campos son punteros a strings del ArgParser

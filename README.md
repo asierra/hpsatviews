@@ -160,6 +160,7 @@ Genera una vista en escala de grises del canal C13.
   * `{CH}` canal o banda (C01, C02, etc.)
   * `{SAT}` satélite (por ejemplo: `G16`, `G19`)
   * `{SECTOR}` sector de escaneo: `fd`, `conus`, `m1` o `m2`
+  * `{PROD}` nombre corto del modo (ej. `truecolor`, `ash`); reemplazado por `--name` si se usa
 
   Ejemplo:
 
@@ -256,12 +257,17 @@ Genera un compuesto RGB a partir de combinaciones lineales de varias bandas.
 							o con recortes geográficos (`--clip`). En disco completo a resolución reducida
 							el beneficio es imperceptible.
 
+* `-N, --name <etiqueta>`   Nombre descriptivo del producto. Se escribe en los metadatos JSON y GeoTIFF
+						como campo `product` al nivel raíz (junto a `satellite`, `sector`, `timestamp`).
+						También disponible como token `{PROD}` en los patrones de `-o`.
+						Si se omite, `{PROD}` usa el nombre corto del modo (ej. `truecolor`) y `product` en el JSON
+						usa la descripción del modo (ej. `"True Color RGB (natural)"`).
 
-  Ejemplos:
-  ```bash
-  # Compuesto día/noche predeterminado, con Rayleigh y realce de contraste implícitos
-  hpsv rgb -o dianoche.png archivo.nc
-  
+						Acepta el formato `corto:Descripción larga` para fijar ambos valores independientemente:
+						la parte antes de `:` va a `{PROD}` en el nombre de archivo, y la parte tras `:` al campo
+						`product` en el JSON/GeoTIFF. Si no hay `:`, el valor se usa para ambos.
+
+						Especialmente útil con `--mode custom` para identificar la composición.
   # True color con corrección atmosférica de Rayleigh y CLAHE
   hpsv rgb -m truecolor --rayleigh --clahe archivo.nc
 
@@ -270,6 +276,11 @@ Genera un compuesto RGB a partir de combinaciones lineales de varias bandas.
 
   # Detección de ceniza volcánica
   hpsv rgb -m ash -o ceniza.png archivo.nc
+
+  # Composición personalizada con nombre descriptivo en metadatos y nombre de archivo
+  hpsv rgb -m custom --expr "C13-C14; C13; -1.0*C15+300" \
+        --name "Ceniza volcánica" -o "{PROD}_{SAT}_{YYYY}{MM}{DD}.png" archivo.nc
+  # → Ceniza volcánica_G16_20250101.png
   ```
   
 El modo `daynite` hace una mezcla inteligente de los modos `truecolor` 
@@ -294,9 +305,12 @@ Para modo `custom` ver **Álgebra de bandas**.
   "tool": "hpsatviews",
   "version": "1.0",
   "command": "rgb",
-  "mode": "truecolor",
-  "satellite": "GOES-16",
+  "satellite": "G16",
+  "sector": "conus",
   "timestamp": "2024-08-07T18:01:17Z",
+  "product": "True Color RGB (natural)",
+  "crs": "GEOGCS[...]",
+  "bounds": [-110.5, 30.0, -90.0, 15.0],
   "channels": ["C01", "C02", "C03"],
   "processing": {
     "gamma": 1.0,

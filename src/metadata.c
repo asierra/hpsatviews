@@ -43,6 +43,7 @@ struct MetadataContext {
     const char *sector;
     char time_iso[32];
     time_t timestamp;
+    char product[128];
     
     float bbox[4];
     char projection[32];
@@ -144,6 +145,12 @@ void metadata_from_nc(MetadataContext *ctx, const DataNC *nc) {
 void metadata_set_command(MetadataContext *ctx, const char *command) {
     if (!ctx || !command) return;
     strncpy(ctx->command, command, sizeof(ctx->command) - 1);
+}
+
+void metadata_set_product(MetadataContext *ctx, const char *product) {
+    if (!ctx || !product) return;
+    strncpy(ctx->product, product, sizeof(ctx->product) - 1);
+    ctx->product[sizeof(ctx->product) - 1] = '\0';
 }
 
 void metadata_set_projection(MetadataContext *ctx, const char *proj) {
@@ -373,6 +380,7 @@ int metadata_save_json(MetadataContext *ctx, const char *filename) {
     if (ctx->satellite) json_write(w, "satellite", ctx->satellite);
     if (ctx->sector && ctx->sector[0]) json_write(w, "sector", ctx->sector);
     if (ctx->time_iso[0]) json_write(w, "timestamp", ctx->time_iso);
+    if (ctx->product[0]) json_write(w, "product", ctx->product);
 
     // Campos para mapdrawer (CRS y Bounds en raíz)
     if (ctx->projection[0]) {

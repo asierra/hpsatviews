@@ -670,7 +670,7 @@ static bool apply_scaling(RgbContext *ctx) {
     return true;
 }
 
-static bool write_output(RgbContext *ctx) {
+static bool write_output(RgbContext *ctx, const char *product_label) {
     bool is_geotiff = ctx->opts.force_geotiff ||
                       (ctx->opts.output_filename && (strstr(ctx->opts.output_filename, ".tif") ||
                                                      strstr(ctx->opts.output_filename, ".tiff")));
@@ -709,7 +709,7 @@ static bool write_output(RgbContext *ctx) {
         }
         // Pasamos 0,0 como offset porque ya lo integramos en meta_out.geotransform
         write_geotiff_rgb(ctx->opts.output_filename, &ctx->final_image, &meta_out,
-                          0, 0);
+                          0, 0, product_label);
     } else {
         writer_save_png(ctx->opts.output_filename, &ctx->final_image);
     }
@@ -831,6 +831,10 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     }
     LOG_INFO("Modo seleccionado: %s - %s", strategy->mode_name, strategy->description);
 
+    // Determinar nombre descriptivo del producto
+    const char *product = cfg->product_long ? cfg->product_long : strategy->description;
+    metadata_set_product(meta, product);
+
     // Advertencias de configuración para modo night
     if (strcmp(ctx.opts.mode, "night") == 0) {
         if (ctx.opts.apply_rayleigh || ctx.opts.rayleigh_analytic) {
@@ -929,7 +933,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         LOG_INFO("Guardando fixed-grid: %s", ctx.opts.output_filename);
         // Desactivar temporalmente para que write_output use la proyección nativa
         ctx.opts.do_reprojection = false;
-        if (!write_output(&ctx)) {
+        if (!write_output(&ctx, product)) {
             LOG_ERROR("Falla al guardar fixed-grid");
             goto cleanup;
         }
@@ -1060,7 +1064,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     }
 
     // Escritura
-    if (!write_output(&ctx)) {
+    if (!write_output(&ctx, product)) {
         LOG_ERROR("Falla al guardar imagen");
         goto cleanup;
     }

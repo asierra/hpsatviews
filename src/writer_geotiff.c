@@ -208,7 +208,7 @@ static int finalize_cog(GDALDatasetH mem_ds, const char* filename) {
 // --- Implementación de Funciones Públicas ---
 
 int write_geotiff_rgb(const char* filename, const ImageData* img, const DataNC* meta,
-                      int offset_x, int offset_y) {
+                      int offset_x, int offset_y, const char* product) {
     if (!img || (img->bpp != 3 && img->bpp != 4)) {
         LOG_ERROR("Imagen inválida para write_geotiff_rgb (se requiere bpp=3 o bpp=4)");
         return -1;
@@ -218,6 +218,9 @@ int write_geotiff_rgb(const char* filename, const ImageData* img, const DataNC* 
     int num_bands = img->bpp;
     GDALDatasetH ds = create_mem_dataset(img->width, img->height, num_bands, GDT_Byte, meta, offset_x, offset_y);
     if (!ds) return -1;
+
+    if (product && product[0])
+        GDALSetMetadataItem(ds, "product", product, "");
 
     // Escribir canales RGB (y alpha si existe)
     CPLErr err = CE_None;
