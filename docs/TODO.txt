@@ -188,3 +188,9 @@ de la máscara y la reproyección inversa. Pendientes: revisar el nombre
 para presentarlo en el lanot y como base para el paper.
 
 Creación simultanea de fd y fd_geo
+
+
+Thu May  7 07:45:10 PM CST 2026
+
+Añadir un set de pruebas para garantizar que cuando se hagan cambios,
+no se introduzcan bugs.
