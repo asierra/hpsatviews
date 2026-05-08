@@ -281,11 +281,12 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     }
     if (fabsf(cfg->gamma[0] - 1.0f) > 1e-6f && c01.is_float && c01.fdata.data_in) {
         LOG_INFO("Aplicando gamma %.2f", cfg->gamma[0]);
-        dataf_apply_gamma(&c01.fdata, cfg->gamma[0]);
-        if (!minmax_provided) {
-            minmax[0] = c01.fdata.fmin;  // 0.0f after gamma normalization
-            minmax[1] = c01.fdata.fmax;  // 1.0f after gamma normalization
-        }
+        float gmin = minmax_provided ? minmax[0] : c01.fdata.fmin;
+        float gmax = minmax_provided ? minmax[1] : c01.fdata.fmax;
+        dataf_apply_gamma(&c01.fdata, cfg->gamma[0], gmin, gmax);
+        // Después de la gamma los datos quedan en [0,1]
+        minmax[0] = c01.fdata.fmin;
+        minmax[1] = c01.fdata.fmax;
     }
     
     // Crear imagen

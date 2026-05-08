@@ -902,14 +902,15 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         if (any_gamma) {
             LOG_INFO("Aplicando Gamma R=%.2f G=%.2f B=%.2f",
                      ctx.opts.gamma[0], ctx.opts.gamma[1], ctx.opts.gamma[2]);
-            dataf_apply_gamma(&ctx.comp_r, ctx.opts.gamma[0]);
-            dataf_apply_gamma(&ctx.comp_g, ctx.opts.gamma[1]);
-            dataf_apply_gamma(&ctx.comp_b, ctx.opts.gamma[2]);
+            dataf_apply_gamma(&ctx.comp_r, ctx.opts.gamma[0], ctx.min_r, ctx.max_r);
+            dataf_apply_gamma(&ctx.comp_g, ctx.opts.gamma[1], ctx.min_g, ctx.max_g);
+            dataf_apply_gamma(&ctx.comp_b, ctx.opts.gamma[2], ctx.min_b, ctx.max_b);
             ctx.opts.gamma[0] = ctx.opts.gamma[1] = ctx.opts.gamma[2] = 1.0f;
-            // dataf_apply_gamma normaliza a [0,1]; actualizar rangos en consecuencia
-            ctx.min_r = ctx.comp_r.fmin;  ctx.max_r = ctx.comp_r.fmax;
-            ctx.min_g = ctx.comp_g.fmin;  ctx.max_g = ctx.comp_g.fmax;
-            ctx.min_b = ctx.comp_b.fmin;  ctx.max_b = ctx.comp_b.fmax;
+            // Los datos están ahora en [0,1]; fijar rangos explícitamente para no
+            // sobreescribir los rangos del --minmax con los estadísticos del DataF.
+            ctx.min_r = 0.0f;  ctx.max_r = 1.0f;
+            ctx.min_g = 0.0f;  ctx.max_g = 1.0f;
+            ctx.min_b = 0.0f;  ctx.max_b = 1.0f;
         }
 
         // Renderizar a imagen

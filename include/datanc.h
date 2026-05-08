@@ -196,11 +196,14 @@ DataF datanc_get_float_base(DataNC *datanc);
 
 /**
  * @brief Aplica corrección gamma a nivel de datos flotantes.
- * Formula: pixel = pixel^(1/gamma)
+ * Normaliza con [min_val, max_val] y luego aplica gamma: pixel = ((pixel-min)/(max-min))^(1/gamma).
+ * Los datos quedan en espacio [0,1] después de la transformación.
  * @param data Puntero a la estructura DataF.
  * @param gamma Valor de gamma (ej. 2.0 para raíz cuadrada).
+ * @param min_val Valor mínimo para el stretch (puede ser el rango natural o el de --minmax).
+ * @param max_val Valor máximo para el stretch.
  */
-void dataf_apply_gamma(DataF *data, float gamma);
+void dataf_apply_gamma(DataF *data, float gamma, float min_val, float max_val);
 
 /**
  * @brief Promedio por bloques 2×2 del mismo tamaño que la entrada.

@@ -411,7 +411,7 @@ void dataf_invert(DataF* a) {
 }
 
 
-void dataf_apply_gamma(DataF *data, float gamma) {
+void dataf_apply_gamma(DataF *data, float gamma, float min_val, float max_val) {
     if (data == NULL || data->data_in == NULL || gamma <= 0.0f) {
         return;
     }
@@ -419,16 +419,16 @@ void dataf_apply_gamma(DataF *data, float gamma) {
     // Un gamma de 1.0 no hace nada
     if (fabsf(gamma - 1.0f) < 1e-6) return;
 
-    float inv_gamma = 1.0f / gamma;
-    float fmin = data->fmin;
-    float range = data->fmax - data->fmin;
+    float range = max_val - min_val;
 
     // Si el rango es inválido no se puede normalizar
-    if (range <= 0.0f || IS_NONDATA(fmin)) return;
+    if (range <= 0.0f || IS_NONDATA(min_val)) return;
+
+    float inv_gamma = 1.0f / gamma;
 
     // El gamma debe aplicarse sobre valores normalizados [0,1].
-    // Aplicarlo sobre valores físicos crudos (e.g. BT en Kelvin con fmin != 0)
-    // produce (val^g - fmin^g)/(fmax^g - fmin^g) en vez de ((val-fmin)/(fmax-fmin))^g.
+    // Se usa min_val/max_val (puede ser el rango natural del dato o el rango
+    // provisto por --minmax) para que stretch y gamma sean coherentes.
     #pragma omp parallel for
     for (size_t i = 0; i < data->size; i++) {
         float val = data->data_in[i];
@@ -436,8 +436,8 @@ void dataf_apply_gamma(DataF *data, float gamma) {
         // Ignorar NonData
         if (IS_NONDATA(val)) continue;
 
-        // Normalizar a [0,1] usando fmin/fmax, luego aplicar gamma
-        float norm = (val - fmin) / range;
+        // Normalizar a [0,1] usando min_val/max_val, luego aplicar gamma
+        float norm = (val - min_val) / range;
         if (norm < 0.0f) norm = 0.0f;
         if (norm > 1.0f) norm = 1.0f;
         data->data_in[i] = powf(norm, inv_gamma);
