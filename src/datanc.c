@@ -424,11 +424,12 @@ void dataf_apply_gamma(DataF *data, float gamma, float min_val, float max_val) {
     // Si el rango es inválido no se puede normalizar
     if (range <= 0.0f || IS_NONDATA(min_val)) return;
 
-    float inv_gamma = 1.0f / gamma;
-
     // El gamma debe aplicarse sobre valores normalizados [0,1].
     // Se usa min_val/max_val (puede ser el rango natural del dato o el rango
     // provisto por --minmax) para que stretch y gamma sean coherentes.
+    // Convención EUMETSAT/CIRA: output = norm^(1/gamma), con gamma>1 que aclara.
+    float inv_gamma = 1.0f / gamma;
+
     #pragma omp parallel for
     for (size_t i = 0; i < data->size; i++) {
         float val = data->data_in[i];
@@ -438,6 +439,7 @@ void dataf_apply_gamma(DataF *data, float gamma, float min_val, float max_val) {
 
         // Normalizar a [0,1] usando min_val/max_val, luego aplicar gamma
         float norm = (val - min_val) / range;
+        // Clamp estricto antes de powf para evitar NaN (dominio negativo o >1)
         if (norm < 0.0f) norm = 0.0f;
         if (norm > 1.0f) norm = 1.0f;
         data->data_in[i] = powf(norm, inv_gamma);
