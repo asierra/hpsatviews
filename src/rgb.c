@@ -805,7 +805,12 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     // Registrar metadatos básicos
     metadata_set_command(meta, "rgb");
     metadata_add(meta, "command", "rgb");
-    metadata_add(meta, "mode", ctx.opts.mode ? ctx.opts.mode : "unknown");
+    // Si el usuario especificó un nombre corto con -N, usarlo como tipo en el filename;
+    // de lo contrario usar el modo (ej. "custom", "ash", etc.)
+    const char *mode_label = (cfg->product_short && cfg->product_short[0])
+                             ? cfg->product_short
+                             : (ctx.opts.mode ? ctx.opts.mode : "unknown");
+    metadata_add(meta, "mode", mode_label);
     if (fabsf(ctx.opts.gamma[0] - ctx.opts.gamma[1]) < 1e-6f &&
         fabsf(ctx.opts.gamma[0] - ctx.opts.gamma[2]) < 1e-6f) {
         metadata_add(meta, "gamma", ctx.opts.gamma[0]);
