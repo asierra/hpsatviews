@@ -1,8 +1,14 @@
 #!/bin/bash
+# Requiere datos externos en ../sample_data/028/ (L1b Full-Disk G19).
+# No se ejecuta automáticamente en run_all_tests.sh.
 set -e
 
-files=(
-    OR_ABI-L1b-RadF-M6C01_G19_s20260281200213_e20260281209522_c20260281209563.nc
+path="../sample_data/028"
+if [ ! -d "$path" ]; then
+    echo "SKIP: directorio $path no encontrado (datos externos requeridos)"
+    exit 0
+fi
+
     OR_ABI-L1b-RadF-M6C01_G19_s20260281400213_e20260281409522_c20260281409570.nc
     OR_ABI-L1b-RadF-M6C01_G19_s20260281600214_e20260281609522_c20260281609569.nc
     OR_ABI-L1b-RadF-M6C01_G19_s20260281800211_e20260281809520_c20260281809561.nc
