@@ -194,3 +194,13 @@ Thu May  7 07:45:10 PM CST 2026
 
 Añadir un set de pruebas para garantizar que cuando se hagan cambios,
 no se introduzcan bugs.
+
+
+Sat Jun  7 12:00:00 PM CST 2026
+
+Publicación en SoftwareX:
+- Hacer release v1.0.0 en GitHub.
+- Vincular repositorio a Zenodo para obtener DOI permanente.
+- Actualizar codemeta.json y CITATION.cff con el DOI generado.
+- Redactar manuscrito LaTeX (plantilla Elsevier SoftwareX, 3-6 páginas).
+

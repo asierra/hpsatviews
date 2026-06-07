@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "hpsatviews: High Performance Satellite Views"
+abstract: >
+  High-performance command-line tool for processing GOES-R geostationary
+  satellite imagery (ABI L1b/L2). Generates grayscale, pseudocolor, and RGB
+  composite views (true color, ash, airmass, day/night blend) from NetCDF data.
+  Optimized with OpenMP parallelization and pre-compiled Rayleigh correction
+  LUTs for near-real-time throughput on commodity hardware.
+authors:
+  - family-names: Aguilar Sierra
+    given-names: Alejandro
+    email: asierra@unam.mx
+    orcid: "https://orcid.org/0000-0003-1018-8521"
+    affiliation: >
+      Laboratorio Nacional de Observación de la Tierra (LANOT),
+      Universidad Nacional Autónoma de México (UNAM)
+version: 1.0.0
+date-released: "2025-01-01"
+license: GPL-3.0-or-later
+repository-code: "https://github.com/asierra/hpsatviews"
+url: "https://github.com/asierra/hpsatviews"
+keywords:
+  - satellite imagery
+  - GOES-R
+  - ABI
+  - remote sensing
+  - image processing
+  - true color
+  - Rayleigh correction
+  - OpenMP
+  - NetCDF

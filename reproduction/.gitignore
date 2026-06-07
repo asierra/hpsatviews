@@ -1,4 +1,7 @@
-# Ignorar archivos generados durante pruebas
-*.tif
-*.png
+# Ignore generated outputs (large binaries produced by run_demo.sh)
+out/
 *.nc
+*.aux.xml
+
+# Keep reference images committed
+!expected_output/*.png

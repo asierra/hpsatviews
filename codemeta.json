@@ -2,21 +2,48 @@
   "@context": "https://doi.org/10.5063/schema/codemeta-2.0",
   "@type": "SoftwareSourceCode",
   "name": "hpsatviews",
-  "description": "High Performance Satellite Views - Tool for processing GOES-R satellite imagery",
+  "description": "High-performance command-line tool for processing GOES-R geostationary satellite imagery (ABI L1b/L2). Generates grayscale, pseudocolor, and RGB composite views (true color, ash, airmass, day/night blend) from NetCDF data. Optimized with OpenMP parallelization and pre-compiled Rayleigh correction LUTs for near-real-time throughput on commodity hardware.",
   "license": "https://spdx.org/licenses/GPL-3.0-or-later",
-  "programmingLanguage": "C",
+  "programmingLanguage": {
+    "@type": "ComputerLanguage",
+    "name": "C",
+    "version": "C11"
+  },
+  "runtimePlatform": "Linux",
+  "operatingSystem": "Linux",
+  "softwareRequirements": [
+    "libnetcdf >= 4.6",
+    "libpng >= 1.6",
+    "GDAL >= 3.0",
+    "GCC with OpenMP support (>= 4.9)"
+  ],
   "author": [
     {
       "@type": "Person",
-      "givenName": "Your",
-      "familyName": "Name",
+      "@id": "https://orcid.org/0000-0003-1018-8521",
+      "givenName": "Alejandro",
+      "familyName": "Aguilar Sierra",
+      "email": "asierra@unam.mx",
       "affiliation": {
         "@type": "Organization",
-        "name": "LANOT"
+        "name": "Laboratorio Nacional de Observación de la Tierra (LANOT), Universidad Nacional Autónoma de México (UNAM)"
       }
     }
   ],
   "codeRepository": "https://github.com/asierra/hpsatviews",
+  "issueTracker": "https://github.com/asierra/hpsatviews/issues",
   "version": "1.0.0",
-  "keywords": ["satellite", "GOES-R", "remote sensing", "image processing"]
+  "dateCreated": "2025-01-01",
+  "developmentStatus": "active",
+  "keywords": [
+    "satellite imagery",
+    "GOES-R",
+    "ABI",
+    "remote sensing",
+    "image processing",
+    "true color",
+    "Rayleigh correction",
+    "OpenMP",
+    "NetCDF"
+  ]
 }
