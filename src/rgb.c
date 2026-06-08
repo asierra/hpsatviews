@@ -594,7 +594,7 @@ static bool apply_enhancements(RgbContext *ctx) {
         // Genera máscara día/noche usando los datos del contexto
         float day_pct = 0.0f;
         ImageData mask = create_daynight_mask(ctx->channels[13], *nav_lat_ptr, *nav_lon_ptr,
-                                              &day_pct, 0);
+                                              &day_pct, ctx->opts.cloud_temp);
         float night_pct = 100.0f - day_pct;
 
         // Si hay una porción de noche (>0.1%), mezclamos las imágenes.
@@ -754,6 +754,7 @@ static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
     ctx->opts.use_citylights = cfg->use_citylights;
     ctx->opts.use_alpha = cfg->use_alpha;
     ctx->opts.use_full_res = cfg->use_full_res;
+    ctx->opts.cloud_temp = cfg->cloud_temp;
 
     // CLAHE
     ctx->opts.apply_clahe = cfg->apply_clahe;

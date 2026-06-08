@@ -181,6 +181,7 @@ int main(int argc, char *argv[]) {
         ap_add_flag(rgb_cmd, "stretch");
         ap_add_flag(rgb_cmd, "sharpen");
         ap_add_flag(rgb_cmd, "full-res f");
+        ap_add_str_opt(rgb_cmd, "cloud-temp T", "0");
         ap_set_cmd_callback(rgb_cmd, cmd_rgb);
     }
 

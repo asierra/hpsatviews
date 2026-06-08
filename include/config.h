@@ -35,6 +35,7 @@ typedef struct {
     bool use_alpha;             // Generar canal alfa
     bool use_citylights;        // Fondo de luces nocturnas
     bool use_full_res;          // Usar resolución completa (productos L2)
+    float cloud_temp;           // --cloud-temp: umbral de temperatura (K); píxeles más fríos se clasifican como noche (0=desactivado)
 
     // --- Álgebra de Bandas (Custom Mode) ---
     bool is_custom_mode;

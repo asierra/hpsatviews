@@ -52,6 +52,7 @@ typedef struct {
     bool use_alpha;                // --alpha
     bool force_geotiff;            // --geotiff
     bool use_full_res;             // --full-res
+    float cloud_temp;              // --cloud-temp/-T: umbral de temperatura (K); 0=desactivado
     
     // custom
     char *expr;

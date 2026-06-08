@@ -410,6 +410,15 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
         
         // Full resolution (para productos L2 que tienen baja resolución)
         cfg->use_full_res = ap_found(parser, "full-res");
+
+        // Umbral de temperatura para clasificar nubes altas frías como noche (0=desactivado)
+        if (ap_found(parser, "cloud-temp")) {
+            const char *ct_str = ap_get_str_value(parser, "cloud-temp");
+            if (ct_str && sscanf(ct_str, "%f", &cfg->cloud_temp) != 1) {
+                LOG_ERROR("--cloud-temp: valor inválido '%s', se espera un número en Kelvin.", ct_str);
+                return false;
+            }
+        }
     }
     
     // --- Pseudocolor (Paletas CPT) ---
