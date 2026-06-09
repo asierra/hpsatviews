@@ -1,10 +1,17 @@
+/* Byte Array Data Structure and tools
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
+ */
 #ifndef HPSATVIEWS_IMAGE_H_
 #define HPSATVIEWS_IMAGE_H_
 
 #include <stdint.h>
 #include <stdlib.h>
 
-// Estructura para guardar datos de una imagen
+// 8-bit raster buffer for grayscale or RGB imagery.
 typedef struct {
   unsigned int width, height;
   unsigned int bpp; // Bytes per pixel: 1 = gray, 2 = gray+a, 3 = rgb, 4 = rgba
@@ -37,86 +44,42 @@ static inline void color_array_destroy(ColorArray *array) {
     free(array);
 }
 
-/**
- * @brief Creates a new ImageData structure with allocated memory.
- * @param width Image width.
- * @param height Image height.
- * @param bpp Bytes per pixel (1=Gray, 2=Gray+Alpha, 3=RGB, 4=RGBA).
- * @return Initialized ImageData (data is NULL on failure).
- */
+// Allocates an ImageData buffer. bpp: 1=gray, 2=gray+alpha, 3=RGB, 4=RGBA. data is NULL on failure.
 ImageData image_create(unsigned int width, unsigned int height, unsigned int bpp);
 
-/**
- * @brief Safely frees memory allocated for ImageData.
- * @param image Pointer to the image to destroy.
- */
 void image_destroy(ImageData *image);
 
-/**
- * @brief Creates a deep copy of an image.
- */
 ImageData copy_image(ImageData orig);
 
-/**
- * @brief Crops an image to a specified rectangular region.
- */
+// Extracts a rectangular subimage (pixel window crop).
 ImageData image_crop(const ImageData* src, unsigned int x, unsigned int y, unsigned int width, unsigned int height);
 
-/**
- * @brief Blends a foreground image over a background using a mask.
- * Both images must be RGB and of the same size.
- */
+// Alpha-blends fg over bg using a grayscale mask (both must be RGB, same size).
 ImageData blend_images(ImageData bg, ImageData fg, ImageData mask);
 
-/**
- * @brief Applies global histogram equalization to the image.
- */
+// Global histogram equalization.
 void image_apply_histogram(ImageData im);
 
 /**
- * @brief Applies CLAHE (Contrast Limited Adaptive Histogram Equalization).
- * @param im Image to process (modified in-place).
- * @param tiles_x Number of horizontal tiles (typically 8).
- * @param tiles_y Number of vertical tiles (typically 8).
- * @param clip_limit Contrast limit factor (typically 2.0-4.0, higher = more contrast).
+ * @brief CLAHE (Contrast Limited Adaptive Histogram Equalization), in-place.
+ * @param tiles_x, tiles_y  Grid of contextual regions (typically 8×8).
+ * @param clip_limit        Redistribution threshold (2.0–4.0 typical).
  */
 void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit);
 
-/**
- * @brief Resamples image using bilinear interpolation (upsampling).
- * @param src Source image.
- * @param factor Upsampling factor (> 1).
- * @return New upsampled image.
- */
+// Bilinear interpolation upsampling by integer factor.
 ImageData image_upsample_bilinear(const ImageData* src, int factor);
 
-/**
- * @brief Resamples image using box filter (downsampling).
- * @param src Source image.
- * @param factor Downsampling factor (> 1).
- * @return New downsampled image.
- */
+// Box-filter (averaging) downsampling by integer factor.
 ImageData image_downsample_boxfilter(const ImageData* src, int factor);
 
-/**
- * @brief Creates an alpha mask from DataF (255 = valid data, 0 = NonData).
- * @param data Pointer to DataF structure.
- * @return Single channel image (mask).
- */
+// Generates a single-channel validity mask from a DataF (255 = valid, 0 = fill).
 ImageData image_create_alpha_mask_from_dataf(const void* data);
 
-/**
- * @brief Adds an alpha channel to an image using a mask.
- * Converts bpp 1->2 or 3->4.
- */
+// Appends an alpha channel using a mask image (bpp 1→2 or 3→4).
 ImageData image_add_alpha_channel(const ImageData* src, const ImageData* alpha_mask);
 
-/**
- * @brief Expands an indexed image (bpp=1 or 2) to RGB/RGBA using a palette.
- * @param src Source indexed image.
- * @param palette Color array to map indices to colors.
- * @return Expanded RGB(A) image.
- */
+// Maps an indexed (bpp=1) or indexed+alpha (bpp=2) image to RGB/RGBA via a color palette.
 ImageData image_expand_palette(const ImageData* src, const ColorArray* palette);
 
 #endif /* HPSATVIEWS_IMAGE_H_ */

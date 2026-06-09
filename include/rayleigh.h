@@ -15,31 +15,16 @@ typedef struct {
 } RayleighNav;
 
 
-/**
- * @brief Aplica corrección Rayleigh analítica (fórmula física).
- * No requiere LUTs externas.
- * * @param img Imagen a corregir (modificada in-situ)
- * @param nav Estructura con la navegación (SZA, VZA, RAA)
- * @param tau Coeficiente de profundidad óptica de la banda (ej. 0.061 para azul)
- */
-//void analytic_rayleigh_correction(DataF *img, const RayleighNav *nav, float tau);
+// Analytic Rayleigh correction using physical scattering formula (no LUT required).
+// Corrects band in-place. lambda_um: central wavelength in micrometres.
 void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lambda_um);
 
-/**
- * @brief Carga y calcula toda la geometría necesaria para la corrección Rayleigh.
- * Internamente gestiona la creación y liberación de navla, navlo, saa y vaa.
- * * @param filename Ruta al archivo NetCDF L1b.
- * @param nav Puntero a la estructura RayleighNav a rellenar.
- * @return true si tuvo éxito, false si falló.
- */
+// Loads viewing geometry (SZA, VZA, RAA) from an L1b NetCDF file into nav.
+// Resamples geometry grids to target_width x target_height.
 bool rayleigh_load_navigation(const char *filename, RayleighNav *nav, 
 				unsigned int target_width, unsigned int target_height);
 
-/**
- * @brief Igual que rayleigh_load_navigation pero reutiliza lat/lon ya calculados.
- * Evita llamar a compute_navigation_nc cuando el contexto ya dispone de la
- * navegación geográfica.
- */
+// Variant of rayleigh_load_navigation that reuses pre-computed lat/lon grids.
 bool rayleigh_load_navigation_from_latlon(const char *filename,
                                           const DataF *navla, const DataF *navlo,
                                           RayleighNav *nav,
@@ -56,28 +41,13 @@ typedef struct {
     float az_min, az_max, az_step; // Relative Azimuth range
 } RayleighLUT;
 
-/**
- * @brief Libera la memoria de la estructura de navegación.
- */
+// Frees geometry grids inside a RayleighNav.
 void rayleigh_free_navigation(RayleighNav *nav);
 
-/**
- * @brief Apply Rayleigh atmospheric correction to a reflectance image.
- * 
- * Modifies the input image in-place, subtracting Rayleigh scattering
- * contribution based on viewing geometry.
- * 
- * @param img Input/output reflectance image (modified in-place)
- * @param nav Navigation data (SZA, VZA, RAA)
- * @param name Channel name for LUT selection ("C01", "C02", "C03")
- */
+// LUT-based Rayleigh correction. Corrects img in-place using pre-computed scattering tables.
+// channel: ABI band index (1=C01, 2=C02, 3=C03); redband: C01 reflectance for aerosol correction.
 void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t channel, const DataF *redband);
 
-/**
- * @brief Free memory allocated for a Rayleigh LUT.
- * 
- * @param lut Pointer to the LUT structure to free
- */
 void rayleigh_lut_destroy(RayleighLUT *lut);
 
 #endif /* HPSATVIEWS_RAYLEIGH_H_ */

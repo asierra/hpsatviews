@@ -1,6 +1,9 @@
-/* Floating point Array Data structure and tools
- * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
- * Labotatorio Nacional de Observación de la Tierra, UNAM
+/* Main Floating Point Array Data Structure and tools
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #ifndef HPSATVIEWS_DATANC_H_
 #define HPSATVIEWS_DATANC_H_
@@ -13,7 +16,7 @@
 
 extern float NonData;
 
-// Macro para verificar si un valor es NonData (comparación robusta para floats)
+// Fill/missing value check: matches NetCDF _FillValue convention (>= 1e30, NaN, Inf)
 #define IS_NONDATA(x) ((x) >= 1.0e+30f || isnan(x) || isinf(x))
 
 // Enum for arithmetic operations
@@ -79,115 +82,72 @@ typedef struct {
   const char* varname;
   time_t timestamp;
   unsigned char band_id;
-  float native_resolution_km; // Resolución nativa del sensor en km (0 si desconocida)
+  float native_resolution_km; // Native ABI band resolution in km (0 if unknown)
   
   // [TopLeftX, PixelW, RotX, TopLeftY, RotY, PixelH]
   double geotransform[6]; 
   ProjectionCode proj_code;
   
-  // Parámetros para construir el WKT (Well Known Text) 
+  // GEOS projection params for WKT construction
   struct {
       double sat_height; // perspective_point_height
       double semi_major; // semi_major_axis
       double semi_minor; // semi_minor_axis
       double lon_origin; // longitude_of_projection_origin
-      double inv_flat;   // inverse_flattening (opcional, calculable con a/b)
-      bool valid;        // Flag para saber si se leyeron correctamente
+      double inv_flat;   // inverse_flattening
+      bool valid;        // true if projection params were read successfully
   } proj_info;
 } DataNC;
 
 /**
- * @brief Creates a new DataF structure with allocated memory.
- * @param width Width of the grid.
- * @param height Height of the grid.
- * @return Initialized DataF on success, or DataF with NULL data_in on failure.
+ * @brief Allocates a 2D float grid.
+ * @return Initialized DataF; data_in is NULL on allocation failure.
  */
 DataF dataf_create(unsigned int width, unsigned int height);
 
-/**
- * @brief Safely frees memory allocated for DataF.
- * Safe to call with NULL data_in pointer.
- * @param data Pointer to the DataF structure to destroy.
- */
+// Frees DataF memory. Safe to call with NULL data_in.
 void dataf_destroy(DataF *data);
 
-/**
- * @brief Creates a deep copy of a DataF structure.
- * @param data Pointer to the source DataF.
- * @return A new DataF copy.
- */
+// Returns a deep copy of a DataF grid.
 DataF dataf_copy(const DataF *data);
 
-/**
- * @brief Fills the data buffer of a DataF structure with a specific value.
- * @param data Pointer to the DataF structure.
- * @param value The value to fill with.
- */
+// Fills the DataF buffer with a constant value.
 void dataf_fill(DataF *data, float value);
 
 /**
- * @brief Crops a rectangular region from a DataF structure.
- * @param data Source DataF.
- * @param x_start Starting x coordinate.
- * @param y_start Starting y coordinate.
- * @param width Width of the crop.
- * @param height Height of the crop.
- * @return A new DataF containing the cropped region.
+ * @brief Extracts a rectangular subgrid from a DataF.
+ * @param x_start, y_start  Top-left pixel of the crop window.
+ * @param width, height      Crop dimensions in pixels.
+ * @return New DataF containing the cropped region.
  */
 DataF dataf_crop(const DataF *data, unsigned int x_start, unsigned int y_start, 
                  unsigned int width, unsigned int height);
 
-/**
- * @brief Simple downsampling by selecting points (nearest neighbor-ish).
- * @param datanc_big Source high-res data.
- * @param factor Downsampling factor (integer).
- * @return Downsampled DataF.
- */
+// Nearest-neighbor decimation by integer factor.
 DataF downsample_simple(DataF datanc_big, int factor);
 
-/**
- * @brief Downsampling using Box Filter algorithm (averaging) for float data.
- * @param datanc_big Source high-res data.
- * @param factor Downsampling factor.
- * @return Downsampled DataF.
- */
+// Box-filter (averaging) downsampling by integer factor.
 DataF downsample_boxfilter(DataF datanc_big, int factor);
 
-/**
- * @brief Upsampling using bilinear interpolation for float data.
- * @param datanc_big Source low-res data.
- * @param factor Upsampling factor.
- * @return Upsampled DataF.
- */
+// Bilinear interpolation upsampling by integer factor.
 DataF upsample_bilinear(DataF datanc_big, int factor);
 
-// --- Funciones para DataB ---
+// DataB
 DataB datab_create(unsigned int width, unsigned int height);
 void datab_destroy(DataB *data);
 
-// --- Funciones de operaciones aritméticas para DataF ---
+// DataF arithmetic operations
 
-/**
- * @brief Performs an arithmetic operation between two DataF structures.
- * @param a First operand.
- * @param b Second operand.
- * @param op Operation (ADD, SUB, MUL, DIV).
- * @return Resulting DataF.
- */
+// Element-wise arithmetic between two DataF grids (ADD, SUB, MUL, DIV).
 DataF dataf_op_dataf(const DataF* a, const DataF* b, Operation op);
 
-/**
- * @brief Performs an arithmetic operation between a DataF and a scalar.
- */
+// Element-wise arithmetic between a DataF grid and a scalar.
 DataF dataf_op_scalar(const DataF* a, float scalar, Operation op, bool scalar_first);
 
-/**
- * @brief Inverts the sign of all values in a DataF structure in-place.
- * @param a Pointer to the DataF structure to modify.
- */
+// Negates all values in a DataF grid in-place.
 void dataf_invert(DataF* a);
 
-// --- Funciones de utilidad para DataNC ---
+// DataNC utilities
 void datanc_destroy(DataNC *datanc);
 DataF datanc_get_float_base(DataNC *datanc);
 
@@ -195,22 +155,18 @@ DataF datanc_get_float_base(DataNC *datanc);
 #define M_PI_2 1.57079632679489661923
 
 /**
- * @brief Aplica corrección gamma a nivel de datos flotantes.
- * Normaliza con [min_val, max_val] y luego aplica gamma: pixel = ((pixel-min)/(max-min))^(1/gamma).
- * Los datos quedan en espacio [0,1] después de la transformación.
- * @param data Puntero a la estructura DataF.
- * @param gamma Valor de gamma (ej. 2.0 para raíz cuadrada).
- * @param min_val Valor mínimo para el stretch (puede ser el rango natural o el de --minmax).
- * @param max_val Valor máximo para el stretch.
+ * @brief Applies gamma correction to float radiance data.
+ * Normalizes to [min_val, max_val] then computes pixel = ((pixel-min)/(max-min))^(1/gamma).
+ * Output values are in [0, 1].
+ * @param gamma  Gamma exponent (e.g., 2.0 for square-root stretch).
+ * @param min_val, max_val  Radiance range for linear stretch.
  */
 void dataf_apply_gamma(DataF *data, float gamma, float min_val, float max_val);
 
 /**
- * @brief Promedio por bloques 2×2 del mismo tamaño que la entrada.
- * Cada bloque de 2×2 pixeles se reemplaza por su promedio.
- * Maneja dimensiones impares y salta valores NonData.
- * @param input Datos de entrada.
- * @return Nuevo DataF con el promedio por bloques.
+ * @brief 2×2 block-average filter (same output size as input).
+ * Handles odd dimensions and skips fill values.
+ * @return New DataF with averaged values.
  */
 DataF dataf_mean_2x2(const DataF *input);
 

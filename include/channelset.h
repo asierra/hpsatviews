@@ -1,5 +1,5 @@
 /*
- * ChannelSet: Gestión de conjuntos de canales para procesamiento RGB.
+ * ChannelSet: multi-channel bundle management for RGB composite processing.
  *
  * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
  * Laboratorio Nacional de Observación de la Tierra, UNAM
@@ -10,70 +10,37 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/**
- * @brief Información de un canal individual.
- */
+// ABI channel descriptor.
 typedef struct {
-    const char *name;     // Nombre del canal (ej. "C01", "C13")
-    char *filename;       // Ruta completa al archivo NetCDF (allocado dinámicamente)
+    const char *name;     // Channel identifier, e.g. "C01", "C13"
+    char *filename;       // Full path to the NetCDF file (heap-allocated)
 } ChannelInfo;
 
-/**
- * @brief Conjunto de canales requeridos para un modo RGB.
- */
+// Set of ABI channels required for a composite mode.
 typedef struct {
-    ChannelInfo *channels;      // Array de canales
-    int count;                  // Número de canales en el conjunto
-    char id_signature[40];      // ID del satélite/producto (ej. "s20253231800")
-    char scan_mode[4];          // Modo de escaneo del archivo ancla (ej. "M3", "M6")
+    ChannelInfo *channels;      // Channel array
+    int count;                  // Number of channels
+    char id_signature[40];      // Scene timestamp token, e.g. "s20253231800"
+    char scan_mode[4];          // ABI scan mode of the anchor file, e.g. "M6"
 } ChannelSet;
 
-/**
- * @brief Crea un nuevo ChannelSet con los canales especificados.
- * 
- * @param channel_names Array de nombres de canales (debe terminar en NULL)
- * @param count Número de canales (sin contar el terminador NULL)
- * @return Puntero al ChannelSet creado, o NULL si falla
- */
+// Creates a ChannelSet for the given channel names (NULL-terminated array). Returns NULL on failure.
 ChannelSet* channelset_create(const char **channel_names, int count);
 
-/**
- * @brief Libera toda la memoria asociada al ChannelSet.
- * 
- * @param set Puntero al ChannelSet a destruir (puede ser NULL)
- */
+// Frees all memory associated with a ChannelSet. Safe to call with NULL.
 void channelset_destroy(ChannelSet *set);
 
-/**
- * @brief Busca los archivos de canales en un directorio basándose en el ID del conjunto.
- * 
- * @param directory Directorio donde buscar los archivos
- * @param set ChannelSet con los canales a buscar (debe tener id_signature establecido)
- * @param is_l2_product true si es producto L2 (CMIP), false si es L1b (Rad)
- * @return 0 si todos los canales fueron encontrados, -1 si hubo error
- */
+// Resolves NetCDF file paths for each channel in set by scanning directory.
+// is_l2_product: true for CMIP (L2), false for Rad (L1b). Returns 0 on success, -1 on error.
 int find_channel_filenames(const char *directory, ChannelSet *set, bool is_l2_product);
 
-/**
- * @brief Extrae el ID signature de un nombre de archivo GOES.
- * Ejemplo: "OR_ABI-L2-CMIPC-M6C13_G19_s20253231800172_..." -> "s20253231800"
- * 
- * @param filename Nombre del archivo
- * @param id_out Buffer de salida para el ID (debe tener al menos 40 bytes)
- * @param id_size Tamaño del buffer de salida
- * @return 0 si se extrajo correctamente, -1 si hubo error
- */
+// Extracts the scene timestamp token from a GOES filename into id_out (≥40 bytes).
+// e.g. "OR_ABI-L2-CMIPC-M6C13_G19_s20253231800172_..." → "s20253231800"
+// Returns 0 on success, -1 on error.
 int find_id_from_name(const char *filename, char *id_out, size_t id_size);
 
-/**
- * @brief Extrae el modo de escaneo de un nombre de archivo GOES.
- * Ejemplo: "OR_ABI-L2-CMIPC-M3C13_G16_..." -> "M3"
- *
- * @param filename Nombre del archivo
- * @param mode_out Buffer de salida (debe tener al menos 4 bytes)
- * @param mode_size Tamaño del buffer
- * @return 0 si se extrajo correctamente, -1 si no se encontró
- */
+// Extracts the ABI scan mode from a GOES filename into mode_out (≥4 bytes).
+// e.g. "OR_ABI-L2-CMIPC-M3C13_G16_..." → "M3". Returns 0 on success, -1 if not found.
 int find_scan_mode_from_name(const char *filename, char *mode_out, size_t mode_size);
 
 #endif /* HPSATVIEWS_CHANNELSET_H_ */

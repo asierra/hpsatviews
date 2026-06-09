@@ -1,99 +1,82 @@
+/* Configuration header for HPSATVIEWS.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
+ */
 #ifndef HPSATVIEWS_CONFIG_H_
 #define HPSATVIEWS_CONFIG_H_
 
 #include <stdbool.h>
 
-/**
- * Configuración inmutable del proceso.
- * Contiene todas las opciones solicitadas por el usuario (Input).
- * Reemplaza el paso de múltiples argumentos y estructuras ad-hoc como RgbOptions.
- */
+// Immutable processing configuration populated from parsed CLI arguments.
 typedef struct {
-    // --- Archivo de Entrada ---
-    const char *input_file;     // Path al archivo NetCDF de entrada
-    bool is_l2_product;         // true si es CMIP (detectado del nombre)
+    // Input
+    const char *input_file;     // Path to the NetCDF anchor file
+    bool is_l2_product;         // true if CMIP L2 product (inferred from filename)
     
-    // --- Modo de Operación ---
+    // Operation mode
     const char *command;        // "rgb", "gray", "pseudocolor"
-    const char *strategy;       // "truecolor", "ch13", "ash", etc.
+    const char *strategy;       // composite recipe: "truecolor", "ash", "ch13", etc.
     
-    // --- Parámetros Físicos y Realce ---
+    // Radiometric enhancements
     float gamma[3];
     bool apply_clahe;
     float clahe_clip_limit;
     int clahe_tiles_x;
     int clahe_tiles_y;
     bool apply_histogram;
-    bool apply_rayleigh;        // Corrección atmosférica (LUTs)
-    bool rayleigh_analytic;     // Corrección Rayleigh analítica
-    bool use_piecewise_stretch; // --stretch (realce de contraste por tramos)
-    bool use_sharpen;           // --sharpen (ratio sharpening)
-    bool invert_values;         // Invertir escala (para canales IR)
+    bool apply_rayleigh;        // Rayleigh atmospheric correction (LUT-based)
+    bool rayleigh_analytic;     // Analytic Rayleigh correction
+    bool use_piecewise_stretch; // --stretch: piecewise contrast stretch
+    bool use_sharpen;           // --sharpen: ratio sharpening
+    bool invert_values;         // Invert scale (IR channels)
     
-    // --- Opciones de Composición ---
-    int scale;                  // Factor de escala (upscaling/downsampling)
-    bool use_alpha;             // Generar canal alfa
-    bool use_citylights;        // Fondo de luces nocturnas
-    bool use_full_res;          // Usar resolución completa (productos L2)
-    float cloud_temp;           // --cloud-temp: umbral de temperatura (K); píxeles más fríos se clasifican como noche (0=desactivado)
+    // Compositing options
+    int scale;                  // Integer scale factor (up- or down-sampling)
+    bool use_alpha;             // Generate alpha channel
+    bool use_citylights;        // Composite city-lights background (night)
+    bool use_full_res;          // Full resolution output (L2 products)
+    float cloud_temp;           // --cloud-temp: BT threshold (K); colder pixels treated as night (0 = disabled)
 
-    // --- Álgebra de Bandas (Custom Mode) ---
+    // Band algebra (custom mode)
     bool is_custom_mode;
-    const char *custom_expr;    // Expresión del usuario (ej: "0.5*C02+0.3*C03")
-    const char *custom_minmax;  // Rango min,max opcional
-    const char *product_short;  // Token {PROD}: parte antes de ':' de --name, o el modo corto
-    const char *product_long;   // Campo 'product' en JSON/GeoTIFF: parte tras ':' de --name, o descripción del modo
+    const char *custom_expr;    // User expression, e.g. "0.5*C02+0.3*C03"
+    const char *custom_minmax;  // Optional min,max range
+    const char *product_short;  // {PROD} token: part before ':' in --name or short mode label
+    const char *product_long;   // 'product' field in JSON/GeoTIFF metadata: part after ':' in --name
     
-    // --- Pseudocolor (Paletas) ---
-    const char *palette_file;   // Path al archivo .cpt (NULL si no aplica)
+    // Pseudocolor
+    const char *palette_file;   // Path to .cpt palette file (NULL if unused)
     
-    // --- Geometría Solicitada ---
+    // Spatial subset and reprojection
     bool has_clip;
     float clip_coords[4];       // [lon_min, lat_max, lon_max, lat_min]
     bool do_reprojection;
-    bool save_both;             // -B: guardar fixed-grid y reproyectado (implica do_reprojection)
+    bool save_both;             // -B: save fixed-grid and reprojected outputs (implies do_reprojection)
     
-    // --- Salida ---
+    // Output
     bool force_geotiff;
-    const char *output_path_override; // NULL para automático
+    const char *output_path_override; // NULL for automatic naming
 
 } ProcessConfig;
 
-// Forward declaration para evitar incluir args.h aquí
+// Forward declaration to avoid including args.h here.
 typedef struct ArgParser ArgParser;
 
-/**
- * Convierte un ArgParser en un ProcessConfig inmutable.
- * Centraliza toda la lógica de parseo de argumentos.
- * 
- * @param parser ArgParser ya inicializado y parseado.
- * @param cfg ProcessConfig a llenar (debe estar inicializado a 0).
- * @return true si el parseo fue exitoso, false en caso de error.
- */
+// Populates a zeroed ProcessConfig from a parsed ArgParser. Returns false on error.
 bool config_from_argparser(ArgParser *parser, ProcessConfig *cfg);
 
-/**
- * Valida la configuración generada.
- * @param cfg Puntero a la configuración a validar.
- * @return true si es válida, false si hay errores lógicos.
- */
+// Validates logical consistency of the configuration. Returns false on error.
 bool config_validate(const ProcessConfig *cfg);
 
-/**
- * Imprime la configuración actual para debug.
- */
 void config_print_debug(const ProcessConfig *cfg);
 
-/**
- * Libera memoria dinámica asociada al ProcessConfig.
- * Solo libera campos alojados dinámicamente (output_path_override).
- */
+// Frees dynamically allocated fields (output_path_override). Safe to call on a zeroed struct.
 void config_destroy(ProcessConfig *cfg);
 
-/**
- * Inserta el sufijo "_geo" antes de la extensión de un path.
- * El resultado es dinámico (malloc'd) y debe ser liberado por el llamador.
- */
+// Returns a malloc'd copy of path with "_geo" inserted before the extension. Caller must free.
 char* insert_geo_suffix(const char *path);
 
 #endif // HPSATVIEWS_CONFIG_H_
