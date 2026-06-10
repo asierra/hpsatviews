@@ -1,6 +1,9 @@
-/* True color RGB image generation
- * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
- * Labotatorio Nacional de Observación de la Tierra, UNAM
+/* True-color and multi-band RGB image generation for ABI composites.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #include <math.h>
 #include <omp.h>
@@ -24,7 +27,7 @@ DataF create_truecolor_synthetic_green(const DataF *c_blue, const DataF *c_red, 
     DataF green = dataf_create(c_red->width, c_red->height);
     if (green.data_in == NULL) return green;
 
-    // Inicializar min/max invertidos para búsqueda
+    // Initialize inverted min/max for scan.
     green.fmin = NonData; 
     green.fmax = -NonData;
 
@@ -41,7 +44,7 @@ DataF create_truecolor_synthetic_green(const DataF *c_blue, const DataF *c_red, 
         if (IS_NONDATA(B) || IS_NONDATA(R) || IS_NONDATA(N)) {
             green.data_in[i] = NonData;
         } else {
-            // Cálculo lineal físico (sin gamma ni clips aún)
+            // Linear physical combination (no gamma or clipping yet).
             // geo2grid SimulatedGreen: 0.465*C01 + 0.465*C02 + 0.07*C03
             float G_val = (0.465f * B) + (0.465f * R) + (0.07f * N);
             green.data_in[i] = G_val;
@@ -51,7 +54,7 @@ DataF create_truecolor_synthetic_green(const DataF *c_blue, const DataF *c_red, 
         }
     }
     
-    // Si no encontramos datos válidos, dejar min/max por defecto
+    // Keep default min/max if no valid data was found.
     if (local_min < 1e29f) {
         green.fmin = local_min;
         green.fmax = local_max;
@@ -64,7 +67,7 @@ DataF create_truecolor_synthetic_green(const DataF *c_blue, const DataF *c_red, 
 void apply_solar_zenith_correction(DataF *data, const DataF *sza) {
     if (!data || !sza || !data->data_in || !sza->data_in) return;
     
-    const float MAX_SZA = 85.0f; // Corte conservador para evitar ruido extremo
+    const float MAX_SZA = 85.0f; // conservative cutoff to avoid terminator noise
     const float RAD_PER_DEG = M_PI / 180.0f;
 
     float local_min = 1e30f;
@@ -76,12 +79,12 @@ void apply_solar_zenith_correction(DataF *data, const DataF *sza) {
         float sza_deg = sza->data_in[i];
         
         if (IS_NONDATA(refl) || IS_NONDATA(sza_deg) || sza_deg > MAX_SZA) {
-            data->data_in[i] = 0.0f; // Clamping a negro en noche/terminador
+            data->data_in[i] = 0.0f; // clamp to black at night/terminator
             continue;
         }
         
         float cos_sza = cosf(sza_deg * RAD_PER_DEG);
-        // Evitar división por cero (aunque MAX_SZA ya protege)
+        // Avoid division by zero (MAX_SZA guard already prevents cos_sza ~ 0).
         if (cos_sza > 0.087f) { // cos(85) approx 0.087
             float corrected = refl / cos_sza;
             data->data_in[i] = corrected;
@@ -170,29 +173,27 @@ ImageData create_multiband_rgb(const DataF* r_ch, const DataF* g_ch, const DataF
 
 // --- CONSTANTES DE GEO2GRID (Normalizadas 0.0 - 1.0) ---
 
-// Puntos de control estándar para TrueColor (Shadow Boost)
-// Entrada: 0, 25, 55, 100, 255 (Escala 0-255)
-// Salida:  0, 90, 140, 175, 255
+// Standard geo2grid control points for TrueColor Shadow Boost stretch.
+// Input:  0, 25, 55, 100, 255 (scale 0-255)
+// Output: 0, 90, 140, 175, 255
 static const float GEO2GRID_STRETCH_X[] = {0.0f, 0.09804f, 0.21569f, 0.39216f, 1.0f};
 static const float GEO2GRID_STRETCH_Y[] = {0.0f, 0.35294f, 0.54902f, 0.68627f, 1.0f};
 static const int GEO2GRID_STRETCH_COUNT = 5;
 
-// Función auxiliar inline para interpolación lineal
+// Linear interpolation helper.
 static inline float interpolate_linear(float val, const float *x, const float *y, int n) {
-    // 1. Clamping extremos
     if (val <= x[0]) return y[0];
     if (val >= x[n - 1]) return y[n - 1];
 
-    // 2. Buscar el tramo correspondiente
-    // Dado que son pocos puntos (5), un loop lineal es más rápido que búsqueda binaria
+    // Linear scan is faster than binary search for n=5.
     for (int i = 0; i < n - 1; i++) {
         if (val >= x[i] && val < x[i+1]) {
-            // Fórmula: y = y0 + (val - x0) * (y1 - y0) / (x1 - x0)
+            // y = y0 + (val - x0) * (y1 - y0) / (x1 - x0)
             float slope = (y[i+1] - y[i]) / (x[i+1] - x[i]);
             return y[i] + (val - x[i]) * slope;
         }
     }
-    return val; // Fallback (no debería ocurrir)
+    return val; // should not reach here
 }
 
 
@@ -205,7 +206,7 @@ void apply_piecewise_stretch(DataF *band) {
 
     size_t n = band->size;
     
-    // Calcular min/max para estadísticas rápidas
+    // Compute min/max for quick range statistics.
     float local_min = 1.0f; 
     float local_max = 0.0f;
 
@@ -215,7 +216,7 @@ void apply_piecewise_stretch(DataF *band) {
 
         if (IS_NONDATA(val)) continue;
 
-        // Aplicar interpolación
+        // Apply piecewise stretch.
         float out = interpolate_linear(val, x_norm, y_norm, count);
         
         band->data_in[i] = out;

@@ -1,9 +1,11 @@
-/* To define the colormap for a pseudocolor image, we use GPT from GMT.
- * 
- * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
- * Labotatorio Nacional de Observación de la Tierra, UNAM
+/* GMT Color Palette Table (CPT) reader for pseudocolor mapping.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
-// https://docs.generic-mapping-tools.org/dev/reference/features.html#color-palette-tables
+// CPT format: https://docs.generic-mapping-tools.org/dev/reference/features.html#color-palette-tables
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -88,7 +90,7 @@ ColorArray* cpt_to_color_array(CPTData* cpt) {
 }
 
 
-// Función para parsear una línea de entrada del CPT
+// Parse a single CPT color entry line.
 bool parse_cpt_line(const char* line, ColorEntry* entry1, ColorEntry* entry2) {
     int result = sscanf(line, "%f %hhu %hhu %hhu %f %hhu %hhu %hhu",
                        &entry1->value, &entry1->color.r, &entry1->color.g, &entry1->color.b,
@@ -108,7 +110,7 @@ bool parse_cpt_line(const char* line, ColorEntry* entry1, ColorEntry* entry2) {
     return false;
 }
 
-// Función para parsear colores especiales (F, B, N)
+// Parse special color entries (F = foreground, B = background, N = NaN).
 bool parse_special_color(const char* line, CPTData* cpt) {
     char type;
     Color color;
@@ -136,7 +138,7 @@ bool parse_special_color(const char* line, CPTData* cpt) {
     return false;
 }
 
-// Función principal para leer un archivo CPT
+// Read a GMT CPT file and return a CPTData struct.
 CPTData* read_cpt_file(const char* filename) {
     FILE* file = fopen(filename, "r");
     if (!file) {
@@ -163,10 +165,7 @@ CPTData* read_cpt_file(const char* filename) {
     bool in_header = true;
     
     while (fgets(line, sizeof(line), file)) {
-        // Eliminar newline
-        line[strcspn(line, "\n")] = 0;
-        
-        // Saltar líneas vacías o comentarios
+        // Strip newline; skip blank lines and comments.
         if (line[0] == '#' || line[0] == '\0') {
             continue;
         }
@@ -198,7 +197,7 @@ CPTData* read_cpt_file(const char* filename) {
             }
         }
         else if (in_header) {
-            // Asumir que es el nombre o metadata
+            // Treat as header/name metadata.
             strncpy(cpt->name, line, sizeof(cpt->name) - 1);
             cpt->name[sizeof(cpt->name) - 1] = '\0';
         }
@@ -217,12 +216,12 @@ CPTData* read_cpt_file(const char* filename) {
     return cpt;
 }
 
-// Función para liberar la memoria
+// Release memory allocated for a CPTData struct.
 void free_cpt_data(CPTData* cpt) {
     free(cpt);
 }
 
-// Función para imprimir información del CPT
+// Log CPT metadata and color table to the debug output.
 void print_cpt_info(const CPTData* cpt) {
         LOG_INFO("CPT: %s", cpt->name);
         LOG_INFO("Entradas de color: %d", cpt->entry_count);
@@ -258,21 +257,20 @@ void print_cpt_info(const CPTData* cpt) {
         }
 }
 
-// Función para obtener el color interpolado para un valor dado
+// Return interpolated color for the given value.
 Color get_color_for_value(const CPTData* cpt, double value) {
-    Color result = {0, 0, 0}; // Color por defecto (negro)
+    Color result = {0, 0, 0};
     
-    // Verificar si el valor está fuera del rango
     if (cpt->entry_count < 2) {
         return result;
     }
     
-    // Valor menor que el mínimo
+    // Below minimum: return background.
     if (value < cpt->entries[0].value) {
         return cpt->has_background ? cpt->background : result;
     }
     
-    // Valor mayor que el máximo
+    // Above maximum: return foreground.
     if (value > cpt->entries[cpt->entry_count - 1].value) {
         return cpt->has_foreground ? cpt->foreground : result;
     }
@@ -309,11 +307,11 @@ int main(int argc, char* argv[]) {
     
     CPTData* cpt = read_cpt_file(argv[1]);
     if (!cpt) {
-        // El error específico ya fue impreso por read_cpt_file
+        // Error was already logged by read_cpt_file.
         return 1;
     }
     
-    // Mostrar información del CPT
+    // Print CPT info.
     print_cpt_info(cpt);
         
     free_cpt_data(cpt);

@@ -1,8 +1,9 @@
-/*
- * Onternal palettes.
- * 
- * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
- * Labotatorio Nacional de Observación de la Tierra, UNAM
+/* Built-in spectral palettes for meteorological visualization.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #include "palette.h"
 
@@ -279,18 +280,17 @@ ColorArray *create_rainbow_color_array(unsigned int size) {
     if (!palette) return NULL;
 
     for (unsigned int i = 0; i < size-1; i++) {
-        // Normalizamos la posición i en el rango [0.0, 1.0]
+        // Normalize position to [0.0, 1.0].
         float t = (float)i / (float)(size - 1);
 
-        // Lógica HSV: Mapear t=0 (Azul) a t=1 (Rojo)
-        // Hue va de 240.0 (Azul) a 0.0 (Rojo)
+        // HSV mapping: t=0 -> Blue (hue 240°), t=1 -> Red (hue 0°).
         float hue = (1.0f - t) * 240.0f;
         
-        // Sector del círculo cromático (0 a 4, ya que cortamos en 240º)
+        // Hue sector on the color wheel (0-4, capped at 240°).
         float sector_pos = hue / 60.0f;
         
-        // Cálculo de intensidad intermedia (triangular)
-        // x es la distancia al "pico" de color más cercano
+        // Intermediate intensity (triangular function):
+        // x = distance to the nearest color peak.
         float x = 1.0f - fabsf(fmodf(sector_pos, 2.0f) - 1.0f);
         
         uint8_t max = 255;
@@ -299,7 +299,7 @@ ColorArray *create_rainbow_color_array(unsigned int size) {
 
         Color c;
 
-        // Asignación optimizada según sector
+        // Sector-based RGB assignment.
         if (hue < 60.0f) {
             c = (Color){.r = max, .g = mid, .b = min};      // Rojo -> Amarillo
         } else if (hue < 120.0f) {

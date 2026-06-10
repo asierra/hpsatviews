@@ -1,7 +1,9 @@
-/*
- * GeoTIFF writer module implementation
+/* GeoTIFF output writer via GDAL (RGB, grayscale, and indexed modes).
  * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
  * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #include "writer_geotiff.h"
 #include "logger.h"
@@ -129,7 +131,7 @@ static GDALDatasetH create_mem_dataset(int width,
     }
 
     if (meta) {
-        // 1. Establecer Proyección (WKT)
+        // 1. Set projection (WKT).
         char* wkt = get_projection_wkt(meta);
         if (wkt) {
             GDALSetProjection(ds, wkt);
@@ -140,18 +142,16 @@ static GDALDatasetH create_mem_dataset(int width,
         double gt[6];
         memcpy(gt, meta->geotransform, sizeof(double) * 6);
 
-        // --- CONVERSIÓN DE UNIDADES (RAD -> METROS) ---
-        // El archivo NetCDF tiene coordenadas en Radianes.
-        // La proyección PROJ.4 (+proj=geos) espera Metros.
+        // --- UNIT CONVERSION (radians -> metres) ---
+        // The NetCDF geotransform is in radians; PROJ (+proj=geos) requires metres.
         if (meta->proj_code == PROJ_GEOS && meta->proj_info.valid) {
             double h = meta->proj_info.sat_height;
-            // Escalamos todos los componentes del geotransform
-            gt[0] *= h; // Origen X
-            gt[1] *= h; // Pixel Width
-            gt[2] *= h; // Rotación X
-            gt[3] *= h; // Origen Y
-            gt[4] *= h; // Rotación Y
-            gt[5] *= h; // Pixel Height
+            gt[0] *= h; // origin X
+            gt[1] *= h; // pixel width
+            gt[2] *= h; // rotation X
+            gt[3] *= h; // origin Y
+            gt[4] *= h; // rotation Y
+            gt[5] *= h; // pixel height
         }
 
         // --- AJUSTE DE RECORTE (CROP) ---
@@ -160,7 +160,7 @@ static GDALDatasetH create_mem_dataset(int width,
 
         GDALSetGeoTransform(ds, gt);
 
-        // 3. Metadatos internos (satélite, sector, banda)
+        // 3. Internal metadata (satellite, sector, band).
         set_gdal_metadata(ds, meta);
     }
 
@@ -205,7 +205,7 @@ static int finalize_cog(GDALDatasetH mem_ds, const char* filename) {
     return 0;
 }
 
-// --- Implementación de Funciones Públicas ---
+// --- Public Function Implementations ---
 
 int write_geotiff_rgb(const char* filename, const ImageData* img, const DataNC* meta,
                       int offset_x, int offset_y, const char* product) {
@@ -214,7 +214,7 @@ int write_geotiff_rgb(const char* filename, const ImageData* img, const DataNC* 
         return -1;
     }
 
-    // Crear dataset en memoria con 3 o 4 bandas según si hay alpha
+    // Create in-memory dataset: 3 or 4 bands depending on alpha presence.
     int num_bands = img->bpp;
     GDALDatasetH ds = create_mem_dataset(img->width, img->height, num_bands, GDT_Byte, meta, offset_x, offset_y);
     if (!ds) return -1;
@@ -232,7 +232,7 @@ int write_geotiff_rgb(const char* filename, const ImageData* img, const DataNC* 
                            num_bands, num_bands * img->width); // Interleaved
         if (err != CE_None) break;
         
-        // Marcar el canal alpha si es el último y hay 4 bandas
+        // Mark the alpha channel if it is the last of 4 bands.
         if (i == 3 && num_bands == 4) {
             GDALSetRasterColorInterpretation(band, GCI_AlphaBand);
         }
@@ -252,7 +252,7 @@ int write_geotiff_gray(const char* filename, const ImageData* img, const DataNC*
         return -1;
     }
 
-    // Crear dataset en memoria con 1 o 2 bandas según si hay alpha
+    // Create in-memory dataset: 1 or 2 bands depending on alpha presence.
     int num_bands = img->bpp;
     GDALDatasetH ds = create_mem_dataset(img->width, img->height, num_bands, GDT_Byte, meta, offset_x, offset_y);
     if (!ds) return -1;
@@ -260,14 +260,14 @@ int write_geotiff_gray(const char* filename, const ImageData* img, const DataNC*
     CPLErr err = CE_None;
     
     if (img->bpp == 1) {
-        // Caso simple: solo escala de grises
+        // Grayscale only.
         GDALRasterBandH band = GDALGetRasterBand(ds, 1);
         err = GDALRasterIO(band, GF_Write, 0, 0, img->width, img->height, 
                           (void*)img->data, 
                           img->width, img->height, GDT_Byte, 
                           0, 0);
     } else {
-        // Caso con alpha: escribir banda gray y banda alpha
+        // Grayscale + alpha: write gray band and alpha band.
         GDALRasterBandH gray_band = GDALGetRasterBand(ds, 1);
         GDALRasterBandH alpha_band = GDALGetRasterBand(ds, 2);
         

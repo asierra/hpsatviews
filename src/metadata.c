@@ -1,6 +1,9 @@
-/*
- * Módulo de Metadatos - Gestión y serialización
- * Sprint 1-2: Implementación base + JSON
+/* Product metadata aggregation and JSON sidecar serialization.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200112L
@@ -48,7 +51,7 @@ struct MetadataContext {
     float bbox[4];
     char projection[32];
     bool has_bbox;
-    bool has_clip;  // true solo cuando hay recorte explícito del usuario
+    bool has_clip;  // true only when the user specified an explicit clip region
     
     ChannelInfo channels[MAX_CHANNELS];
     int channel_count;
@@ -104,7 +107,7 @@ void metadata_from_nc(MetadataContext *ctx, const DataNC *nc) {
         strftime(ctx->time_iso, sizeof(ctx->time_iso), "%Y-%m-%dT%H:%M:%SZ", &tm_info);
     }
 
-    // 2. Copiar Satélite
+    // 2. Copy satellite name.
 	ctx->satellite = get_sat_name(nc->sat_id);
 	LOG_DEBUG("Satélite ID %d nombre %s", nc->sat_id, ctx->satellite);
 
@@ -113,11 +116,11 @@ void metadata_from_nc(MetadataContext *ctx, const DataNC *nc) {
         ctx->sector = SECTOR_NAMES[nc->sector_id];
     }
 
-    // 4. Agregar información del canal
+    // 4. Add channel metadata.
     if (ctx->channel_count < MAX_CHANNELS && nc->varname) {
         ChannelInfo *ch = &ctx->channels[ctx->channel_count];
         
-        // Usar band_id (ej. "C13") si está disponible, sino varname
+        // Use band_id (e.g., "C13") if available, otherwise fall back to varname.
         if (nc->band_id > 0 && nc->band_id <= 16) {
             snprintf(ch->name, sizeof(ch->name), "C%02d", nc->band_id);
         } else {
@@ -170,7 +173,7 @@ void metadata_set_clip(MetadataContext *ctx, bool clipped) {
     ctx->has_clip = clipped;
 }
 
-// Implementación de los adders
+// Scalar/string/int/bool adder implementations.
 void metadata_add_dbl(MetadataContext *c, const char *k, double v) {
     if(c->count >= MAX_KV) return;
     strncpy(c->extra_fields[c->count].key, k, 31);
@@ -186,7 +189,7 @@ void metadata_add_str(MetadataContext *c, const char *k, const char *v) {
     c->count++;
 }
 void metadata_add_int(MetadataContext *c, const char *k, int v) {
-    metadata_add_dbl(c, k, (double)v); // Simplificación
+    metadata_add_dbl(c, k, (double)v);
     c->extra_fields[c->count-1].type = 2;
 }
 void metadata_add_bool(MetadataContext *c, const char *k, bool v) {
@@ -292,7 +295,7 @@ char* metadata_build_filename(const MetadataContext *ctx, const char *extension)
     char *filename = malloc(512);
     if (!filename) return NULL;
     
-    // 1. Satélite
+    // 1. Satellite.
     const char *sat = ctx->satellite && ctx->satellite[0] ? ctx->satellite : "GXX";
 
     // 2. Sector (opcional, omitido si desconocido)
@@ -332,7 +335,7 @@ char* metadata_build_filename(const MetadataContext *ctx, const char *extension)
     // 4. Bandas
     char bands[32] = "";
     if (strcmp(ctx->command, "rgb") == 0) {
-        // Para modos RGB semánticos no repetir bandas (ya está en tipo)
+        // Semantic RGB modes: bands already encoded in the type field.
         bands[0] = '\0';
     } else if (ctx->channel_count > 0 && ctx->channels[0].valid) {
         // Para gray/pseudo: usar band_id si disponible (ej. "C13"), sino varname
@@ -382,7 +385,7 @@ int metadata_save_json(MetadataContext *ctx, const char *filename) {
     if (ctx->time_iso[0]) json_write(w, "timestamp", ctx->time_iso);
     if (ctx->product[0]) json_write(w, "product", ctx->product);
 
-    // Campos para mapdrawer (CRS y Bounds en raíz)
+    // Metadata fields required by mapdrawer (CRS and Bounds at JSON root).
     if (ctx->projection[0]) {
         json_write_string(w, "crs", ctx->projection);
     }
@@ -390,7 +393,7 @@ int metadata_save_json(MetadataContext *ctx, const char *filename) {
         json_write_float_array(w, "bounds", ctx->bbox, 4);
     }
 
-    // Geometría
+    // Geometry block.
     if (ctx->has_bbox) {
         json_begin_object(w, "geometry");
         json_write(w, "projection", ctx->projection);

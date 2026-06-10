@@ -1,6 +1,9 @@
-/* Image data structure and tools
- * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
- * Labotatorio Nacional de Observación de la Tierra, UNAM
+/* 8-bit raster image data structure and processing utilities.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #include "image.h"
 #include "datanc.h"
@@ -168,7 +171,7 @@ void image_apply_histogram(ImageData im) {
     }
 
     unsigned int cum = 0;
-    unsigned char transfer[256]; // Función de transferencia
+    unsigned char transfer[256]; // CDF transfer function
     for (unsigned int i = 0; i < 256; i++) {
         cum += histogram[i];
         transfer[i] = (unsigned char)(255.0 * cum / size);
@@ -278,7 +281,7 @@ static void clip_histogram(unsigned int *hist, unsigned int limit) {
             hist[i] = limit;
         }
     }
-    // Paso 2: Redistribución uniforme
+    // Step 2: Redistribute excess uniformly.
     unsigned int avg_inc = excess / CLAHE_NUM_BINS;
     unsigned int remainder = excess % CLAHE_NUM_BINS;
 
@@ -320,7 +323,7 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
     int tile_height = im.height / tiles_y;
     int pixels_per_tile = tile_width * tile_height;
 
-    // Calcular límite de recorte en píxeles
+    // Compute clip limit in pixels.
     unsigned int clip_limit_pixels =
         (unsigned int)((clip_limit * pixels_per_tile) / CLAHE_NUM_BINS);
     if (clip_limit_pixels < 1)
@@ -343,7 +346,7 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
         for (int tx = 0; tx < tiles_x; tx++) {
             unsigned int hist[CLAHE_NUM_BINS] = {0};
 
-            // Definir límites del tile
+            // Tile pixel boundaries.
             unsigned int x_start = tx * tile_width;
             unsigned int y_start = ty * tile_height;
             unsigned int x_end = (tx == tiles_x - 1) ? im.width : x_start + tile_width;
@@ -365,14 +368,14 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
             calculate_cdf_mapping(hist, lut[ty][tx], actual_pixels);
         }
     }
-// Paso 2: Aplicar interpolación bilinear pixel por pixel
+// Step 2: Apply per-pixel bilinear interpolation.
 #pragma omp parallel for
     for (unsigned int y = 0; y < lum.height; y++) {
         for (unsigned int x = 0; x < lum.width; x++) {
             unsigned int idx = (y * lum.width + x) * lum.bpp;
             unsigned char pixel_val = lum.data[idx];
 
-            // Calcular posición en el espacio de tiles (en coordenadas continuas)
+            // Tile-space coordinates (continuous).
             float fx = ((float)x / tile_width) - 0.5f;
             float fy = ((float)y / tile_height) - 0.5f;
 
@@ -380,7 +383,7 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
             int tx = (int)fx;
             int ty = (int)fy;
 
-            // Clampear a límites válidos
+            // Clamp to valid tile range.
             if (tx < 0)
                 tx = 0;
             if (ty < 0)
@@ -390,7 +393,7 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
             if (ty >= tiles_y - 1)
                 ty = tiles_y - 2;
 
-            // Calcular coeficientes de interpolación
+            // Bilinear interpolation weights.
             float dx = fx - tx;
             float dy = fy - ty;
 
@@ -405,7 +408,7 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
             unsigned char val_bl = lut[ty + 1][tx][pixel_val];     // Bottom-Left
             unsigned char val_br = lut[ty + 1][tx + 1][pixel_val]; // Bottom-Right
 
-            // Interpolación bilinear
+            // Bilinear interpolation.
             float val_top = val_tl * (1.0f - dx) + val_tr * dx;
             float val_bot = val_bl * (1.0f - dx) + val_br * dx;
             float val_final = val_top * (1.0f - dy) + val_bot * dy;
@@ -542,7 +545,7 @@ ImageData image_create_alpha_mask_from_dataf(const void *data_ptr) {
         return image_create(0, 0, 0);
     }
 
-    // Crear una imagen de 1 canal (grayscale) para la máscara
+    // Create a 1-channel (grayscale) image for the alpha mask.
     ImageData mask = image_create(data->width, data->height, 1);
     if (mask.data == NULL) {
         LOG_ERROR("No se pudo crear máscara alpha.");
@@ -551,7 +554,7 @@ ImageData image_create_alpha_mask_from_dataf(const void *data_ptr) {
 
 #pragma omp parallel for
     for (size_t i = 0; i < data->size; i++) {
-        // 255 = opaco (dato válido), 0 = transparente (NonData)
+        // 255 = opaque (valid data), 0 = transparent (NonData).
         mask.data[i] = IS_NONDATA(data->data_in[i]) ? 0 : 255;
     }
 
@@ -598,7 +601,7 @@ ImageData image_add_alpha_channel(const ImageData *src, const ImageData *alpha_m
             result.data[dst_idx + ch] = src->data[src_idx + ch];
         }
 
-        // Agregar canal alpha de la máscara
+        // Append alpha channel from mask.
         result.data[dst_idx + src->bpp] = alpha_mask->data[i];
     }
 
@@ -619,7 +622,7 @@ ImageData image_expand_palette(const ImageData *src, const ColorArray *palette) 
         return image_create(0, 0, 0);
     }
 
-    // Si tiene alpha (bpp=2), salida será RGBA (bpp=4); si no RGB (bpp=3)
+    // bpp=2 input (indexed+alpha) produces RGBA output (bpp=4); bpp=1 produces RGB (bpp=3).
     unsigned int out_bpp = (src->bpp == 2) ? 4 : 3;
     ImageData result = image_create(src->width, src->height, out_bpp);
     if (result.data == NULL) {
@@ -636,13 +639,13 @@ ImageData image_expand_palette(const ImageData *src, const ColorArray *palette) 
 
         uint8_t index = src->data[src_idx];
 
-        // Expandir índice a RGB usando la paleta
+        // Expand palette index to RGB.
         if (index < palette->length) {
             result.data[dst_idx + 0] = palette->colors[index].r;
             result.data[dst_idx + 1] = palette->colors[index].g;
             result.data[dst_idx + 2] = palette->colors[index].b;
         } else {
-            // Índice fuera de rango -> negro
+            // Index out of range: black.
             result.data[dst_idx + 0] = 0;
             result.data[dst_idx + 1] = 0;
             result.data[dst_idx + 2] = 0;

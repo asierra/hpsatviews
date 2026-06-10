@@ -1,25 +1,21 @@
-/*
- * GeoTIFF writer module
+/* GeoTIFF output writer via GDAL (RGB, grayscale, and indexed modes).
  * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
  * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #ifndef HPSATVIEWS_WRITER_GEOTIFF_H_
 #define HPSATVIEWS_WRITER_GEOTIFF_H_
 
 #include "image.h"
 #include "datanc.h"
-#include "reader_cpt.h" // Asumo que aquí defines ColorArray
+#include "reader_cpt.h"
 
-/**
- * @brief Escribe una imagen RGB (3 canales) a formato GeoTIFF.
- * * @param filename Ruta del archivo de salida (.tif).
- * @param img Puntero a la imagen RGB (bpp=3).
- * @param meta Metadatos originales (contienen proyección y geotransform base).
- * @param offset_x Desplazamiento en X (píxeles) si la imagen es un recorte (crop).
- * @param offset_y Desplazamiento en Y (píxeles) si la imagen es un recorte (crop).
- * @param product Nombre descriptivo del producto (ej: "True Color RGB"). NULL para omitir.
- * @return 0 en éxito, -1 en error.
- */
+// Writes a 3-band RGB image to GeoTIFF.
+// offset_x/y: pixel offset from the native grid origin (for clipped outputs).
+// product: optional descriptive tag written to file metadata; NULL to omit.
+// Returns 0 on success, -1 on error.
 int write_geotiff_rgb(const char* filename,
                       const ImageData* img,
                       const DataNC* meta,
@@ -27,31 +23,14 @@ int write_geotiff_rgb(const char* filename,
                       int offset_y,
                       const char* product);
 
-/**
- * @brief Escribe una imagen en escala de grises (1 canal) a formato GeoTIFF.
- * * @param filename Ruta del archivo de salida.
- * @param img Puntero a la imagen (bpp=1).
- * @param meta Metadatos originales.
- * @param offset_x Desplazamiento en X para recortes.
- * @param offset_y Desplazamiento en Y para recortes.
- * @return 0 en éxito, -1 en error.
- */
+// Writes a single-band grayscale image to GeoTIFF. Returns 0 on success.
 int write_geotiff_gray(const char* filename,
                        const ImageData* img,
                        const DataNC* meta,
                        int offset_x,
                        int offset_y);
 
-/**
- * @brief Escribe una imagen indexada (Paleta de colores) a formato GeoTIFF.
- * * @param filename Ruta del archivo de salida.
- * @param img Puntero a la imagen indexada (bpp=1, valores 0-255).
- * @param palette Paleta de colores a incrustar en el TIFF.
- * @param meta Metadatos originales.
- * @param offset_x Desplazamiento en X para recortes.
- * @param offset_y Desplazamiento en Y para recortes.
- * @return 0 en éxito, -1 en error.
- */
+// Writes a palette-indexed image to GeoTIFF with embedded color table. Returns 0 on success.
 int write_geotiff_indexed(const char* filename,
                           const ImageData* img,
                           const ColorArray* palette,

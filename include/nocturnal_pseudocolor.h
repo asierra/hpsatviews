@@ -1,20 +1,19 @@
-#ifndef NOCTURNAL_PSEUDOCOLOR_H
-#define NOCTURNAL_PSEUDOCOLOR_H
+/* Nighttime pseudocolor imagery from ABI C13 brightness temperature.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
+ */
+#ifndef HPSATVIEWS_NOCTURNAL_PSEUDOCOLOR_H_
+#define HPSATVIEWS_NOCTURNAL_PSEUDOCOLOR_H_
 
 #include "image.h"
 #include "datanc.h"
 
-/**
- * @brief Genera una imagen de pseudocolor nocturno a partir de datos de temperatura de brillo.
- *
- * Esta función toma datos de temperatura de brillo en Kelvin (banda 13 de GOES),
- * los mapea a una paleta de colores meteorológica y opcionalmente los mezcla
- * con una imagen de fondo (luces de ciudad).
- *
- * @param temp_data Puntero a la estructura DataF con los datos de temperatura.
- * @param fondo Puntero opcional a una imagen de fondo (ImageData). Si es NULL, no se usa fondo.
- * @return Una estructura ImageData con la imagen RGB resultante.
- */
+// Generates a nighttime pseudocolor image from ABI C13 brightness temperature (K).
+// Maps temperatures to a meteorological color palette; blends with fondo (city-lights)
+// background if non-NULL.
 ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* fondo);
 
-#endif
+#endif /* HPSATVIEWS_NOCTURNAL_PSEUDOCOLOR_H_ */

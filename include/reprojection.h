@@ -1,8 +1,9 @@
-/*
- * Geostationary to Geographics Reprojection Module
- *
- * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
+/* Fixed-grid to geographic (lat/lon) reprojection for GOES-R ABI imagery.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
  * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #ifndef HPSATVIEWS_REPROJECTION_H_
 #define HPSATVIEWS_REPROJECTION_H_
@@ -10,74 +11,24 @@
 #include "datanc.h"
 #include "image.h"
 
-/**
- * @brief Encuentra el píxel más cercano a una coordenada geográfica dada en una malla no reproyectada.
- *
- * Esta función busca en las mallas de navegación de latitud y longitud para encontrar el índice
- * del píxel (columna, fila) que está geográficamente más cerca de las coordenadas de destino.
- *
- * @param navla Puntero a una estructura DataF que contiene la latitud para cada píxel.
- * @param navlo Puntero a una estructura DataF que contiene la longitud para cada píxel.
- * @param target_lat La latitud de la coordenada de destino.
- * @param target_lon La longitud de la coordenada de destino.
- * @param out_ix Puntero a un entero donde se almacenará el índice de la columna (x) resultante.
- * @param out_iy Puntero a un entero donde se almacenará el índice de la fila (y) resultante.
- */
+// Finds the nearest-neighbor pixel for a geographic coordinate in a navigation grid.
+// navla/navlo: latitude and longitude grids. out_ix/out_iy receive column and row.
 void reprojection_find_pixel_for_coord(const DataF* navla, const DataF* navlo,
                                        float target_lat, float target_lon,
                                        int* out_ix, int* out_iy);
 
-/**
- * @brief Calcula el bounding box para un dominio geográfico usando muestreo denso de bordes.
- *
- * Muestrea los 4 bordes del dominio geográfico solicitado y encuentra el bounding box
- * en coordenadas de píxel que contiene toda la región.
- *
- * @param navla Malla de latitudes.
- * @param navlo Malla de longitudes.
- * @param clip_lon_min Longitud mínima del dominio.
- * @param clip_lat_max Latitud máxima del dominio.
- * @param clip_lon_max Longitud máxima del dominio.
- * @param clip_lat_min Latitud mínima del dominio.
- * @param out_x_start Píxel inicial en X (salida).
- * @param out_y_start Píxel inicial en Y (salida).
- * @param out_width Ancho en píxeles (salida).
- * @param out_height Alto en píxeles (salida).
- * @return Número de muestras válidas encontradas (0 si el dominio está fuera del disco).
- */
+// Computes the pixel bounding box covering a geographic domain by dense edge sampling.
+// Returns the number of valid samples (0 if the domain is outside the Earth disk).
 int reprojection_find_bounding_box(const DataF* navla, const DataF* navlo,
                                    float clip_lon_min, float clip_lat_max,
                                    float clip_lon_max, float clip_lat_min,
                                    int* out_x_start, int* out_y_start,
                                    int* out_width, int* out_height);
 
-/**
- * @brief Reproyecta una imagen de su proyección nativa a coordenadas geográficas.
- *
- * @param src_image La imagen de origen (en proyección geoestacionaria).
- * @param navla Malla de latitudes correspondiente a la imagen de origen.
- * @param navlo Malla de longitudes correspondiente a la imagen de origen.
- * @param native_resolution_km Resolución nativa del sensor en km.
- * @param clip_coords Opcional, para recortar la salida a un dominio geográfico.
- * @return Una nueva ImageData reproyectada. El llamador debe liberarla.
- */
-
-/**
- * @brief Reproyecta una imagen usando proyección analítica inversa GOES-R (sin mallas de navegación).
- *
- * Para cada píxel destino calcula lat/lon → ángulo de escaneo → píxel fuente usando
- * las ecuaciones del GOES-R PUG Vol 4. Interpolación bilineal. Sin relleno de huecos.
- *
- * @param src_image La imagen de origen (en proyección geoestacionaria).
- * @param data_nc Puntero a DataNC con proj_info y geotransform del canal de referencia.
- * @param lat_min Latitud mínima de la extensión geográfica (grados).
- * @param lat_max Latitud máxima de la extensión geográfica (grados).
- * @param lon_min Longitud mínima de la extensión geográfica (grados).
- * @param lon_max Longitud máxima de la extensión geográfica (grados).
- * @param native_resolution_km Resolución nativa del sensor en km.
- * @param clip_coords Opcional, para recortar la salida a un dominio geográfico.
- * @return Una nueva ImageData reproyectada. El llamador debe liberarla.
- */
+// Reprojects an image from GOES-R fixed-grid to geographic (lat/lon) projection
+// using the analytical inverse scan-angle equations from GOES-R PUG Vol. 4.
+// Bilinear interpolation; no gap filling. clip_coords is optional [lon_min,lat_max,lon_max,lat_min].
+// Returns a new ImageData; caller must free it.
 ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* data_nc,
                                      float lat_min, float lat_max,
                                      float lon_min, float lon_max,

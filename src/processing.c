@@ -1,8 +1,9 @@
-/*
- * Single-channel processing module (gray and pseudocolor)
- *
- * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
+/* Single-channel processing pipeline (grayscale and pseudocolor).
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
  * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #include "processing.h"
 #include "args.h"
@@ -36,7 +37,7 @@ bool strinstr(const char *main_str, const char *sub) {
 }
 
 // ============================================================================
-// PIPELINE v2.0: Implementación usando ProcessConfig + MetadataContext
+// PIPELINE v2.0: ProcessConfig + MetadataContext
 // ============================================================================
 
 int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
@@ -64,7 +65,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     float minmax[2] = {0.0f, 255.0f};
     bool minmax_provided = false;
     
-    // Registrar parámetros básicos en metadatos
+    // Register basic parameters in metadata.
     metadata_set_command(meta, cfg->command);
     metadata_add(meta, "command", cfg->command);
     metadata_add(meta, "gamma", cfg->gamma[0]);
@@ -94,7 +95,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         }
     }
     
-    // --- Parsear --minmax si se proporcionó (aplica a todos los modos) ---
+    // --- Parse --minmax if provided (applies to all modes) ---
     if (cfg->custom_minmax) {
         if (sscanf(cfg->custom_minmax, "%f,%f", &minmax[0], &minmax[1]) == 2) {
             minmax_provided = true;
@@ -102,7 +103,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         }
     }
 
-    // --- Modo expr (álgebra de bandas) ---
+    // --- Band algebra (expr) mode ---
     if (expr_mode) {
         LOG_INFO("Modo álgebra de bandas: %s", cfg->custom_expr);
         metadata_add(meta, "expression", cfg->custom_expr);
@@ -118,7 +119,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             goto cleanup;
         }
         
-        // Cargar múltiples canales
+        // Load multiple channels.
         ChannelSet* cset = channelset_create((const char**)required_channels, num_required_channels);
         if (!cset) {
             LOG_ERROR("No se pudo crear el ChannelSet.");
@@ -206,7 +207,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             }
         }
         
-        // Evaluar expresión
+        // Evaluate the band algebra expression.
         result_data = evaluate_linear_combo(&combo, channels);
         if (!result_data.data_in) {
             LOG_ERROR("Fallo al evaluar expresión.");
@@ -243,11 +244,11 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     if (cfg->has_clip)
         metadata_set_clip(meta, true);
     
-    // Generar nombre de archivo si no se especificó
+    // Generate output filename if not specified.
     const char* outfn = cfg->output_path_override;
     
     if (!outfn) {
-        // Determinar extensión
+        // Determine file extension.
         const char* ext = (cfg->force_geotiff) ? ".tif" : ".png";
         generated_filename = metadata_build_filename(meta, ext);
         outfn = generated_filename;
@@ -259,7 +260,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     
     LOG_INFO("Archivo de salida: %s", outfn);
     
-    // Cargar navegación si es necesario
+    // Load navigation if needed for clip, GeoTIFF, or reprojection.
     bool is_geotiff = cfg->force_geotiff || (outfn && (strstr(outfn, ".tif") || strstr(outfn, ".tiff")));
     
     if (cfg->has_clip || is_geotiff || cfg->do_reprojection) {
@@ -284,7 +285,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         float gmin = minmax_provided ? minmax[0] : c01.fdata.fmin;
         float gmax = minmax_provided ? minmax[1] : c01.fdata.fmax;
         dataf_apply_gamma(&c01.fdata, cfg->gamma[0], gmin, gmax);
-        // Después de la gamma los datos quedan en [0,1]
+        // After gamma, data range is [0, 1].
         minmax[0] = c01.fdata.fmin;
         minmax[1] = c01.fdata.fmax;
     }
@@ -345,7 +346,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             else
                 writer_save_png(outfn, &final_image);
         }
-        // Actualizar outfn al nombre del archivo reproyectado (sufijo _geo antes de la extensión)
+        // Update outfn to the reprojected filename (insert _geo suffix).
         char *geo_outfn = insert_geo_suffix(outfn);
         if (generated_filename) {
             free(generated_filename);
@@ -359,7 +360,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         LOG_INFO("Guardando reproyectado: %s", outfn);
     }
 
-    // Reproyección o recorte
+    // Reprojection or crop.
     float final_lon_min = 0, final_lon_max = 0, final_lat_min = 0, final_lat_max = 0;
     unsigned crop_x_start = 0, crop_y_start = 0;
 
@@ -400,24 +401,24 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         crop_x_start = (unsigned)ix;
         crop_y_start = (unsigned)iy;
         
-        // Definir límites del recorte
+        // Crop bounds.
         final_lon_min = cfg->clip_coords[0];
         final_lat_max = cfg->clip_coords[1];
         final_lon_max = cfg->clip_coords[2];
         final_lat_min = cfg->clip_coords[3];
     } else if (nav_loaded) {
-        // Sin recorte ni reproyección, usar límites completos de navegación
+        // No clip or reprojection: use full navigation extents.
         final_lon_min = navlo_full.fmin; final_lon_max = navlo_full.fmax;
         final_lat_min = navla_full.fmin; final_lat_max = navla_full.fmax;
     }
 
-    // Registrar geometría y proyección en metadatos
+    // Record geometry and projection in metadata.
     if (nav_loaded) {
         if (cfg->do_reprojection) {
             metadata_set_geometry(meta, final_lon_min, final_lat_min, final_lon_max, final_lat_max);
             metadata_set_projection(meta, "EPSG:4326");
         } else {
-            // Calcular bounds en coordenadas de proyección (Metros)
+            // Compute bounds in projection coordinates (metres).
             // x = x_rad * h, y = y_rad * h
             double *gt = c01.geotransform;
             double h = (c01.proj_info.valid) ? c01.proj_info.sat_height : 35786023.0;
@@ -426,17 +427,17 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             double x_min = (gt[0] + crop_x_start * gt[1]) * h;
             double y_top = (gt[3] + crop_y_start * gt[5]) * h;
             
-            // Calcular esquina opuesta
+            // Opposite corner.
             double x_max = x_min + (final_image.width * gt[1] * h);
             double y_bot = y_top + (final_image.height * gt[5] * h);
             
-            // Ordenar Y (gt[5] es negativo, así que y_top > y_bot)
+            // Sort Y (gt[5] is negative, so y_top > y_bot).
             double y_min = (y_bot < y_top) ? y_bot : y_top;
             double y_max_val = (y_bot > y_top) ? y_bot : y_top;
             
             metadata_set_geometry(meta, (float)x_min, (float)y_min, (float)x_max, (float)y_max_val);
 
-            // Usar nombre del satélite como clave de proyección (ej. "goes16")
+            // Use satellite name as CRS key (e.g., "goes16").
             const char* sat_crs = "geostationary";
             if (c01.sat_id == SAT_GOES16) sat_crs = "goes16";
             else if (c01.sat_id == SAT_GOES17) sat_crs = "goes17";

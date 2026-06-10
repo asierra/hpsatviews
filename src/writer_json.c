@@ -1,3 +1,10 @@
+/* Minimal JSON writer for metadata sidecar files.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
+ */
 #include "writer_json.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -52,7 +59,7 @@ static void write_key(JsonWriter* w, const char* key) {
     }
 }
 
-// --- Implementación Pública ---
+// --- Public API ---
 
 JsonWriter* json_create(const char* filename) {
     JsonWriter* w = calloc(1, sizeof(JsonWriter));
@@ -62,14 +69,14 @@ JsonWriter* json_create(const char* filename) {
         free(w);
         return NULL;
     }
-    fprintf(w->fp, "{"); // Abrir JSON raíz
+    fprintf(w->fp, "{"); // open JSON root object
     return w;
 }
 
 void json_close(JsonWriter* w) {
     if (w) {
         if (w->fp) {
-            fprintf(w->fp, "\n}\n"); // Cerrar JSON raíz
+            fprintf(w->fp, "\n}\n"); // close JSON root object
             fclose(w->fp);
         }
         free(w);

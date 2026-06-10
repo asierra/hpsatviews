@@ -1,8 +1,9 @@
-/*
- * Geostationary to Geographics Reprojection Module
- *
- * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
+/* Fixed-grid to geographic (lat/lon) reprojection for GOES-R ABI imagery.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
  * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 
 #include "reprojection.h"
@@ -53,7 +54,7 @@ void reprojection_find_pixel_for_coord(const DataF* navla, const DataF* navlo,
 
                 local_checked++;
                 
-                // ¡CORRECCIÓN! Ignorar píxeles inválidos en la malla de navegación.
+                // Skip invalid pixels in the navigation grid.
                 if (current_lat == NonData || current_lon == NonData) {
                     continue;
                 }
@@ -61,7 +62,6 @@ void reprojection_find_pixel_for_coord(const DataF* navla, const DataF* navlo,
                 local_valid++;
                 float lat_diff = current_lat - target_lat;
                 float lon_diff = current_lon - target_lon;
-                // Manejar cruce del antimeridiano
                 if (lon_diff > 180.0f) lon_diff -= 360.0f;
                 else if (lon_diff < -180.0f) lon_diff += 360.0f;
                 float dist_sq = lat_diff * lat_diff + lon_diff * lon_diff;
@@ -112,7 +112,7 @@ ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* d
         return image_create(0, 0, 0);
     }
 
-    // Parámetros de proyección
+    // Projection parameters.
     double a   = data_nc->proj_info.semi_major;
     double b   = data_nc->proj_info.semi_minor;
     double H   = a + data_nc->proj_info.sat_height;
@@ -128,7 +128,7 @@ ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* d
     unsigned int src_h = data_nc->fdata.height > 0 ? data_nc->fdata.height :
                          (data_nc->bdata.height > 0 ? data_nc->bdata.height : src_image->height);
 
-    // Extensión geográfica destino
+    // Target geographic extent.
     float target_lon_min, target_lon_max, target_lat_min, target_lat_max;
     if (clip_coords) {
         target_lon_min = (clip_coords[0] > lon_min) ? clip_coords[0] : lon_min;
@@ -173,30 +173,28 @@ ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* d
     double t_start = omp_get_wtime();
     unsigned int bpp = src_image->bpp;
 
-    // Resolución por píxel de salida
+    // Output pixel resolution (degrees per pixel).
     double deg_per_px_lon = (double)lon_range / (double)width;
     double deg_per_px_lat = (double)lat_range / (double)height;
 
     #pragma omp parallel for collapse(2)
     for (size_t oy = 0; oy < height; oy++) {
         for (size_t ox = 0; ox < width; ox++) {
-            // Coordenada geográfica del centro del píxel destino (en grados)
+            // Geographic center of the output pixel.
             double lon_deg = (double)target_lon_min + ((double)ox + 0.5) * deg_per_px_lon;
             double lat_deg = (double)target_lat_max - ((double)oy + 0.5) * deg_per_px_lat;
-
-            // Convertir a radianes
             double phi    = lat_deg * (M_PI / 180.0);
             double lambda = lon_deg * (M_PI / 180.0);
 
-            // Latitud geocéntrica
+            // Geocentric latitude.
             double phi_c = atan((b2 / a2) * tan(phi));
             double cos_phi_c = cos(phi_c);
             double sin_phi_c = sin(phi_c);
 
-            // Radio geocéntrico
+            // Geocentric radius.
             double r_c = b / sqrt(1.0 - e2 * cos_phi_c * cos_phi_c);
 
-            // Vector de posición del punto en la Tierra visto desde el satélite
+            // Satellite-to-pixel position vector.
             double d_lambda = lambda - lambda0;
             double cos_dl   = cos(d_lambda);
             double sin_dl   = sin(d_lambda);
@@ -205,27 +203,27 @@ ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* d
             double s_y = -r_c * cos_phi_c * sin_dl;
             double s_z = r_c * sin_phi_c;
 
-            // Verificación de visibilidad desde el satélite
+            // Visibility check: point must be within satellite field of view.
             if (H * (H - s_x) < s_y * s_y + a2_over_b2 * s_z * s_z) {
-                continue; // El punto no es visible — píxel queda negro
+                continue; // below horizon
             }
 
-            // Ángulos de escaneo (GOES-R PUG)
+            // Scan angles (GOES-R PUG).
             double s_n = sqrt(s_x * s_x + s_y * s_y + s_z * s_z);
             double x_rad = asin(-s_y / s_n);
             double y_rad = atan2(s_z, s_x);
 
-            // Convertir ángulos de escaneo a coordenadas píxel fuente
+            // Convert scan angles to source pixel coordinates.
             double col = (x_rad - gt[0]) / gt[1];
             double row = (y_rad - gt[3]) / gt[5];
 
-            // Verificar límites (con margen de 1 píxel para bilineal)
+            // Boundary check (1-pixel margin for bilinear sampling).
             if (col < 0.0 || col >= (double)(src_w - 1) ||
                 row < 0.0 || row >= (double)(src_h - 1)) {
                 continue;
             }
 
-            // Interpolación bilineal
+            // Bilinear interpolation.
             int c0 = (int)col;
             int r0 = (int)row;
             double dc = col - c0;
@@ -273,12 +271,12 @@ int reprojection_find_bounding_box(const DataF* navla, const DataF* navlo,
     int min_iy = INT_MAX, max_iy = INT_MIN;
     int valid_samples = 0;
     
-    // Muestrear los 4 bordes del dominio geográfico
+    // Sample all four edges of the geographic domain.
     for (int s = 0; s <= SAMPLES_PER_EDGE; s++) {
         float t = (float)s / (float)SAMPLES_PER_EDGE;
         int ix, iy;
         
-        // Borde SUPERIOR (lat_max, lon varía)
+        // TOP edge (lat_max, lon varies).
         float lon = clip_lon_min + t * (clip_lon_max - clip_lon_min);
         reprojection_find_pixel_for_coord(navla, navlo, clip_lat_max, lon, &ix, &iy);
         if (ix >= 0 && iy >= 0) {
@@ -289,7 +287,7 @@ int reprojection_find_bounding_box(const DataF* navla, const DataF* navlo,
             valid_samples++;
         }
         
-        // Borde INFERIOR (lat_min, lon varía)
+        // BOTTOM edge (lat_min, lon varies).
         reprojection_find_pixel_for_coord(navla, navlo, clip_lat_min, lon, &ix, &iy);
         if (ix >= 0 && iy >= 0) {
             if (ix < min_ix) min_ix = ix;
@@ -299,7 +297,7 @@ int reprojection_find_bounding_box(const DataF* navla, const DataF* navlo,
             valid_samples++;
         }
         
-        // Borde IZQUIERDO (lon_min, lat varía)
+        // LEFT edge (lon_min, lat varies).
         float lat = clip_lat_min + t * (clip_lat_max - clip_lat_min);
         reprojection_find_pixel_for_coord(navla, navlo, lat, clip_lon_min, &ix, &iy);
         if (ix >= 0 && iy >= 0) {
@@ -310,7 +308,7 @@ int reprojection_find_bounding_box(const DataF* navla, const DataF* navlo,
             valid_samples++;
         }
         
-        // Borde DERECHO (lon_max, lat varía)
+        // RIGHT edge (lon_max, lat varies).
         reprojection_find_pixel_for_coord(navla, navlo, lat, clip_lon_max, &ix, &iy);
         if (ix >= 0 && iy >= 0) {
             if (ix < min_ix) min_ix = ix;
@@ -321,7 +319,6 @@ int reprojection_find_bounding_box(const DataF* navla, const DataF* navlo,
         }
     }
     
-    // Devolver resultados
     if (valid_samples >= 4 && min_ix < INT_MAX && min_iy < INT_MAX) {
         *out_x_start = min_ix;
         *out_y_start = min_iy;

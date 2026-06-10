@@ -1,8 +1,9 @@
-/*
- * Configuration Module - Centraliza el parseo de argumentos
- *
- * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
+/* CLI argument parsing and ProcessConfig population.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
  * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #include "config.h"
 #include "args.h"
@@ -94,7 +95,7 @@ static char* expand_filename_pattern(const char* pattern, const char* input_file
 
     int year = atoi(s_year), jday = atoi(s_jday), month = 1, day = 1;
     julian_to_date(year, jday, &month, &day);
-    // Usamos 12 bytes para asegurar espacio para cualquier int32 (10 dígitos + signo + null)
+    // 12 bytes: enough for any int32 (10 digits + sign + NUL).
     char s_month[12], s_day[12], s_yy[8];
     snprintf(s_month, sizeof(s_month), "%02d", month);
     snprintf(s_day,   sizeof(s_day),   "%02d", day);
@@ -118,13 +119,13 @@ static char* expand_filename_pattern(const char* pattern, const char* input_file
 }
 
 /**
- * Procesa la opción --clip, que puede ser:
- * 1. Cuatro coordenadas: "lon_min,lat_max,lon_max,lat_min"
- * 2. Una clave del CSV: "mexico", "conus", etc.
- * 
- * @param parser ArgParser con los argumentos parseados
- * @param cfg ProcessConfig donde se guardarán las coordenadas
- * @return true si se encontró y procesó un clip válido
+ * Parses the --clip option, which accepts:
+ * 1. Four coordinates: "lon_min,lat_max,lon_max,lat_min"
+ * 2. A region key from the CSV: "mexico", "conus", etc.
+ *
+ * @param parser Parsed ArgParser instance.
+ * @param cfg    ProcessConfig to populate with clip bounds.
+ * @return true if a valid clip region was found and applied.
  */
 static bool config_parse_clip(ArgParser* parser, ProcessConfig* cfg) {
     if (!ap_found(parser, "clip")) {
@@ -142,7 +143,7 @@ static bool config_parse_clip(ArgParser* parser, ProcessConfig* cfg) {
                        &coords[0], &coords[1], &coords[2], &coords[3]);
     
     if (parsed == 4) {
-        // Coordenadas explícitas
+        // Explicit coordinate tuple.
         for (int i = 0; i < 4; i++) {
             cfg->clip_coords[i] = coords[i];
         }
@@ -172,10 +173,10 @@ static bool config_parse_clip(ArgParser* parser, ProcessConfig* cfg) {
 }
 
 /**
- * Procesa parámetros de CLAHE: --clahe o --clahe-params=x,y,limit
- * 
- * @param parser ArgParser con los argumentos
- * @param cfg ProcessConfig donde se guardarán los parámetros
+ * Parses CLAHE parameters from --clahe or --clahe-params=x,y,limit.
+ *
+ * @param parser Parsed ArgParser instance.
+ * @param cfg    ProcessConfig to populate.
  */
 static void config_parse_clahe(ArgParser* parser, ProcessConfig* cfg) {
     bool has_clahe_flag = ap_found(parser, "clahe");
@@ -199,7 +200,7 @@ static void config_parse_clahe(ArgParser* parser, ProcessConfig* cfg) {
                               &cfg->clahe_tiles_x, 
                               &cfg->clahe_tiles_y, 
                               &cfg->clahe_clip_limit);
-            // Si faltan parámetros, mantener defaults para los faltantes
+            // Keep per-field defaults for any missing tokens.
             if (parsed < 1) cfg->clahe_tiles_x = 8;
             if (parsed < 2) cfg->clahe_tiles_y = 8;
             if (parsed < 3) cfg->clahe_clip_limit = 4.0f;
@@ -211,23 +212,15 @@ static void config_parse_clahe(ArgParser* parser, ProcessConfig* cfg) {
 }
 
 /**
- * Procesa la opción --out, expandiendo patrones si es necesario
- * 
- * @param parser ArgParser con los argumentos
- * @param input_file Archivo de entrada (para expansión de patrones)
- * @return String dinámico con el path de salida (NULL si no se especificó)
- *         El caller debe liberar la memoria si no es NULL
- */
-/**
- * Inserta el sufijo "_geo" antes de la extensión del path dado.
- * Ejemplo: "salida.png" -> "salida_geo.png", "img.tif" -> "img_geo.tif".
- * El resultado es dinámico (malloc'd) y debe ser liberado por el llamador.
+ * Inserts the "_geo" suffix before the file extension in path.
+ * Example: "output.png" -> "output_geo.png".
+ * Returns a heap-allocated string; caller must free.
  */
 char* insert_geo_suffix(const char *path) {
     if (!path) return NULL;
     const char *dot = strrchr(path, '.');
     if (!dot) {
-        // Sin extensión: simplemente agregar "_geo"
+        // No extension: append "_geo".
         size_t len = strlen(path);
         char *result = malloc(len + 5); // "_geo\0"
         if (result) {
@@ -262,7 +255,7 @@ static char* config_parse_output(ArgParser* parser, const char* input_file, cons
         return expand_filename_pattern(user_out, input_file, product_label);
     }
     
-    // No hay patrón, devolver copia del string original
+    // No pattern tokens; return a copy of the literal string.
     return strdup(user_out);
 }
 
@@ -279,16 +272,14 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
     }
     cfg->input_file = ap_get_arg_at_index(parser, 0);
     
-    // --- Comando y estrategia ---
-    // Estos se deben establecer externamente antes de llamar a esta función
-    // (desde main.c en el dispatcher de comandos)
-    // Si no están establecidos, usar valores por defecto
+    // --- Command and strategy ---
+    // Must be set externally before calling this function (from main.c command dispatcher).
     if (!cfg->command) {
         cfg->command = "unknown";
     }
     
     // Modo/estrategia (para RGB principalmente)
-    // Solo procesar si el comando es 'rgb' (único que tiene opción "mode")
+    // Mode option is only available for the rgb command.
     if (cfg->command && strcmp(cfg->command, "rgb") == 0) {
         if (ap_found(parser, "mode")) {
             const char* mode = ap_get_str_value(parser, "mode");
@@ -323,9 +314,9 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
         }
     }
 
-    // --- Parámetros Físicos y Realce ---
+    // --- Physical Parameters and Enhancements ---
     
-    // Gamma (default: 1.0) — acepta valor único o "v1;v2;v3" para R;G;B en modo RGB
+    // Gamma correction (default: 1.0); accepts single value or "v1;v2;v3" for per-channel RGB.
     cfg->gamma[0] = cfg->gamma[1] = cfg->gamma[2] = 1.0f;
     if (ap_found(parser, "gamma")) {
         const char *gamma_str = ap_get_str_value(parser, "gamma");
@@ -363,10 +354,10 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
     // CLAHE
     config_parse_clahe(parser, cfg);
     
-    // Ecualización de histograma
+    // Histogram equalization.
     cfg->apply_histogram = ap_found(parser, "histo");
     
-    // Corrección Rayleigh (solo para RGB)
+    // Rayleigh atmospheric correction (RGB mode only).
     if (cfg->command && strcmp(cfg->command, "rgb") == 0) {
         cfg->apply_rayleigh = ap_found(parser, "rayleigh");
         cfg->rayleigh_analytic = ap_found(parser, "ray-analytic");
@@ -374,7 +365,7 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
         cfg->use_sharpen = ap_found(parser, "sharpen");
     }
     
-    // Inversión de valores (solo para gray/pseudocolor)
+    // Value inversion (gray/pseudocolor only).
     bool is_processing_cmd = (cfg->command && 
                              (strcmp(cfg->command, "gray") == 0 || 
                               strcmp(cfg->command, "pseudocolor") == 0));
@@ -382,7 +373,7 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
         cfg->invert_values = ap_found(parser, "invert");
     }
     
-    // --- Opciones de Composición ---
+    // --- Composition Options ---
     
     // Scale
     cfg->scale = 1;
@@ -391,27 +382,21 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
         if (cfg->scale == 0) cfg->scale = 1;
     }
     
-    // --- Álgebra de Bandas (Custom Mode) ---
-    // Disponible para gray, pseudocolor y rgb
+    // --- Band Algebra (Custom Mode) ---
+    // Available for gray, pseudocolor, and rgb commands.
     cfg->is_custom_mode = ap_found(parser, "expr");
     if (cfg->is_custom_mode) {
         cfg->custom_expr = ap_get_str_value(parser, "expr");
     }
     cfg->custom_minmax = ap_found(parser, "minmax") ? ap_get_str_value(parser, "minmax") : NULL;
 
-    // Opciones específicas de RGB
     bool is_rgb = (cfg->command && strcmp(cfg->command, "rgb") == 0);
     if (is_rgb) {
-        // Canal alfa (transparencia)
         cfg->use_alpha = ap_found(parser, "alpha");
-        
-        // Luces de ciudad (fondo nocturno)
         cfg->use_citylights = ap_found(parser, "citylights");
-        
-        // Full resolution (para productos L2 que tienen baja resolución)
+        // Full resolution mode for low-res L2 products.
         cfg->use_full_res = ap_found(parser, "full-res");
-
-        // Umbral de temperatura para clasificar nubes altas frías como noche (0=desactivado)
+        // Cloud temperature threshold for day/night classification (0 = disabled).
         if (ap_found(parser, "cloud-temp")) {
             const char *ct_str = ap_get_str_value(parser, "cloud-temp");
             if (ct_str && sscanf(ct_str, "%f", &cfg->cloud_temp) != 1) {
@@ -428,18 +413,18 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
         cfg->palette_file = ap_get_str_value(parser, "cpt");
     }
     
-    // --- Geometría ---
+    // --- Geometry ---
     config_parse_clip(parser, cfg);
     cfg->save_both      = ap_found(parser, "both");
     cfg->do_reprojection = ap_found(parser, "geographics") || cfg->save_both;
     
     // --- Salida ---
     cfg->force_geotiff = ap_found(parser, "geotiff");
-    // {PROD} en patrones usa la parte corta de --name, o el modo corto si no se usó --name
+    // {PROD} token uses the short product name, or strategy name if --name not set.
     const char *prod_for_pattern = cfg->product_short ? cfg->product_short : cfg->strategy;
     cfg->output_path_override = config_parse_output(parser, cfg->input_file, prod_for_pattern);
     
-    // Si se fuerza GeoTIFF y el output tiene extensión .png, cambiarla
+    // If GeoTIFF is forced and the output path has a .png extension, switch it to .tif.
     if (cfg->force_geotiff && cfg->output_path_override) {
         const char *ext = strrchr(cfg->output_path_override, '.');
         if (ext && (strcmp(ext, ".png") == 0 || strcmp(ext, ".PNG") == 0)) {
@@ -511,7 +496,7 @@ bool config_validate(const ProcessConfig* cfg) {
         return false;
     }
     
-    // Validar clip (si está presente)
+    // Validate clip region bounds.
     if (cfg->has_clip) {
         float lon_min = cfg->clip_coords[0];
         float lat_max = cfg->clip_coords[1];
@@ -607,7 +592,7 @@ void config_destroy(ProcessConfig* cfg) {
         return;
     }
     
-    // Solo output_path_override, product_short y product_long son dinámicos
+    // Only output_path_override, product_short, and product_long are heap-allocated.
     if (cfg->output_path_override) {
         free((void*)cfg->output_path_override);
         cfg->output_path_override = NULL;
@@ -620,7 +605,4 @@ void config_destroy(ProcessConfig* cfg) {
         free((void*)cfg->product_long);
         cfg->product_long = NULL;
     }
-    
-    // Los demás campos son punteros a strings del ArgParser
-    // que se liberarán cuando se destruya el parser
 }

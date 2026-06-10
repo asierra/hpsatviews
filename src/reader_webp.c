@@ -1,9 +1,9 @@
-/*
- * WebP Image Reader implementation for hpsatviews.
- * Optimized for RGB (3 channels) - No Alpha.
- *
- * Copyright (c) 2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+/* WebP image reader (city-lights background layers).
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
  * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #include <stdlib.h>
 #include <stdio.h>
@@ -21,7 +21,7 @@ ImageData reader_load_webp(const char *filename) {
         return image_create(0, 0, 0);
     }
 
-    // 1. Obtener tamaño y leer archivo a memoria
+    // Get file size and read into memory.
     fseek(fp, 0, SEEK_END);
     size_t file_size = ftell(fp);
     fseek(fp, 0, SEEK_SET);

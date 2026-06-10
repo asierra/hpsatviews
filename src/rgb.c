@@ -1,3 +1,10 @@
+/* RGB and day/night composite generation for ABI multi-band imagery.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
+ */
 #include <libgen.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,33 +47,27 @@ void rgb_context_destroy(RgbContext *ctx) {
     // Liberar ChannelSet
     channelset_destroy(ctx->channel_set);
 
-    // Liberar canales cargados
     for (int i = 1; i <= 16; i++) {
-        // datanc_destroy es seguro para estructuras no inicializadas
         datanc_destroy(&ctx->channels[i]);
     }
 
-    // Liberar navegación
     dataf_destroy(&ctx->nav_lat);
     dataf_destroy(&ctx->nav_lon);
 
-    // Liberar canales intermedios
     dataf_destroy(&ctx->comp_r);
     dataf_destroy(&ctx->comp_g);
     dataf_destroy(&ctx->comp_b);
 
-    // Liberar resultados
     image_destroy(&ctx->final_image);
     image_destroy(&ctx->alpha_mask);
 
-    // Liberar output_filename si fue generado dinámicamente
     if (ctx->opts.output_generated && ctx->opts.output_filename) {
         free(ctx->opts.output_filename);
     }
 }
 
 
-// --- FASE 2: COMPOSERS (PATRÓN ESTRATEGIA) ---
+// --- PHASE 2: COMPOSERS (STRATEGY PATTERN) ---
 
 static bool compose_truecolor(RgbContext *ctx) {
     // 1. Setup y Copia
@@ -79,9 +80,9 @@ static bool compose_truecolor(RgbContext *ctx) {
     if (!ctx->comp_b.data_in || !ctx->comp_r.data_in)
         return false;
 
-    // 2. CORRECCIÓN RAYLEIGH
+    // Rayleigh correction.
     if (ctx->opts.apply_rayleigh || ctx->opts.rayleigh_analytic) {
-        // Encontrar el archivo correcto para navegación
+        // Locate the C01 file for navigation.
         const char *nav_file = NULL;
         for (int i = 0; i < ctx->channel_set->count; i++) {
             if (strcmp(ctx->channel_set->channels[i].name, "C01") == 0) {
@@ -90,8 +91,7 @@ static bool compose_truecolor(RgbContext *ctx) {
             }
         }
         RayleighNav nav = {0};
-        // Reutilizar lat/lon ya calculados en process_geospatial para evitar
-        // recalcular la navegación (compute_navigation_nc es costosa).
+        // Reuse pre-computed lat/lon to avoid a costly compute_navigation_nc call.
         bool nav_ok;
         if (ctx->has_navigation && ctx->nav_lat.data_in && ctx->nav_lon.data_in) {
             nav_ok = rayleigh_load_navigation_from_latlon(nav_file, &ctx->nav_lat, &ctx->nav_lon,
@@ -99,7 +99,6 @@ static bool compose_truecolor(RgbContext *ctx) {
         } else {
             nav_ok = rayleigh_load_navigation(nav_file, &nav, ctx->comp_b.width, ctx->comp_b.height);
         }
-        // Cargar navegación ajustada al tamaño de la imagen azul (C01)
         if (nav_ok) {
             apply_solar_zenith_correction(&ctx->comp_b, &nav.sza);
             apply_solar_zenith_correction(&ctx->comp_r, &nav.sza);
@@ -122,7 +121,7 @@ static bool compose_truecolor(RgbContext *ctx) {
     ctx->comp_g = create_truecolor_synthetic_green(&ctx->comp_b, &ctx->comp_r, ch_nir);
     if (!ctx->comp_g.data_in)
         return false;
-    // Sin boost adicional: la fórmula de verde ya usa los coeficientes de geo2grid
+    // Green formula already uses geo2grid-matched CIMSS coefficients; no extra boost needed.
 
     // 3b. Ratio Sharpening
     if (ctx->opts.use_sharpen) {
@@ -146,9 +145,8 @@ static bool compose_truecolor(RgbContext *ctx) {
         apply_piecewise_stretch(&ctx->comp_b);
     }
 
-    // 4. Rangos
-    // Con piecewise stretch, el rango de salida ya está en [0, 1.0]
-    // Sin stretch, reflectancia puede superar 1.0 pero se clampea en la conversión a 8-bit
+    // With piecewise stretch, output is in [0, 1.0];
+    // without it, reflectance can exceed 1.0 but is clamped in the 8-bit conversion.
     float range_max = ctx->opts.use_piecewise_stretch ? 1.0f : 1.1f;
     ctx->min_r = 0.0f;
     ctx->max_r = range_max;
@@ -429,14 +427,14 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
 
             // Identificar canal de referencia
             if (ctx->opts.use_full_res) {
-                // Buscar la MAYOR resolución (valor en km MÁS PEQUEÑO)
+                // Select highest resolution (smallest km value) for --full-res.
                 if (ctx->ref_channel_idx == 0 ||
                     ctx->channels[cn].native_resolution_km <
                         ctx->channels[ctx->ref_channel_idx].native_resolution_km) {
                     ctx->ref_channel_idx = cn;
                 }
             } else {
-                // Modo por defecto: buscar la MENOR resolución (valor en km MÁS GRANDE)
+                // Default: select lowest resolution (largest km value).
                 if (ctx->ref_channel_idx == 0 ||
                     ctx->channels[cn].native_resolution_km >
                         ctx->channels[ctx->ref_channel_idx].native_resolution_km) {
@@ -461,10 +459,9 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
     // Resample channels to match reference resolution
     float ref_res = ctx->channels[ctx->ref_channel_idx].native_resolution_km;
     for (int i = 0; i < ctx->channel_set->count; i++) {
-        int cn = atoi(ctx->channel_set->channels[i].name + 1); // "C01" -> 1
-        if (cn == ctx->ref_channel_idx || ctx->channels[cn].fdata.data_in == NULL) {
-            continue; // No remuestrear el canal de referencia o canales vacíos
-        }
+        int cn = atoi(ctx->channel_set->channels[i].name + 1);
+        if (cn == ctx->ref_channel_idx || ctx->channels[cn].fdata.data_in == NULL)
+            continue;
 
         float res = ctx->channels[cn].native_resolution_km;
         float factor_f = res / ref_res;
@@ -473,14 +470,12 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
             int factor = (int)(factor_f + 0.5f);
             DataF resampled = {0};
 
-            if (factor_f < 1.0f) { // La resolución de este canal es mayor que la de
-                                   // referencia -> Downsample
+            if (factor_f < 1.0f) { // this channel has finer resolution than reference -> downsample
                 factor = (int)((1.0f / factor_f) + 0.5f);
                 LOG_INFO("Downsampling C%02d (%.1fkm -> %.1fkm, factor %d)", cn, res, ref_res,
                          factor);
                 resampled = downsample_boxfilter(ctx->channels[cn].fdata, factor);
-            } else { // La resolución de este canal es menor que la de referencia ->
-                     // Upsample
+            } else { // this channel has coarser resolution than reference -> upsample
                 LOG_INFO("Upsampling C%02d (%.1fkm -> %.1fkm, factor %d)", cn, res, ref_res,
                          factor);
                 resampled = upsample_bilinear(ctx->channels[cn].fdata, factor);
@@ -505,9 +500,8 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
 }
 
 static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
-    // Calcular navegación con el archivo del canal de referencia (ya en la
-    // resolución objetivo), evitando calcular a resolución máxima y luego
-    // remuestrear.
+    // Compute navigation using the reference channel file (already at the target resolution)
+    // to avoid computing at full resolution and then resampling.
     const char *ref_filename = NULL;
     char ref_name[8];
     snprintf(ref_name, sizeof(ref_name), "C%02d", ctx->ref_channel_idx);
@@ -526,7 +520,7 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
         ctx->has_navigation = false;
     }
 
-    // 2. Validar si la estrategia requiere navegación
+    // Check if strategy requires navigation.
     if (strategy->needs_navigation && !ctx->has_navigation) {
         snprintf(ctx->error_msg, sizeof(ctx->error_msg),
                  "El modo '%s' requiere datos de navegación, pero no se pudieron "
@@ -535,15 +529,13 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
         return false;
     }
 
-    // 3. Remuestrear navegación si difiere del canal de referencia (no debería
-    //    ocurrir normalmente, ya que se calcula con ref_filename)
+    // Resample navigation if it differs from the reference channel (rare in practice).
     if (ctx->has_navigation && ctx->ref_channel_idx > 0) {
         size_t nav_width = ctx->nav_lat.width;
         size_t ref_width = ctx->channels[ctx->ref_channel_idx].fdata.width;
 
         if (nav_width != ref_width) {
             if (nav_width > ref_width) {
-                // Downsampling de navegación
                 int factor = nav_width / ref_width;
                 LOG_DEBUG("Remuestreando navegación (downsample factor %d)",
                          factor);
@@ -560,7 +552,6 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
                     return false;
                 }
             } else {
-                // Upsampling de navegación
                 int factor = ref_width / nav_width;
                 LOG_DEBUG("Remuestreando navegación (upsample factor %d)",
                          factor);
@@ -584,27 +575,23 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
 }
 
 static bool apply_enhancements(RgbContext *ctx) {
-    // daynite es un caso exclusivo especial
+    // daynite is a special composite mode: blend day (visible) and night (IR) images.
     if (strcmp(ctx->opts.mode, "daynite") == 0) {
-        // La navegación ya está remuestreada al tamaño de referencia en
-        // process_geospatial, así que podemos usarla directamente
+        // Navigation is already resampled to reference resolution in process_geospatial.
         DataF *nav_lat_ptr = &ctx->nav_lat;
         DataF *nav_lon_ptr = &ctx->nav_lon;
 
-        // Genera máscara día/noche usando los datos del contexto
         float day_pct = 0.0f;
         ImageData mask = create_daynight_mask(ctx->channels[13], *nav_lat_ptr, *nav_lon_ptr,
                                               &day_pct, ctx->opts.cloud_temp);
         float night_pct = 100.0f - day_pct;
 
-        // Si hay una porción de noche (>0.1%), mezclamos las imágenes.
-        // Para una imagen totalmente nocturna, night_pct es 100.
+        // Blend if nighttime fraction exceeds 0.1%; for fully nocturnal scenes night_pct=100.
         if (night_pct > 0.1f && mask.data) {
-            LOG_INFO("Mezclando imágenes diurna y nocturna (Noche: %.2f%%)", night_pct);
+            LOG_INFO("Blending day/night images (night: %.2f%%)", night_pct);
             ctx->final_image = blend_images(ctx->alpha_mask, ctx->final_image, mask);
         } else {
-            LOG_INFO("La escena es mayormente diurna (%.2f%%), usando solo imagen diurna.", day_pct);
-            // Ya está en ctx->final_image
+            LOG_INFO("Scene is mostly daytime (%.2f%%), using only visible composite.", day_pct);
         }
         image_destroy(&ctx->alpha_mask);
         image_destroy(&mask);
@@ -625,22 +612,17 @@ static bool apply_enhancements(RgbContext *ctx) {
         }
     }
 
-    // 3. Crear máscara alpha (antes de remuestreo)
     if (ctx->opts.use_alpha) {
-        LOG_DEBUG("Creando máscara alpha...");
         ctx->alpha_mask =
             image_create_alpha_mask_from_dataf(&ctx->channels[ctx->ref_channel_idx].fdata);
     }
 
-    // 4. Agregar canal alpha
     if (ctx->opts.use_alpha && ctx->alpha_mask.data) {
-        LOG_DEBUG("Agregando canal alpha...");
         ImageData with_alpha = image_add_alpha_channel(&ctx->final_image, &ctx->alpha_mask);
         if (with_alpha.data) {
             image_destroy(&ctx->final_image);
             ctx->final_image = with_alpha;
         }
-        // Liberar máscara alpha ya que se integró
         image_destroy(&ctx->alpha_mask);
         memset(&ctx->alpha_mask, 0, sizeof(ImageData));
     }
@@ -695,7 +677,7 @@ static bool write_output(RgbContext *ctx, const char *product_label) {
             meta_out.geotransform[0] += ctx->crop_x_offset * meta_out.geotransform[1];
             meta_out.geotransform[3] += ctx->crop_y_offset * meta_out.geotransform[5];
             
-            // 2. Ajustar resolución si hubo escalado
+            // Adjust pixel scale in geotransform if the image was scaled.
             if (ctx->opts.scale != 1) {
                 double scale_factor = (ctx->opts.scale < 0) ? -ctx->opts.scale : ctx->opts.scale;
                 if (ctx->opts.scale > 1) {
@@ -716,20 +698,15 @@ static bool write_output(RgbContext *ctx, const char *product_label) {
     return true;
 }
 
-// ============================================================================
-// INTERFAZ UNIFICADA - Inyección de Dependencias
-// ============================================================================
+// =============================================================================
+// UNIFIED INTERFACE (dependency injection via ProcessConfig)
+// =============================================================================
 
-/**
- * @brief Convierte ProcessConfig a RgbContext para reutilizar funciones existentes.
- *
- * Esta función actúa como adaptador entre la nueva interfaz (ProcessConfig)
- * y la implementación interna (RgbContext).
- */
+// Adapts ProcessConfig to RgbContext, bridging the stable public API and the
+// internal RgbContext implementation.
 static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
     rgb_context_init(ctx);
 
-    // Copiar opciones básicas
     ctx->opts.input_file = cfg->input_file;
     // Normalizar 'default' a 'daynite' para comparaciones de string posteriores
     if (cfg->strategy && strcmp(cfg->strategy, "default") == 0) {
@@ -772,9 +749,8 @@ static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
         }
     }
 
-    // Custom mode
-    // Cast para silenciar el warning -Wdiscarded-qualifiers. La solución ideal
-    // es cambiar el tipo de 'expr' y 'minmax' en RgbOptions a 'const char*'.
+    // Cast to silence -Wdiscarded-qualifiers; the clean fix is to change
+    // RgbOptions.expr/minmax to 'const char*'.
     ctx->opts.expr = (char *)cfg->custom_expr;
     ctx->opts.minmax = (char *)cfg->custom_minmax;
 
@@ -803,11 +779,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     int status = 1;
     char **custom_channels = NULL;
 
-    // Registrar metadatos básicos
-    metadata_set_command(meta, "rgb");
-    metadata_add(meta, "command", "rgb");
-    // Si el usuario especificó un nombre corto con -N, usarlo como tipo en el filename;
-    // de lo contrario usar el modo (ej. "custom", "ash", etc.)
+    // Use the short product name (-N flag) if provided; otherwise fall back to mode string.
     const char *mode_label = (cfg->product_short && cfg->product_short[0])
                              ? cfg->product_short
                              : (ctx.opts.mode ? ctx.opts.mode : "unknown");
@@ -851,7 +823,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     const char *product = cfg->product_long ? cfg->product_long : strategy->description;
     metadata_set_product(meta, product);
 
-    // Advertencias de configuración para modo night
+    // Rayleigh correction is not meaningful for night mode (thermal IR only).
     if (strcmp(ctx.opts.mode, "night") == 0) {
         if (ctx.opts.apply_rayleigh || ctx.opts.rayleigh_analytic) {
             LOG_WARN("La corrección Rayleigh se ignora en modo 'night' (solo afecta canales visibles).");
@@ -884,7 +856,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         goto cleanup;
     }
 
-    // Extraer metadatos del canal de referencia (satélite, timestamp, geometría nativa)
+    // Extract satellite/band/timestamp/geometry metadata from reference channel.
     metadata_from_nc(meta, &ctx.channels[ctx.ref_channel_idx]);
 
     // Procesar geoespacial
@@ -893,8 +865,8 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         goto cleanup;
     }
 
-    // Composición
-    LOG_INFO("Generando compuesto '%s'...", strategy->mode_name);
+    // RGB composite.
+    LOG_INFO("Generating '%s' composite...", strategy->mode_name);
     if (!strategy->composer_func(&ctx)) {
         LOG_ERROR("Falla al generar compuesto RGB");
         goto cleanup;
@@ -937,7 +909,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         goto cleanup;
     }
 
-    // Post-procesamiento (Blending, CLAHE, Alpha) - ANTES de reproyección
+    // Post-processing (blending, CLAHE, alpha) — before reprojection.
     if (!apply_enhancements(&ctx)) {
         LOG_ERROR("Falla en post-procesamiento (enhancements)");
         goto cleanup;
@@ -959,14 +931,14 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
             }
         }
         LOG_INFO("Guardando fixed-grid: %s", ctx.opts.output_filename);
-        // Desactivar temporalmente para que write_output use la proyección nativa
+        // Temporarily disable reprojection flag so write_output uses the native projection.
         ctx.opts.do_reprojection = false;
         if (!write_output(&ctx, product)) {
             LOG_ERROR("Falla al guardar fixed-grid");
             goto cleanup;
         }
         ctx.opts.do_reprojection = true;
-        // Actualizar filename al path reproyectado (sufijo _geo antes de la extensión)
+        // Append _geo suffix to the filename for the reprojected output.
         char *geo_filename = insert_geo_suffix(ctx.opts.output_filename);
         if (ctx.opts.output_generated) {
             free(ctx.opts.output_filename);
@@ -980,7 +952,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         LOG_INFO("Guardando reproyectado: %s", ctx.opts.output_filename);
     }
 
-    // Reproyección
+    // Reprojection.
     if (ctx.opts.do_reprojection) {
         if (!ctx.has_navigation) {
             LOG_ERROR("Navegación requerida para reproyección");
@@ -1004,7 +976,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         image_destroy(&ctx.final_image);
         ctx.final_image = reprojected;
 
-        // Actualizar límites
+        // Update final bounding box from reprojected extent.
         if (ctx.opts.has_clip) {
             ctx.final_lon_min = ctx.opts.clip_coords[0];
             ctx.final_lat_max = ctx.opts.clip_coords[1];
@@ -1017,10 +989,9 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
             ctx.final_lat_max = ctx.nav_lat.fmax;
         }
     } else {
-        // Si no hay reproyección pero hay clip, necesitamos recortar la imagen final
+        // No reprojection: apply clip in native fixed-grid coordinates if requested.
         if (ctx.opts.has_clip && ctx.has_navigation) {
             int ix, iy, iw, ih;
-            // Encontrar qué píxeles corresponden al lat/lon solicitado
             reprojection_find_bounding_box(&ctx.nav_lat, &ctx.nav_lon, 
                 ctx.opts.clip_coords[0], ctx.opts.clip_coords[1], 
                 ctx.opts.clip_coords[2], ctx.opts.clip_coords[3], 
@@ -1041,13 +1012,13 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         }
     }
 
-    // Registrar metadatos de geometría para JSON
+    // Write geometry metadata for JSON sidecar.
     if (ctx.has_navigation || ctx.opts.has_clip) {
         if (ctx.opts.do_reprojection) {
             metadata_set_geometry(meta, ctx.final_lon_min, ctx.final_lat_min, ctx.final_lon_max, ctx.final_lat_max);
             metadata_set_projection(meta, "EPSG:4326");
         } else {
-            // Calcular bounds en Metros (Proyección Geoestacionaria)
+            // Compute bounds in metres for geostationary projection metadata.
             DataNC *ref = &ctx.channels[ctx.ref_channel_idx];
             double *gt = ref->geotransform;
             double h = (ref->proj_info.valid) ? ref->proj_info.sat_height : 35786023.0;
@@ -1073,7 +1044,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         }
     }
 
-    // Escalado final - DESPUÉS de reproyección (save_both: ya aplicado antes de reproyectar)
+    // Final scaling — after reprojection (for save_both, already applied before reprojection).
     if (!ctx.opts.save_both && !apply_scaling(&ctx)) {
         LOG_ERROR("Falla en escalado final");
         goto cleanup;

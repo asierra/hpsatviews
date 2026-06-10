@@ -1,38 +1,35 @@
+/* Product metadata aggregation and JSON sidecar serialization.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
+ */
 #ifndef HPSATVIEWS_METADATA_H_
 #define HPSATVIEWS_METADATA_H_
 
 #include <stdbool.h>
 #include "datanc.h" 
 
-/**
- * Handle opaco para el contexto de metadatos.
- * Oculta la implementación (probablemente cJSON o buffer manual) al usuario.
- */
+// Opaque handle for metadata state (hides JSON backend).
 typedef struct MetadataContext MetadataContext;
 
-// --- Ciclo de Vida ---
+// Lifecycle
 
-/**
- * Crea un nuevo contexto de metadatos vacío.
- */
+// Allocates an empty metadata context.
 MetadataContext* metadata_create(void);
 
-/**
- * Libera la memoria asociada al contexto.
- */
+// Frees the context. Safe to call with NULL.
 void metadata_destroy(MetadataContext *ctx);
 
-// --- API de Agregación de Datos (Fluent / Polymorphic) ---
+// Data insertion API
 
 void metadata_add_int(MetadataContext *ctx, const char *key, int value);
 void metadata_add_dbl(MetadataContext *ctx, const char *key, double value);
 void metadata_add_str(MetadataContext *ctx, const char *key, const char *value);
 void metadata_add_bool(MetadataContext *ctx, const char *key, bool value);
 
-/**
- * Macro C11 _Generic para inserción polimórfica de metadatos.
- * Uso: metadata_add(ctx, "gamma", 1.5);
- */
+// C11 _Generic polymorphic insertion: metadata_add(ctx, "gamma", 1.5);
 #define metadata_add(CTX, KEY, VAL) \
     _Generic((VAL), \
         bool:         metadata_add_bool, \
@@ -43,59 +40,32 @@ void metadata_add_bool(MetadataContext *ctx, const char *key, bool value);
         const char*:  metadata_add_str \
     )(CTX, KEY, VAL)
 
-// --- Funciones Específicas de Dominio ---
+// Domain-specific setters
 
-/**
- * Establece el comando/modo de procesamiento.
- */
+// Sets the processing command/mode string.
 void metadata_set_command(MetadataContext *ctx, const char *command);
 
-/**
- * Establece el nombre descriptivo del producto (ej: "True Color RGB (natural)").
- */
+// Sets a descriptive product name (e.g., "True Color RGB").
 void metadata_set_product(MetadataContext *ctx, const char *product);
 
 void metadata_set_projection(MetadataContext *ctx, const char *proj);
 
-/**
- * Marca que la imagen fue recortada explícitamente por el usuario.
- */
+// Marks the output as user-clipped.
 void metadata_set_clip(MetadataContext *ctx, bool clipped);
 
-/**
- * Registra la geometría final de la imagen.
- * @param x1 lon_min
- * @param y1 lat_max
- * @param x2 lon_max
- * @param y2 lat_min
- */
+// Records the final image bounding box: x1=lon_min, y1=lat_max, x2=lon_max, y2=lat_min.
 void metadata_set_geometry(MetadataContext *ctx, float x1, float y1, float x2, float y2);
 
-/**
- * Registra información inicial de un canal o componente.
- * @param nc Estructura con metadatos que se obtienen al leer un NetCDF
- */
+// Populates metadata from a loaded DataNC (satellite, band, timestamp, projection).
 void metadata_from_nc(MetadataContext *ctx, const DataNC *nc);
 
-// --- Generación de Salidas ---
+// Output generation
 
-/**
- * Genera el nombre de archivo estandarizado basado en los metadatos acumulados.
- * Reemplaza la lógica antigua de filename_utils.
- * 
- * @param ctx Contexto con datos del satélite, fecha y producto.
- * @param extension Extensión deseada (ej. ".png", ".json").
- * @return String alojado dinámicamente (caller debe liberar) o NULL en error.
- */
+// Builds a standardized output filename from accumulated metadata.
+// extension: ".png" or ".json". Caller must free the returned string.
 char* metadata_build_filename(const MetadataContext *ctx, const char *extension);
 
-/**
- * Serializa los metadatos a un archivo JSON en disco.
- * 
- * @param ctx Contexto a serializar.
- * @param filename Ruta de salida.
- * @return 0 en éxito, no-cero en error.
- */
+// Serializes metadata to a JSON file. Returns 0 on success.
 int metadata_save_json(MetadataContext *ctx, const char *filename);
 
-#endif // HPSATVIEWS_METADATA_H_
+#endif /* HPSATVIEWS_METADATA_H_ */

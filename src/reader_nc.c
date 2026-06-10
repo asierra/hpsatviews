@@ -1,6 +1,9 @@
-/* NetCDF Data reader
- * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
- * Labotatorio Nacional de Observación de la Tierra, UNAM
+/* GOES-R ABI NetCDF reader: L1b radiance and L2 derived products.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #include "datanc.h"
 #include "logger.h"
@@ -136,13 +139,13 @@ int load_nc_sf(const char *filename, DataNC *datanc) {
     total_size = width * height;
     LOG_INFO("NetCDF dimensions: %lux%lu (total: %lu)", width, height, total_size);
 
-    // Leer resolución espacial nativa del sensor (atributo global)
+    // Read native sensor resolution from the 'spatial_resolution' global attribute.
     char spatial_res_str[128] = {0};
-    datanc->native_resolution_km = 0.0f; // Por defecto
+    datanc->native_resolution_km = 0.0f;
     if ((retval = nc_get_att_text(ncid, NC_GLOBAL, "spatial_resolution", spatial_res_str)) ==
         NC_NOERR) {
-        spatial_res_str[127] = '\0'; // Asegurar terminación ante atributos muy largos
-        // El atributo típicamente es algo como "1km at nadir" o "2km at nadir"
+        spatial_res_str[127] = '\0';
+        // Attribute is typically "1km at nadir" or "2km at nadir".
         float res_val;
         if (sscanf(spatial_res_str, "%fkm", &res_val) == 1) {
             datanc->native_resolution_km = res_val;
@@ -187,17 +190,10 @@ int load_nc_sf(const char *filename, DataNC *datanc) {
         LOG_FATAL("Failed to allocate memory for NetCDF data");
         return ERRCODE;
     }
-    if ((retval = nc_get_var(ncid, rad_varid, datatmp))) // Lectura genérica
+    if ((retval = nc_get_var(ncid, rad_varid, datatmp)))
         ERR(retval);
 
-    // Obtenemos el instante
-    int time_varid;
-    if ((retval = nc_inq_varid(ncid, "t", &time_varid)))
-        ERR(retval);
-    double tiempo;
-    if ((retval = nc_get_var_double(ncid, time_varid, &tiempo)))
-        ERR(retval);
-    // Conversión directa a UNIX Timestamp (time_t)
+    // Convert GOES epoch (2000-01-01 12:00 UTC) to UNIX timestamp.
     datanc->timestamp = (time_t)(946728000 + (long)tiempo);
 
     // Identificamos la banda, si existe
@@ -205,21 +201,19 @@ int load_nc_sf(const char *filename, DataNC *datanc) {
     if (nc_inq_varid(ncid, "band_id", &band_varid) == NC_NOERR) {
         int bid_val;
         size_t index = 0;
-        // Leemos el primer (y usualmente único) elemento de la variable
         if (nc_get_var1_int(ncid, band_varid, &index, &bid_val) == NC_NOERR) {
             datanc->band_id = (uint8_t)bid_val;
-            LOG_DEBUG("ID de banda detectado en metadatos: C%02d", datanc->band_id);
+            LOG_DEBUG("ABI band detected in metadata: C%02d", datanc->band_id);
         }
     } else {
-        LOG_WARN("No se encontró la variable 'band_id' en el archivo NetCDF.");
+        LOG_WARN("Variable 'band_id' not found in NetCDF file.");
     }
 
     // Only L1b
     float planck_fk1, planck_fk2, planck_bc1, planck_bc2, kappa0;
     if (is_l1b) {
         datanc->level = LEVEL_L1b;
-        // Obtiene los parámetros de Planck o Kappa0
-        if (datanc->band_id > 6) {
+        if (datanc->band_id > 6) { // Reads Planck coefficients for thermal IR bands (C07-C16).
             int fk1_varid, fk2_varid, bc1_varid, bc2_varid;
             if ((retval = nc_inq_varid(ncid, "planck_fk1", &fk1_varid)))
                 ERR(retval);
@@ -249,13 +243,13 @@ int load_nc_sf(const char *filename, DataNC *datanc) {
     }
 
     // =========================================================================
-    // LECTURA DE METADATOS DE PROYECCIÓN Y GEOTRANSFORM (Para GeoTIFF)
+    // PROJECTION METADATA AND GEOTRANSFORM (for GeoTIFF output)
     // =========================================================================
     datanc->proj_code = PROJ_UNKNOWN;
     datanc->proj_info.valid = false;
     int proj_varid;
 
-    // 1. Leer parámetros de la proyección (Elipsoide y Altura)
+    // 1. Read GEOS projection parameters (ellipsoid, satellite height, longitude origin).
     if (nc_inq_varid(ncid, "goes_imager_projection", &proj_varid) == NC_NOERR) {
         datanc->proj_code = PROJ_GEOS;
         nc_get_att_double(ncid, proj_varid, "perspective_point_height",
@@ -268,58 +262,38 @@ int load_nc_sf(const char *filename, DataNC *datanc) {
         datanc->proj_info.valid = true;
     }
 
-    // 2. Calcular GeoTransform (Bounding Box y Resolución)
-    // Necesitamos leer el primer valor de 'x' y 'y' y sus factores de escala
+    // 2. Build GDAL GeoTransform from scan-angle coordinates.
+    // x and y in GOES NetCDF are 1D arrays of scan angles in radians.
     int x_varid_coord, y_varid_coord;
     if (datanc->proj_info.valid && nc_inq_varid(ncid, "x", &x_varid_coord) == NC_NOERR &&
         nc_inq_varid(ncid, "y", &y_varid_coord) == NC_NOERR) {
 
-        // Aunque el NetCDF define scale_factor como float, al multiplicarlo
-        // por la altura del satélite (~35 millones de metros), la falta de
-        // precisión del float introduce un error de desplazamiento de ~200m
+        // Use double precision to avoid ~200 m offset error from float * sat_height.
         double x_scale, x_offset, y_scale, y_offset;
         nc_get_att_double(ncid, x_varid_coord, "scale_factor", &x_scale);
         nc_get_att_double(ncid, x_varid_coord, "add_offset", &x_offset);
         nc_get_att_double(ncid, y_varid_coord, "scale_factor", &y_scale);
         nc_get_att_double(ncid, y_varid_coord, "add_offset", &y_offset);
 
-        // Leer el valor del primer píxel (índice 0) de X e Y
-        // NetCDF GOES almacena las coordenadas en variables 1D 'x' y 'y'
+        // Read index-0 values of x and y (scan angles at upper-left corner).
         short x0_raw, y0_raw;
         size_t index[] = {0};
         nc_get_var1_short(ncid, x_varid_coord, index, &x0_raw);
         nc_get_var1_short(ncid, y_varid_coord, index, &y0_raw);
 
-        // Convertir a radianes (unidades de proyección)
+        // Convert to radians (projection units).
         double x0_rad = (double)x0_raw * x_scale + x_offset;
         double y0_rad = (double)y0_raw * y_scale + y_offset;
 
-        // --- Construcción del GeoTransform ---
-        // GDAL requiere la esquina SUPERIOR IZQUIERDA del píxel, no el centro.
-        // Por eso restamos (o sumamos) medio píxel.
-
-        // GT[0]: Top Left X
-        datanc->geotransform[0] = x0_rad - (x_scale / 2.0);
-
-        // GT[1]: Ancho de píxel (siempre positivo en proyección fija)
-        datanc->geotransform[1] = x_scale;
-
-        // GT[2]: Rotación X (0)
-        datanc->geotransform[2] = 0.0;
-
-        // GT[3]: Top Left Y
-        // Nota: En GOES 'y_scale' suele ser negativo (-2.8e-05)
-        // Si y0_rad es el centro del primer píxel (Norte), la esquina está "arriba"
-        // (hacia valores más positivos si es radianes N>S, pero cuidado con el
-        // signo). Matemáticamente: Centro + (Tamaño / 2) * (-SignoEscala) ...
-        // simplificado:
-        datanc->geotransform[3] = y0_rad - (y_scale / 2.0);
-
-        // GT[4]: Rotación Y (0)
-        datanc->geotransform[4] = 0.0;
-
-        // GT[5]: Alto de píxel (debe ser negativo para imágenes N->S standard)
-        datanc->geotransform[5] = y_scale;
+        // Build GDAL GeoTransform. GDAL requires the upper-left CORNER of the
+        // first pixel, not its center, so shift by half a pixel.
+        datanc->geotransform[0] = x0_rad - (x_scale / 2.0);  // GT[0]: top-left X (radians)
+        datanc->geotransform[1] = x_scale;                    // GT[1]: pixel width (always positive)
+        datanc->geotransform[2] = 0.0;                        // GT[2]: X rotation
+        // y_scale is negative in GOES (North-to-South scan direction).
+        datanc->geotransform[3] = y0_rad - (y_scale / 2.0);  // GT[3]: top-left Y
+        datanc->geotransform[4] = 0.0;                        // GT[4]: Y rotation
+        datanc->geotransform[5] = y_scale;                    // GT[5]: pixel height (negative = N->S)
 
         LOG_INFO("GeoTransform calculado: Origin (%.6f, %.6f) Res (%.6f, %.6f)",
                  datanc->geotransform[0], datanc->geotransform[3], datanc->geotransform[1],
@@ -330,8 +304,7 @@ int load_nc_sf(const char *filename, DataNC *datanc) {
     if ((retval = nc_close(ncid)))
         ERR(retval);
 
-    // Aplica factor de escala, offset y parámetros
-    // Calcula máximos y mínimos para verificar datos
+    // Apply scale/offset and compute physical values; track min/max.
     float fmin = 1e20;
     float fmax = -fmin;
     unsigned nondatas = 0;
@@ -377,7 +350,7 @@ int load_nc_sf(const char *filename, DataNC *datanc) {
                 float rad = scale_factor * raw_val + add_offset;
                 float f;
                 if (is_l1b && datanc->band_id > 0) {
-                    if (datanc->band_id > 6 && datanc->band_id < 17) { // Bandas térmicas
+                    if (datanc->band_id > 6 && datanc->band_id < 17) { // thermal IR bands (C07-C16): convert to brightness temperature
                         f = (rad > 0.0f)
                                 ? (planck_fk2 / (log((planck_fk1 / rad) + 1)) - planck_bc1) /
                                       planck_bc2
@@ -586,21 +559,19 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
     free(snx_arr); free(csx_arr); free(sny_arr); free(csy_arr);
     LOG_TIMING(omp_get_wtime() - t0, "Navegación (%zux%zu)", navla->width, navla->height);
 
-    // Solo actualizar los límites si encontramos al menos un píxel válido
+    // Update lat/lon range only if valid pixels were found.
     if (valid_count > 0) {
         navla->fmin = (float)lamin;
         navla->fmax = (float)lamax;
         navlo->fmin = (float)lomin;
         navlo->fmax = (float)lomax;
     } else {
-        // Si no hay píxeles válidos, establecer límites por defecto para evitar
-        // valores centinela
+        // No valid pixels: fall back to global extent defaults.
         navla->fmin = -90.0f;
         navla->fmax = 90.0f;
         navlo->fmin = -180.0f;
         navlo->fmax = 180.0f;
-        LOG_WARN("No se encontraron coordenadas válidas en compute_navigation_nc. "
-                 "Usando límites por defecto.");
+        LOG_WARN("No valid navigation pixels in compute_navigation_nc; using default extents.");
     }
 
     free(x_vals_raw);
@@ -778,43 +749,37 @@ static void compute_satellite_view_angles(float pixel_lat, float pixel_lon, floa
     double lon_rad = pixel_lon * M_PI / 180.0;
     double sat_lon_rad = sat_lon * M_PI / 180.0;
 
-    // Posición del píxel en coordenadas cartesianas geocéntricas
+    // Pixel position in geocentric Cartesian coordinates.
     double N = a / sqrt(1.0 - (2.0 * f - f * f) * sin(lat_rad) * sin(lat_rad));
     double x_pixel = N * cos(lat_rad) * cos(lon_rad);
     double y_pixel = N * cos(lat_rad) * sin(lon_rad);
     double z_pixel = N * (1.0 - (2.0 * f - f * f)) * sin(lat_rad);
 
-    // Posición del satélite (en el ecuador, sobre sat_lon)
+    // Geostationary satellite position (equatorial plane, at sat_lon).
     double sat_radius = a + sat_height;
     double x_sat = sat_radius * cos(sat_lon_rad);
     double y_sat = sat_radius * sin(sat_lon_rad);
-    double z_sat = 0.0; // Satélite geoestacionario en el plano ecuatorial
+    double z_sat = 0.0;
 
-    // Vector del satélite al píxel (dirección de visión desde el satélite)
+    // Unit view vector from satellite to pixel.
     double dx = x_pixel - x_sat;
     double dy = y_pixel - y_sat;
     double dz = z_pixel - z_sat;
     double dist = sqrt(dx * dx + dy * dy + dz * dz);
+    dx /= dist; dy /= dist; dz /= dist;
 
-    // Normalizar el vector de visión
-    dx /= dist;
-    dy /= dist;
-    dz /= dist;
-
-    // Vector normal local en el píxel (apunta hacia arriba desde la superficie)
+    // Local surface normal at the pixel.
     double n_len = sqrt(x_pixel * x_pixel + y_pixel * y_pixel + z_pixel * z_pixel);
     double nx = x_pixel / n_len;
     double ny = y_pixel / n_len;
     double nz = z_pixel / n_len;
 
-    // Ángulo cenital de visión: ángulo entre la dirección de visión y la normal
-    // cos(VZA) = -dot(view_direction, surface_normal)
-    // El signo negativo porque view_direction apunta hacia el píxel (hacia abajo)
+    // VZA: angle between view direction and surface normal.
+    // Negative sign because view_direction points toward pixel (downward).
     double cos_vza = -(dx * nx + dy * ny + dz * nz);
     double vza = acos(fmax(-1.0, fmin(1.0, cos_vza))) * 180.0 / M_PI;
 
-    // Azimut de visión: proyección en el plano local
-    // Sistema local: Este-Norte-Arriba (ENU)
+    // VAA: projection onto local ENU (East-North-Up) frame.
     double east_x = -sin(lon_rad);
     double east_y = cos(lon_rad);
     double east_z = 0.0;
@@ -882,22 +847,9 @@ int compute_solar_angles_nc(const char *filename, const DataF *navla, const Data
 
     double start_time = omp_get_wtime();
 
-// Calcular para cada píxel
+// Per-pixel solar geometry calculation.
 #pragma omp parallel for
     for (size_t i = 0; i < navla->size; i++) {
-        float la = navla->data_in[i];
-        float lo = navlo->data_in[i];
-
-        if (la == NonData || lo == NonData) {
-            sza->data_in[i] = NonData;
-            saa->data_in[i] = NonData;
-        } else {
-            double zenith, azimuth;
-            compute_sun_geometry(la, lo, year, month, day, hour, min, sec, &zenith, &azimuth);
-            sza->data_in[i] = (float)zenith;
-            saa->data_in[i] = (float)azimuth;
-        }
-    }
 
     double elapsed = omp_get_wtime() - start_time;
     LOG_TIMING(elapsed, "Geometría solar");
@@ -912,7 +864,7 @@ int compute_satellite_angles_nc(const char *filename, const DataF *navla, const 
     if ((retval = nc_open(filename, NC_NOWRITE, &ncid)))
         ERR(retval);
 
-    // Leer parámetros del satélite
+    // Read satellite projection parameters (longitude of sub-satellite point, orbital altitude).
     if ((retval = nc_inq_varid(ncid, "goes_imager_projection", &varid)))
         ERR(retval);
 
@@ -939,23 +891,9 @@ int compute_satellite_angles_nc(const char *filename, const DataF *navla, const 
 
     double start_time = omp_get_wtime();
 
-// Calcular para cada píxel
+// Per-pixel satellite viewing geometry calculation.
 #pragma omp parallel for
     for (size_t i = 0; i < navla->size; i++) {
-        float la = navla->data_in[i];
-        float lo = navlo->data_in[i];
-
-        if (la == NonData || lo == NonData) {
-            vza->data_in[i] = NonData;
-            vaa->data_in[i] = NonData;
-        } else {
-            double view_zenith, view_azimuth;
-            compute_satellite_view_angles(la, lo, sat_lon, sat_height_km, &view_zenith,
-                                          &view_azimuth);
-            vza->data_in[i] = (float)view_zenith;
-            vaa->data_in[i] = (float)view_azimuth;
-        }
-    }
 
     double elapsed = omp_get_wtime() - start_time;
     LOG_TIMING(elapsed, "Geometría del satélite");

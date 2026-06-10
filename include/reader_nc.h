@@ -1,6 +1,9 @@
-/* NetCDF Data reader
- * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
- * Labotatorio Nacional de Observación de la Tierra, UNAM
+/* GOES-R ABI NetCDF reader: L1b radiance and L2 derived products.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #ifndef HPSATVIEWS_READER_NC_H_
 #define HPSATVIEWS_READER_NC_H_
@@ -8,27 +11,27 @@
 #include "datanc.h"
 
 
-// Load GOES L1b data and metadada from nc file
+// Loads GOES ABI L1b or L2 data and metadata from a NetCDF file.
 int load_nc_sf(const char *filename, DataNC *datanc);
 
-// Just load float array from nc file
+// Loads a single float variable from a NetCDF file.
 int load_nc_float(const char *filename, DataF *datanc, const char *variable);
 
-// From L1b file compute local navigation
+// Computes lat/lon navigation grids from the GOES-R fixed-grid projection metadata.
 int compute_navigation_nc(const char *GOES_L1b_filename, DataF *navla, DataF *navlo);
 
-// Create navigation grids for an already reprojected (geographic) grid
+// Builds navigation grids for an already-reprojected geographic (equirectangular) grid.
 int create_navigation_from_reprojected_bounds(DataF *navla, DataF *navlo, size_t width, size_t height, float lon_min, float lon_max, float lat_min, float lat_max);
 
 DataF dataf_load_from_netcdf(const char *filename, const char *varname);
 
-// Compute solar geometry angles (Solar Zenith Angle and Solar Azimuth Angle)
+// Computes per-pixel Solar Zenith Angle (SZA) and Solar Azimuth Angle (SAA).
 int compute_solar_angles_nc(const char *filename, const DataF *navla, const DataF *navlo, DataF *sza, DataF *saa);
 
-// Compute satellite viewing geometry angles (View Zenith Angle and View Azimuth Angle)
+// Computes per-pixel View Zenith Angle (VZA) and View Azimuth Angle (VAA).
 int compute_satellite_angles_nc(const char *filename, const DataF *navla, const DataF *navlo, DataF *vza, DataF *vaa);
 
-// Compute relative azimuth angle between sun and satellite
+// Computes the Relative Azimuth Angle (RAA) between sun and satellite.
 void compute_relative_azimuth(const DataF *saa, const DataF *vaa, DataF *raa);
 
 #endif /* HPSATVIEWS_READER_NC_H_ */

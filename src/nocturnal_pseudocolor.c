@@ -1,8 +1,9 @@
-/*
- * Generación de imagen de pseudocolor nocturno.
- * 
- * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
- * Labotatorio Nacional de Observación de la Tierra, UNAM
+/* Nighttime pseudocolor imagery from ABI C13 brightness temperature.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #include <math.h>
 #include <omp.h>
@@ -17,7 +18,7 @@
 ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* fondo) {
   if (!temp_data || !temp_data->data_in) {
     LOG_ERROR("Datos de temperatura inválidos para create_nocturnal_pseudocolor.");
-    return image_create(0, 0, 0); // Devuelve imagen vacía
+    return image_create(0, 0, 0); // return empty image on invalid input
   }
 
   ImageData imout = image_create(temp_data->width, temp_data->height, 3);
@@ -30,7 +31,7 @@ ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* 
   double start = omp_get_wtime();
   LOG_INFO("Iniciando generación de pseudocolor nocturno...");
 
-  const float max_ir_temp = 263.15f; // Límite de temperatura para nubes altas (aprox -10°C)
+  const float max_ir_temp = 263.15f; // upper bound for high cold clouds (~-10°C)
 
 #pragma omp parallel for
   for (unsigned int y = 0; y < imout.height; y++) {
@@ -48,9 +49,8 @@ ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* 
           if (f >= atmosrainbow[t].d && f < atmosrainbow[t + 1].d)
             break;
 
-        // Si el bucle termina, 't' será 255, lo que significa que el valor
-        // es mayor o igual al último umbral. Clampeamos 't' a 254 para
-        // evitar un acceso fuera de límites en paleta[t+1].
+        // If t == 255, the value is >= the last threshold; clamp to 254
+        // to avoid an out-of-bounds access on paleta[t+1].
         if (t == 255) t = 254;
 
         r = (unsigned char)(255 * atmosrainbow[t].r);

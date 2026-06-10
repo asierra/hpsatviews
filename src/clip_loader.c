@@ -1,3 +1,10 @@
+/* Geographic clip region loader from a CSV configuration file.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,7 +40,7 @@ GeoClip buscar_clip_por_clave(const char *ruta_archivo, const char *clave_buscad
         char *token = strtok(linea_copia, ",");
         if (token == NULL) continue;
 
-        // Limpieza de saltos de línea
+        // Strip line-feed characters.
         token[strcspn(token, "\r\n")] = 0; 
 
         if (strcmp(token, clave_buscada) == 0) {
@@ -96,7 +103,7 @@ void listar_clips_disponibles(const char *ruta_archivo) {
         char *lr_y_str = strtok(NULL, ",");
 
         if (ul_x_str && ul_y_str && lr_x_str && lr_y_str) {
-            // Limpiar saltos de línea del último valor
+            // Strip trailing newline from the last field.
             lr_y_str[strcspn(lr_y_str, "\r\n")] = 0;
             // Convertir a double y formatear con 4 decimales
             double ul_x = atof(ul_x_str);

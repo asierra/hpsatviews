@@ -1,6 +1,9 @@
-/* Rayleigh atmospheric correction for GOES ABI visible bands
- * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
- * Labotatorio Nacional de Observación de la Tierra, UNAM
+/* Rayleigh atmospheric correction for GOES-R ABI visible bands.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #ifndef HPSATVIEWS_RAYLEIGH_H_
 #define HPSATVIEWS_RAYLEIGH_H_

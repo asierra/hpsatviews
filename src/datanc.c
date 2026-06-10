@@ -1,6 +1,9 @@
-/* NetCDF Data structure and tools
- * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
- * Labotatorio Nacional de Observación de la Tierra, UNAM
+/* Floating-point grid data structure and utilities.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #include <stdlib.h>
 #include <stdio.h>
@@ -421,13 +424,10 @@ void dataf_apply_gamma(DataF *data, float gamma, float min_val, float max_val) {
 
     float range = max_val - min_val;
 
-    // Si el rango es inválido no se puede normalizar
+    // Skip normalization if the range is degenerate.
     if (range <= 0.0f || IS_NONDATA(min_val)) return;
 
-    // El gamma debe aplicarse sobre valores normalizados [0,1].
-    // Se usa min_val/max_val (puede ser el rango natural del dato o el rango
-    // provisto por --minmax) para que stretch y gamma sean coherentes.
-    // Convención EUMETSAT/CIRA: output = norm^(1/gamma), con gamma>1 que aclara.
+    // EUMETSAT/CIRA convention: output = norm^(1/gamma); gamma > 1 brightens.
     float inv_gamma = 1.0f / gamma;
 
     #pragma omp parallel for
@@ -445,7 +445,7 @@ void dataf_apply_gamma(DataF *data, float gamma, float min_val, float max_val) {
         data->data_in[i] = powf(norm, inv_gamma);
     }
 
-    // Después de la transformación los datos están en espacio [0,1]
+    // Range is now [0, 1] after gamma normalization.
     data->fmin = 0.0f;
     data->fmax = 1.0f;
 }

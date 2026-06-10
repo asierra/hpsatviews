@@ -1,8 +1,9 @@
-/*
- * ChannelSet: Gestión de conjuntos de canales para procesamiento RGB.
- *
- * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
+/* Multi-channel bundle management for RGB composite processing.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
  * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #include "channelset.h"
 #include "logger.h"
@@ -63,7 +64,7 @@ void channelset_destroy(ChannelSet *set) {
 
 int find_scan_mode_from_name(const char *filename, char *mode_out, size_t mode_size) {
     if (!filename || !mode_out || mode_size < 3) return -1;
-    // Buscar patrón "-M[dígito]C" en el nombre (ej. "-M3C13_" o "-M6C01_")
+    // Find the scan mode pattern "-M[digit]C" in the filename (e.g., "-M3C13_" or "-M6C01_").
     const char *p = filename;
     while ((p = strchr(p, 'M')) != NULL) {
         if (p > filename && *(p - 1) == '-' &&
@@ -83,16 +84,16 @@ int find_id_from_name(const char *filename, char *id_out, size_t id_size) {
         return -1;
     }
     
-    // Buscar el patrón "_sYYYYDDDHHMM" en el nombre del archivo
-    // Formato GOES: OR_ABI-L2-CMIPC-M6C13_G19_s20253231800172_...
+    // Find the start-time token "_sYYYYDDDHHMM" in the filename.
+    // GOES format: OR_ABI-L2-CMIPC-M6C13_G19_s20253231800172_...
     const char *s_pos = strstr(filename, "_s");
     if (!s_pos) {
         LOG_DEBUG("No se encontró patrón '_s' en: %s", filename);
         return -1;
     }
     
-    // Extraer los primeros 11 caracteres después del '_s' (incluyendo 's')
-    // Ejemplo: "s20253231800"
+    // Extract 11 characters of the start timestamp after '_s'.
+    // Example: "s20253231800"
     if (strlen(s_pos) < 12) {
         LOG_DEBUG("Nombre muy corto después de '_s': %s", s_pos);
         return -1;
@@ -116,7 +117,7 @@ int find_channel_filenames(const char *directory, ChannelSet *set, bool is_l2_pr
         return -1;
     }
     
-    // Determinar el patrón de producto (L1b o L2)
+    // Determine product pattern (L1b radiance or L2 derived).
     const char *product_pattern = is_l2_product ? "L2-CMI" : "L1b-Rad";
     
     struct dirent *entry;
@@ -138,9 +139,8 @@ int find_channel_filenames(const char *directory, ChannelSet *set, bool is_l2_pr
             continue;
         }
         
-        // Buscar qué canal es este archivo
         for (int i = 0; i < set->count; i++) {
-            // Construir patrón: M3C01_, M6C13_, etc. usando el modo del archivo ancla
+            // Build channel pattern using the anchor file's scan mode (e.g., M6C01_).
             char pattern[16];
             const char *mode = (set->scan_mode[0] != '\0') ? set->scan_mode : "M6";
             snprintf(pattern, sizeof(pattern), "%s%s_", mode, set->channels[i].name);

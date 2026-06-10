@@ -1,3 +1,10 @@
+/* Band algebra expression parser for custom multi-channel composites.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
+ */
 #include "parse_expr.h"
 #include "logger.h"
 
@@ -33,7 +40,7 @@ int parse_expr_string(const char *input, LinearCombo *out) {
             return -1;
         }
 
-        // 2. Intentar leer un número (coeficiente o bias)
+        // 2. Try to parse a scalar (coefficient or bias).
         char *next_ptr;
         if (isdigit(*ptr) || *ptr == '.') {
             double val = strtod(ptr, &next_ptr);
@@ -69,7 +76,7 @@ int parse_expr_string(const char *input, LinearCombo *out) {
                 out->bias += val * current_sign;
             }
         }
-        // 3. Banda con coeficiente implícito
+        // 3. Band term with implicit coefficient 1.0.
         else if (*ptr == 'C') {
             ptr++;
             int bid = (int)strtol(ptr, &next_ptr, 10);
@@ -130,7 +137,7 @@ DataF evaluate_linear_combo(const LinearCombo* combo, const DataNC* channels) {
         return empty;
     }
     
-    // 1. Obtener dimensiones del primer canal válido
+    // 1. Use dimensions of the first valid channel.
     int ref_idx = combo->terms[0].band_id;
     size_t width = channels[ref_idx].fdata.width;
     size_t height = channels[ref_idx].fdata.height;
@@ -139,7 +146,7 @@ DataF evaluate_linear_combo(const LinearCombo* combo, const DataNC* channels) {
     DataF result = dataf_create(width, height);
     dataf_fill(&result, (float)combo->bias);
 
-    // 3. Acumular cada término: result += coeff * channel
+    // 3. Accumulate each term: result += coeff * channel.
     for (int i = 0; i < combo->num_terms; i++) {
         uint8_t band_id = combo->terms[i].band_id;
         double coeff = combo->terms[i].coeff;
@@ -227,7 +234,7 @@ int main(int argc, char **argv) {
         }
         printf("  Bias: %.2f\n", combo.bias);
 
-        // Probar extracción de bandas únicas
+        // Test single-band extraction.
         char* required_channels[10];
         int n = extract_required_channels(&combo, required_channels);
         printf("Bandas requeridas (%d): ", n);

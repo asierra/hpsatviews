@@ -1,7 +1,9 @@
-/* Solar computing to create a day/night mask.
+/* Solar zenith-angle mask for day/night blending in composite modes.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
  *
- * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
- * Labotatorio Nacional de Observación de la Tierra, UNAM
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #include "datanc.h"
 #include "image.h"
@@ -129,9 +131,9 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo, float *d
     float terminador = 85;
     float penumbra = 10;
 
-    // Umbrales en sin(elevación) para evitar asin/tan por pixel:
-    // sza > terminador (85°)  <=> elevación < 5°   <=> se0 < sin(5°)
-    // sza > terminador-penumbra (75°) <=> elev < 15° <=> se0 < sin(15°)
+    // Elevation thresholds as sin(elevation) to avoid per-pixel asin/atan:
+    // SZA > 85° <=> elev < 5°  => se0 < sin(5°)
+    // SZA > 75° <=> elev < 15° => se0 < sin(15°)
     double se_nite = sin((90.0 - terminador) * M_PI / 180.0);         // sin(5°)
     double se_twil = sin((90.0 - terminador + penumbra) * M_PI / 180.0); // sin(15°)
     double inv_se_range = 1.0 / (se_twil - se_nite);  // para interpolar penumbra
@@ -150,7 +152,7 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo, float *d
             float lo = navlo_data[i];
             float temp = temp_data[i];
 
-            // Clasificar nubes altas como noche sin calcular geometría solar
+            // High cold clouds classified as nighttime (skip solar geometry).
             if (temp < max_temp) {
                 imout_data[po] = 255;
                 nite++;
@@ -168,7 +170,7 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo, float *d
                     nite++;
                 else
                     day++;
-            } else {                    // Día (sza < 75°)
+            } else {                    // Daytime pixel (SZA < 75°).
                 w = 0;
                 day++;
             }

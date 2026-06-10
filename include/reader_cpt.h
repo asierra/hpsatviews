@@ -1,5 +1,12 @@
-#ifndef READER_CPT_H_
-#define READER_CPT_H_
+/* GMT Color Palette Table (CPT) reader for pseudocolor mapping.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
+ */
+#ifndef HPSATVIEWS_READER_CPT_H_
+#define HPSATVIEWS_READER_CPT_H_
 
 #include <string.h>
 #include "image.h"
@@ -49,4 +56,4 @@ void free_cpt_data(CPTData* cpt);
 
 Color get_color_for_value(const CPTData* cpt, double value);
 
-#endif /* READER_CPT_H_ */
+#endif /* HPSATVIEWS_READER_CPT_H_ */

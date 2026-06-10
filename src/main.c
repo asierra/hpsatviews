@@ -1,9 +1,9 @@
-/*
- * HPSatViews - High Performance Satellite Views
- * Main entry point for all processing commands.
- *
- * Copyright (c) 2025-2026  Alejandro Aguilar Sierra (asierra@unam.mx)
+/* Main entry point: dispatches gray, pseudocolor, and rgb commands.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
  * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #include <stdbool.h>
 #include <stdio.h>
@@ -28,7 +28,7 @@
 // Ruta por defecto (se puede definir en un header global o pasar como macro -D)
 #define RUTA_CLIPS "/usr/local/share/lanot/docs/recortes_coordenadas.csv"
 
-// Tipo de función para los runners de procesamiento (run_rgb, run_processing)
+// Processing function type for command runners (run_rgb, run_processing).
 typedef int (*ProcessingFunc)(const ProcessConfig *, MetadataContext *);
 
 // --- Helper: Guardar JSON sidecar ---
@@ -42,14 +42,14 @@ static void save_sidecar_json(const ProcessConfig *cfg, MetadataContext *meta, A
     char *generated_path = NULL;
 
     if (cfg->output_path_override) {
-        // Usar la ruta de salida como base, reemplazando la extensión
+        // Use the output path as base; replace extension with .json.
         strncpy(json_path_buffer, cfg->output_path_override, sizeof(json_path_buffer) - 1);
         json_path_buffer[sizeof(json_path_buffer) - 1] = '\0';
 
         char *last_dot = strrchr(json_path_buffer, '.');
         char *last_slash = strrchr(json_path_buffer, '/');
 
-        // Solo quitar extensión si el punto está después del último separador de directorios
+        // Only strip extension if the dot is after the last directory separator.
         if (last_dot && (!last_slash || last_dot > last_slash)) {
             *last_dot = '\0';
         }
@@ -58,7 +58,7 @@ static void save_sidecar_json(const ProcessConfig *cfg, MetadataContext *meta, A
         strncat(json_path_buffer, ".json", sizeof(json_path_buffer) - strlen(json_path_buffer) - 1);
         final_json_path = json_path_buffer;
     } else {
-        // Generar nombre automático desde metadatos
+        // Auto-generate filename from metadata.
         generated_path = metadata_build_filename(meta, ".json");
         final_json_path = generated_path;
     }
@@ -70,7 +70,7 @@ static void save_sidecar_json(const ProcessConfig *cfg, MetadataContext *meta, A
     free(generated_path);
 }
 
-// --- Helper: Manejador genérico de comandos ---
+// --- Generic command handler ---
 static int generic_cmd_handler(const char *cmd_mode, ArgParser *cmd_parser, ProcessingFunc run_func) {
     ProcessConfig cfg = {0};
     cfg.command = cmd_mode;
@@ -94,7 +94,7 @@ static int generic_cmd_handler(const char *cmd_mode, ArgParser *cmd_parser, Proc
         return 1;
     }
 
-    // Ejecutar la función de procesamiento específica (run_rgb o run_processing)
+    // Run the command-specific processing function.
     int result = run_func(&cfg, meta);
 
     if (result == 0) {
@@ -124,7 +124,7 @@ int cmd_gray(char *cmd_name, ArgParser *cmd_parser) {
     return generic_cmd_handler("gray", cmd_parser, run_processing);
 }
 
-// --- Función helper para opciones comunes ---
+// --- Helper: common option bindings ---
 static void add_common_opts(ArgParser *cmd_parser) {
     ap_add_str_opt(cmd_parser, "out o", NULL);
     ap_add_flag(cmd_parser, "geotiff t");
@@ -212,7 +212,7 @@ int main(int argc, char *argv[]) {
 
     ArgParser *active_cmd = ap_get_cmd_parser(parser);
     if (!active_cmd) {
-        // Si no se ejecutó ningún comando (ej. solo se llamó al binario), mostrar versión
+        // No command was executed (e.g., binary called with no arguments): print version.
         puts(HPSV_VERSION_STRING);
     }
 

@@ -1,15 +1,10 @@
-/*
- * A simple libpng example program
- * http://zarb.org/~gc/html/libpng.html
- *
- * Modified by Yoshimasa Niwa to make it much simpler
- * and support all defined color_type.
- *
- * Refactored for hpsatviews by Alejandro Aguilar Sierra.
- *
+/* PNG output writer (direct and palette-indexed) via libpng.
  * Copyright 2002-2010 Guillaume Cottenceau.
  * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
  *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #include <png.h>
 #include <stdio.h>
@@ -116,11 +111,11 @@ int writer_save_png_palette(const char *filename, const ImageData *image, const 
   }
 
   png_byte *transp = NULL;
-  ImageData image_to_write = *image; // Por defecto, usar la imagen original.
-  ImageData temp_image = {0}; // Imagen temporal si bpp=2
+  ImageData image_to_write = *image;
+  ImageData temp_image = {0};
 
-  // Si bpp=2, la imagen es [índice, alfa]. Necesitamos extraer el canal alfa
-  // al chunk tRNS y crear una imagen temporal de bpp=1 solo con los índices.
+  // If bpp=2 the image is [palette_index, alpha]. Extract the alpha channel
+  // into the tRNS chunk and build a bpp=1 index-only image for libpng.
   if (image->bpp == 2) {
     transp = (png_byte*)calloc(palette->length, sizeof(png_byte));
     if (!transp) {
@@ -130,7 +125,7 @@ int writer_save_png_palette(const char *filename, const ImageData *image, const 
     // Inicializar todos los valores de transparencia a opaco (255).
     memset(transp, 255, palette->length * sizeof(png_byte));
 
-    // Crear una imagen temporal de 1 bpp para los índices.
+    // Build a bpp=1 index-only image.
     temp_image = image_create(image->width, image->height, 1);
     if (!temp_image.data) {
       LOG_FATAL("Falla de memoria al crear imagen temporal para índices.");
@@ -138,14 +133,14 @@ int writer_save_png_palette(const char *filename, const ImageData *image, const 
       return 1;
     }
 
-    // Recorrer la imagen original para separar índices y alfa.
+    // Separate indices and alpha values from the packed bpp=2 image.
     for (size_t i = 0; i < image->width * image->height; ++i) {
       uint8_t palette_idx = image->data[i * 2];
       uint8_t alpha = image->data[i * 2 + 1];
       
-      temp_image.data[i] = palette_idx; // Guardar solo el índice.
+      temp_image.data[i] = palette_idx;
 
-      // Guardar el valor de alfa más bajo encontrado para cada índice de la paleta.
+      // Record the minimum alpha found for each palette entry (tRNS).
       if (palette_idx < palette->length && alpha < transp[palette_idx]) {
         transp[palette_idx] = alpha;
       }
