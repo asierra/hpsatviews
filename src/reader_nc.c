@@ -193,6 +193,12 @@ int load_nc_sf(const char *filename, DataNC *datanc) {
     if ((retval = nc_get_var(ncid, rad_varid, datatmp)))
         ERR(retval);
 
+    double tiempo = 0;
+    int time_varid;
+    if (nc_inq_varid(ncid, "t", &time_varid) == NC_NOERR) {
+        nc_get_var_double(ncid, time_varid, &tiempo);
+    }
+
     // Convert GOES epoch (2000-01-01 12:00 UTC) to UNIX timestamp.
     datanc->timestamp = (time_t)(946728000 + (long)tiempo);
 
@@ -850,6 +856,18 @@ int compute_solar_angles_nc(const char *filename, const DataF *navla, const Data
 // Per-pixel solar geometry calculation.
 #pragma omp parallel for
     for (size_t i = 0; i < navla->size; i++) {
+        float la = navla->data_in[i];
+        float lo = navlo->data_in[i];
+        if (IS_NONDATA(la) || IS_NONDATA(lo)) {
+            sza->data_in[i] = NonData;
+            saa->data_in[i] = NonData;
+        } else {
+            double zen, azi;
+            compute_sun_geometry(la, lo, year, month, day, hour, min, sec, &zen, &azi);
+            sza->data_in[i] = (float)zen;
+            saa->data_in[i] = (float)azi;
+        }
+    }
 
     double elapsed = omp_get_wtime() - start_time;
     LOG_TIMING(elapsed, "Geometría solar");
@@ -894,6 +912,18 @@ int compute_satellite_angles_nc(const char *filename, const DataF *navla, const 
 // Per-pixel satellite viewing geometry calculation.
 #pragma omp parallel for
     for (size_t i = 0; i < navla->size; i++) {
+        float la = navla->data_in[i];
+        float lo = navlo->data_in[i];
+        if (IS_NONDATA(la) || IS_NONDATA(lo)) {
+            vza->data_in[i] = NonData;
+            vaa->data_in[i] = NonData;
+        } else {
+            double vzen, vazi;
+            compute_satellite_view_angles(la, lo, sat_lon, sat_height_km, &vzen, &vazi);
+            vza->data_in[i] = (float)vzen;
+            vaa->data_in[i] = (float)vazi;
+        }
+    }
 
     double elapsed = omp_get_wtime() - start_time;
     LOG_TIMING(elapsed, "Geometría del satélite");

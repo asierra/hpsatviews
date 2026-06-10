@@ -204,3 +204,8 @@ Publicación en SoftwareX:
 - Actualizar codemeta.json y CITATION.cff con el DOI generado.
 - Redactar manuscrito LaTeX (plantilla Elsevier SoftwareX, 3-6 páginas).
 
+
+Tue Jun  9 11:52:37 PM CST 2026
+
+Comentarios corregidos, falta traducir todos los logs.
+
