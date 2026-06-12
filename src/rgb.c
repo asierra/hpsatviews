@@ -784,19 +784,21 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
                              ? cfg->product_short
                              : (ctx.opts.mode ? ctx.opts.mode : "unknown");
     metadata_add(meta, "mode", mode_label);
-    if (fabsf(ctx.opts.gamma[0] - ctx.opts.gamma[1]) < 1e-6f &&
-        fabsf(ctx.opts.gamma[0] - ctx.opts.gamma[2]) < 1e-6f) {
-        metadata_add(meta, "gamma", ctx.opts.gamma[0]);
-    } else {
-        char gamma_str[48];
-        snprintf(gamma_str, sizeof(gamma_str), "%.4g;%.4g;%.4g",
-                 ctx.opts.gamma[0], ctx.opts.gamma[1], ctx.opts.gamma[2]);
-        metadata_add(meta, "gamma", (const char*)gamma_str);
+    
+    if (fabsf(ctx.opts.gamma[0] - 1.0f) > 1e-6f || fabsf(ctx.opts.gamma[1] - 1.0f) > 1e-6f || fabsf(ctx.opts.gamma[2] - 1.0f) > 1e-6f) {
+        if (fabsf(ctx.opts.gamma[0] - ctx.opts.gamma[1]) < 1e-6f && fabsf(ctx.opts.gamma[0] - ctx.opts.gamma[2]) < 1e-6f) {
+            metadata_add(meta, "gamma", ctx.opts.gamma[0]);
+        } else {
+            char gamma_str[48];
+            snprintf(gamma_str, sizeof(gamma_str), "%.4g;%.4g;%.4g", ctx.opts.gamma[0], ctx.opts.gamma[1], ctx.opts.gamma[2]);
+            metadata_add(meta, "gamma", (const char*)gamma_str);
+        }
     }
-    metadata_add(meta, "apply_clahe", ctx.opts.apply_clahe);
-    metadata_add(meta, "apply_rayleigh", ctx.opts.apply_rayleigh);
-    metadata_add(meta, "apply_histogram", ctx.opts.apply_histogram);
-    metadata_add(meta, "geographics", (bool)(ctx.opts.do_reprojection && !ctx.opts.save_both));
+    if (ctx.opts.apply_clahe) metadata_add(meta, "clahe", true);
+    if (ctx.opts.apply_rayleigh) metadata_add(meta, "rayleigh", true);
+    if (ctx.opts.apply_histogram) metadata_add(meta, "histogram", true);
+    if (ctx.opts.use_piecewise_stretch) metadata_add(meta, "stretch", true);
+    if (ctx.opts.do_reprojection && !ctx.opts.save_both) metadata_add(meta, "geographics", true);
     if (ctx.opts.has_clip)
         metadata_set_clip(meta, true);
 

@@ -267,9 +267,7 @@ Genera un compuesto RGB a partir de combinaciones lineales de varias bandas.
 						como campo `product` al nivel raíz (junto a `satellite`, `sector`, `timestamp`).
 						También disponible como token `{PROD}` en los patrones de `-o`.
 						Si se omite, `{PROD}` usa el nombre corto del modo (ej. `truecolor`) y `product` en el JSON
-						usa la descripción del modo (ej. `"True Color RGB (natural)"`).
-
-						Acepta el formato `corto:Descripción larga` para fijar ambos valores independientemente:
+						usa la descripción del modo (ej. `"True Color RGB (natural)"`). Acepta el formato `corto:Descripción larga` para fijar ambos valores independientemente:
 						la parte antes de `:` va a `{PROD}` en el nombre de archivo, y la parte tras `:` al campo
 						`product` en el JSON/GeoTIFF. Si no hay `:`, el valor se usa para ambos.
 

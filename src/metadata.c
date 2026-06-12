@@ -131,12 +131,18 @@ void metadata_from_nc(MetadataContext *ctx, const DataNC *nc) {
         if (nc->is_float) {
             ch->min = nc->fdata.fmin;
             ch->max = nc->fdata.fmax;
-            // TODO: Detectar si es temperatura o reflectancia basado en el canal
-            strncpy(ch->quantity, "raw_data", sizeof(ch->quantity) - 1);
-            strncpy(ch->unit, "", sizeof(ch->unit) - 1);
+            
+            if (nc->band_id >= 7) {
+                strncpy(ch->quantity, "brightness_temperature", sizeof(ch->quantity) - 1);
+                strncpy(ch->unit, "K", sizeof(ch->unit) - 1);
+            } else {
+                strncpy(ch->quantity, "reflectance", sizeof(ch->quantity) - 1);
+                strncpy(ch->unit, "unitless", sizeof(ch->unit) - 1);
+            }
         } else {
             ch->min = nc->bdata.min;
             ch->max = nc->bdata.max;
+            // Para L2 con categorías o productos derivados
             strncpy(ch->quantity, "raw_counts", sizeof(ch->quantity) - 1);
             strncpy(ch->unit, "", sizeof(ch->unit) - 1);
         }
@@ -224,7 +230,7 @@ static bool build_ops_string(const MetadataContext *ctx, char* buffer, size_t si
     
     // Buscar las operaciones en extra_fields
     bool has_gamma = false, has_clahe = false, has_histo = false;
-    bool has_rayleigh = false, has_invert = false;
+    bool has_rayleigh = false, has_invert = false, has_stretch = false;
     float gamma_val = 1.0f;
     
     for (int i = 0; i < ctx->count; i++) {
@@ -232,14 +238,16 @@ static bool build_ops_string(const MetadataContext *ctx, char* buffer, size_t si
         if (strcmp(kv->key, "gamma") == 0 && kv->type == 0) {
             gamma_val = (float)kv->val_d;
             if (fabsf(gamma_val - 1.0f) > 0.01f) has_gamma = true;
-        } else if (strcmp(kv->key, "clahe") == 0 && kv->type == 3) {
+        } else if (strcmp(kv->key, "clahe") == 0 && kv->type != 1) {
             has_clahe = (kv->val_d != 0.0);
-        } else if (strcmp(kv->key, "histogram") == 0 && kv->type == 3) {
+        } else if (strcmp(kv->key, "histogram") == 0 && kv->type != 1) {
             has_histo = (kv->val_d != 0.0);
-        } else if (strcmp(kv->key, "rayleigh") == 0 && kv->type == 3) {
+        } else if (strcmp(kv->key, "rayleigh") == 0 && kv->type != 1) {
             has_rayleigh = (kv->val_d != 0.0);
-        } else if (strcmp(kv->key, "invert") == 0 && kv->type == 3) {
+        } else if (strcmp(kv->key, "invert") == 0 && kv->type != 1) {
             has_invert = (kv->val_d != 0.0);
+        } else if (strcmp(kv->key, "stretch") == 0 && kv->type != 1) {
+            has_stretch = (kv->val_d != 0.0);
         }
     }
     
@@ -257,12 +265,13 @@ static bool build_ops_string(const MetadataContext *ctx, char* buffer, size_t si
         ops_list[op_count++] = gamma_str;
     }
     if (ctx->has_clip) ops_list[op_count++] = "clip";
+    if (has_stretch) ops_list[op_count++] = "str";
     
     // Buscar "reprojection" o "geographics" en extra_fields
     for (int i = 0; i < ctx->count; i++) {
         if ((strcmp(ctx->extra_fields[i].key, "reprojection") == 0 ||
              strcmp(ctx->extra_fields[i].key, "geographics") == 0) &&
-            ctx->extra_fields[i].type == 3 && ctx->extra_fields[i].val_d != 0.0) {
+            ctx->extra_fields[i].type != 1 && ctx->extra_fields[i].val_d != 0.0) {
             ops_list[op_count++] = "geo";
             break;
         }
@@ -378,13 +387,13 @@ int metadata_save_json(MetadataContext *ctx, const char *filename) {
 
     // Campos requeridos del schema
     json_write(w, "tool", ctx->tool[0] ? ctx->tool : "hpsatviews");
-    json_write(w, "version", "1.0");  // TODO: usar HPSV_VERSION_STRING
-    if (ctx->command[0]) json_write(w, "command", ctx->command);
+    json_write(w, "version", "2.0");
     if (ctx->satellite) json_write(w, "satellite", ctx->satellite);
     if (ctx->sector && ctx->sector[0]) json_write(w, "sector", ctx->sector);
     if (ctx->time_iso[0]) json_write(w, "timestamp", ctx->time_iso);
     if (ctx->product[0]) json_write(w, "product", ctx->product);
-
+    if (ctx->command[0]) json_write(w, "command", ctx->command);
+    
     // Metadata fields required by mapdrawer (CRS and Bounds at JSON root).
     if (ctx->projection[0]) {
         json_write_string(w, "crs", ctx->projection);

@@ -205,12 +205,11 @@ void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lam
 
     double start_time = omp_get_wtime();
     
-    size_t night_pixels = 0;
     size_t valid_pixels = 0;
     size_t clamped_pixels = 0;
     double sum_orig = 0, sum_corr = 0;
 
-    #pragma omp parallel for reduction(+:night_pixels, valid_pixels, clamped_pixels, sum_orig, sum_corr)
+    #pragma omp parallel for reduction(+:valid_pixels, clamped_pixels, sum_orig, sum_corr)
     for (size_t i = 0; i < n; i++) {
         float val = band->data_in[i];
 
