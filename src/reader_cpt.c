@@ -14,6 +14,8 @@
 #include "logger.h"
 #include "reader_cpt.h"
 
+#define DEFAULT_CPT_PATH "/usr/local/share/lanot/colortables"
+
 // Ensure the color entries array has an even size for range processing.
 static_assert(MAX_COLOR_ENTRIES % 2 == 0, "MAX_COLOR_ENTRIES must be an even number.");
 
@@ -141,6 +143,16 @@ bool parse_special_color(const char* line, CPTData* cpt) {
 // Read a GMT CPT file and return a CPTData struct.
 CPTData* read_cpt_file(const char* filename) {
     FILE* file = fopen(filename, "r");
+    if (!file) {
+        // Si no se encuentra y no es una ruta absoluta o explícitamente relativa,
+        // buscamos en la ruta global de tablas de color.
+        if (filename[0] != '/' && filename[0] != '.') {
+            char system_path[1024];
+            snprintf(system_path, sizeof(system_path), "%s/%s", DEFAULT_CPT_PATH, filename);
+            file = fopen(system_path, "r");
+        }
+    }
+
     if (!file) {
         LOG_ERROR("No se pudo abrir el archivo CPT: %s", filename);
         return NULL;
