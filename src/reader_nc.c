@@ -17,6 +17,16 @@
 #include <time.h>
 
 const char *VAR_NAME_RAD = "Rad";
+#define ERRCODE 2
+#define ERR(e)                                                                                     \
+    {                                                                                              \
+        LOG_ERROR("NetCDF error: %s", nc_strerror(e));                                             \
+        return (ERRCODE);                                                                          \
+    }
+#define WRN(e)                                                                                     \
+    {                                                                                              \
+        LOG_WARN("NetCDF warning: %s", nc_strerror(e));                                            \
+    }
 
 SatelliteID detect_satellite_from_filename(const char* filename) {
     if (!filename) return SAT_UNKNOWN;
@@ -57,335 +67,237 @@ SectorID detect_sector_from_filename(const char *filename) {
     return SECTOR_UNKNOWN;
 }
 
-const char *detect_variable_from_filename(const char *filename) {
-    if (filename == NULL)
+typedef struct {
+    float scale_factor;
+    float add_offset;
+    short fillvalue;
+    nc_type var_type;
+    /* Constants for L1b calibration */
+    float planck_fk1, planck_fk2, planck_bc1, planck_bc2;
+    float kappa0;
+} NCScaleConfig;
+
+/* Fase 1: El Motor Heurístico */
+static const char* detect_generic_l2_variable(int ncid) {
+    int y_dimid, x_dimid, nvars;
+    if (nc_inq_dimid(ncid, "y", &y_dimid) != NC_NOERR ||
+        nc_inq_dimid(ncid, "x", &x_dimid) != NC_NOERR) {
         return NULL;
+    }
 
-    if (strstr(filename, "L1b"))
-        return VAR_NAME_RAD;
-    if (strstr(filename, "CMIP"))
-        return "CMI";
-    if (strstr(filename, "LST"))
-        return "LST";
-    if (strstr(filename, "SST"))
-        return "SST";
-    if (strstr(filename, "ACTP"))
-        return "Phase";
-    if (strstr(filename, "CTP"))
-        return "PRES";
+    nc_inq_nvars(ncid, &nvars);
+    static char vname[NC_MAX_NAME + 1];
 
+    for (int i = 0; i < nvars; i++) {
+        int ndims, dimids[NC_MAX_VAR_DIMS];
+        nc_inq_var(ncid, i, vname, NULL, &ndims, dimids, NULL);
+
+        if (ndims != 2) continue;
+        if (dimids[0] != y_dimid || dimids[1] != x_dimid) continue;
+
+        if (strstr(vname, "DQF") || strstr(vname, "_bounds") || 
+            strstr(vname, "time") || strcmp(vname, "x") == 0 || 
+            strcmp(vname, "y") == 0) {
+            continue;
+        }
+        return vname;
+    }
     return NULL;
 }
 
-static const char *detect_variable_from_content(int ncid) {
-    int varid;
-
-    // Probamos en orden de prioridad
-    if (nc_inq_varid(ncid, VAR_NAME_RAD, &varid) == NC_NOERR)
-        return VAR_NAME_RAD;
-    if (nc_inq_varid(ncid, "CMI", &varid) == NC_NOERR)
-        return "CMI";
-
-    return NULL; // Archivo no contiene ninguna variable soportada
+// This list allows to save time but it's not essential, it's fine to use the heuristic
+static const char* detect_variable_from_filename(const char *filename) {
+    if (!filename) return NULL;
+    if (strstr(filename, "L1b")) return VAR_NAME_RAD;
+    if (strstr(filename, "CMIP")) return "CMI";
+    if (strstr(filename, "ACHA")) return "HT";
+    if (strstr(filename, "ACHT")) return "TEMP";
+    if (strstr(filename, "ACTP")) return "Phase";
+    if (strstr(filename, "LST"))  return "LST";
+    if (strstr(filename, "SST"))  return "SST";
+    return NULL;
 }
 
-#define ERRCODE 2
-#define ERR(e)                                                                                     \
-    {                                                                                              \
-        LOG_ERROR("NetCDF error: %s", nc_strerror(e));                                             \
-        return (ERRCODE);                                                                          \
+/* Fase 2: Identificación Segura */
+static int datanc_identify_product(int ncid, const char *filename, DataNC *datanc) {
+    const char *vname = detect_variable_from_filename(filename);
+    int varid;
+
+    datanc->sat_id = detect_satellite_from_filename(filename);
+    datanc->sector_id = detect_sector_from_filename(filename);
+
+    if (!vname) vname = detect_generic_l2_variable(ncid);
+
+    if (!vname || nc_inq_varid(ncid, vname, &varid) != NC_NOERR) return -1;
+
+    datanc->varname = strdup(vname);
+    datanc->level = (strcmp(vname, "Rad") == 0) ? LEVEL_L1b : LEVEL_L2;
+    LOG_DEBUG("Detected variable id %d %s", varid, vname);
+    return varid;
+}
+
+/* Fase 3: Lectura de Metadatos */
+static int datanc_read_metadata(int ncid, int varid, DataNC *datanc, NCScaleConfig *cfg) {
+    int xid, yid, time_varid, band_varid, proj_varid;
+    size_t w, h;
+
+    if (nc_inq_dimid(ncid, "x", &xid) || nc_inq_dimid(ncid, "y", &yid)) return -1;
+    nc_inq_dimlen(ncid, xid, &w);
+    nc_inq_dimlen(ncid, yid, &h);
+    datanc->fdata.width = (unsigned int)w;
+    datanc->fdata.height = (unsigned int)h;
+
+    if (nc_get_att_float(ncid, varid, "scale_factor", &cfg->scale_factor)) cfg->scale_factor = 1.0f;
+    if (nc_get_att_float(ncid, varid, "add_offset", &cfg->add_offset)) cfg->add_offset = 0.0f;
+    if (nc_get_att_short(ncid, varid, "_FillValue", &cfg->fillvalue)) cfg->fillvalue = -1;
+    nc_inq_vartype(ncid, varid, &cfg->var_type);
+
+    if (nc_inq_varid(ncid, "t", &time_varid) == NC_NOERR) {
+        double tiempo;
+        nc_get_var_double(ncid, time_varid, &tiempo);
+        datanc->timestamp = (time_t)(946728000 + (long)tiempo);
     }
-#define WRN(e)                                                                                     \
-    {                                                                                              \
-        LOG_WARN("NetCDF warning: %s", nc_strerror(e));                                            \
+
+    if (nc_inq_varid(ncid, "band_id", &band_varid) == NC_NOERR) {
+        int bid; size_t idx = 0;
+        nc_get_var1_int(ncid, band_varid, &idx, &bid);
+        datanc->band_id = (uint8_t)bid;
     }
 
-// Carga un conjunto de datos de NetCDF y lo pone en una estructura DataNC
-int load_nc_sf(const char *filename, DataNC *datanc) {
-    int retval;
-    int ncid;
-
-    if ((retval = nc_open(filename, NC_NOWRITE, &ncid)))
-        ERR(retval);
-
-    const char *varname = detect_variable_from_filename(filename);
-    if (varname == NULL) {
-        varname = detect_variable_from_content(ncid);
-        if (varname == NULL) {
-            nc_close(ncid);
-            LOG_FATAL("Variable no soportada.");
-            return -1;
+    if (datanc->level == LEVEL_L1b) {
+        int v1, v2, v3, v4;
+        if (datanc->band_id >= 7) {
+            if (nc_inq_varid(ncid, "planck_fk1", &v1) == NC_NOERR) nc_get_var_float(ncid, v1, &cfg->planck_fk1);
+            if (nc_inq_varid(ncid, "planck_fk2", &v2) == NC_NOERR) nc_get_var_float(ncid, v2, &cfg->planck_fk2);
+            if (nc_inq_varid(ncid, "planck_bc1", &v3) == NC_NOERR) nc_get_var_float(ncid, v3, &cfg->planck_bc1);
+            if (nc_inq_varid(ncid, "planck_bc2", &v4) == NC_NOERR) nc_get_var_float(ncid, v4, &cfg->planck_bc2);
+        } else {
+            if (nc_inq_varid(ncid, "kappa0", &v1) == NC_NOERR) nc_get_var_float(ncid, v1, &cfg->kappa0);
         }
     }
-    datanc->varname = varname;
-    bool is_l1b = (varname == VAR_NAME_RAD);
-    
-	datanc->sat_id = detect_satellite_from_filename(filename);
-	datanc->sector_id = detect_sector_from_filename(filename);
 
-    int xid;
-    if ((retval = nc_inq_dimid(ncid, "x", &xid)))
-        ERR(retval);
-    int yid;
-    if ((retval = nc_inq_dimid(ncid, "y", &yid)))
-        ERR(retval);
+    if (nc_inq_varid(ncid, "goes_imager_projection", &proj_varid) == NC_NOERR) {
+        datanc->proj_code = PROJ_GEOS;
+        nc_get_att_double(ncid, proj_varid, "perspective_point_height", &datanc->proj_info.sat_height);
+        nc_get_att_double(ncid, proj_varid, "semi_major_axis", &datanc->proj_info.semi_major);
+        nc_get_att_double(ncid, proj_varid, "semi_minor_axis", &datanc->proj_info.semi_minor);
+        nc_get_att_double(ncid, proj_varid, "longitude_of_projection_origin", &datanc->proj_info.lon_origin);
+        nc_get_att_double(ncid, proj_varid, "inverse_flattening", &datanc->proj_info.inv_flat);
+        datanc->proj_info.valid = true;
+        double x_sf, x_ao, y_sf, y_ao;
+        short x0, y0; size_t iz = 0;
+        nc_get_att_double(ncid, xid, "scale_factor", &x_sf); nc_get_att_double(ncid, xid, "add_offset", &x_ao);
+        nc_get_att_double(ncid, yid, "scale_factor", &y_sf); nc_get_att_double(ncid, yid, "add_offset", &y_ao);
+        nc_get_var1_short(ncid, xid, &iz, &x0); nc_get_var1_short(ncid, yid, &iz, &y0);
+        datanc->geotransform[0] = ((double)x0 * x_sf + x_ao) - (x_sf / 2.0);
+        datanc->geotransform[1] = x_sf;
+        datanc->geotransform[2] = 0.0;
+        datanc->geotransform[3] = ((double)y0 * y_sf + y_ao) - (y_sf / 2.0);
+        datanc->geotransform[4] = 0.0;
+        datanc->geotransform[5] = y_sf;
+    }
 
-    // Recuperamos las dimensiones de los datos
-    size_t width, height, total_size;
-    if ((retval = nc_inq_dimlen(ncid, xid, &width)))
-        ERR(retval);
-    if ((retval = nc_inq_dimlen(ncid, yid, &height)))
-        ERR(retval);
-    total_size = width * height;
-    LOG_INFO("NetCDF dimensions: %lux%lu (total: %lu)", width, height, total_size);
-
-    // Read native sensor resolution from the 'spatial_resolution' global attribute.
     char spatial_res_str[128] = {0};
     datanc->native_resolution_km = 0.0f;
-    if ((retval = nc_get_att_text(ncid, NC_GLOBAL, "spatial_resolution", spatial_res_str)) ==
-        NC_NOERR) {
+    if (nc_get_att_text(ncid, NC_GLOBAL, "spatial_resolution", spatial_res_str) == NC_NOERR) {
         spatial_res_str[127] = '\0';
-        // Attribute is typically "1km at nadir" or "2km at nadir".
         float res_val;
-        if (sscanf(spatial_res_str, "%fkm", &res_val) == 1) {
-            datanc->native_resolution_km = res_val;
-            LOG_INFO("Native sensor resolution: %.1f km", datanc->native_resolution_km);
-        }
+        if (sscanf(spatial_res_str, "%fkm", &res_val) == 1) datanc->native_resolution_km = res_val;
     }
+    return 0;
+}
 
-    // Obtenemos el id de la variable
-    int rad_varid;
-    if ((retval = nc_inq_varid(ncid, varname, &rad_varid)))
-        ERR(retval);
+/* Fase 4: Desempaquetado y Paralelización */
+static int datanc_unpack_grid(int ncid, int varid, size_t total_size, DataNC *datanc, const NCScaleConfig *cfg) {
+    size_t tsize = (cfg->var_type == NC_BYTE || cfg->var_type == NC_UBYTE) ? 1 : 2;
+    void *datatmp = malloc(tsize * total_size);
+    if (!datatmp) return -1;
 
-    // Obtiene el factor de escala y offset de la variable y el fillvalue
-    float scale_factor, add_offset;
-    if ((retval = nc_get_att_float(ncid, rad_varid, "scale_factor", &scale_factor)))
-        WRN(retval);
-    if ((retval = nc_get_att_float(ncid, rad_varid, "add_offset", &add_offset)))
-        WRN(retval);
-    short fillvalue;
-    if ((retval = nc_get_att_short(ncid, rad_varid, "_FillValue", &fillvalue)))
-        WRN(retval);
-    LOG_INFO("NetCDF scaling: factor=%g, offset=%g, fill_value=%d", scale_factor, add_offset,
-             fillvalue);
+    if (nc_get_var(ncid, varid, datatmp) != NC_NOERR) { free(datatmp); return -1; }
 
-    // Recupera los datos
+    if (cfg->var_type == NC_BYTE || cfg->var_type == NC_UBYTE) {
+        datanc->is_float = false;
+        datanc->bdata = datab_create(datanc->fdata.width, datanc->fdata.height);
+        int8_t *src = (int8_t *)datatmp;
+        #pragma omp parallel for
+        for (size_t i = 0; i < total_size; i++) {
+            if (src[i] == (int8_t)cfg->fillvalue) datanc->bdata.data_in[i] = -128;
+            else datanc->bdata.data_in[i] = src[i];
+        }
+    } else {
+        datanc->is_float = true;
+        datanc->fdata = dataf_create(datanc->fdata.width, datanc->fdata.height);
+        float fmin = 1e30f, fmax = -1e30f;
+        if (cfg->var_type == NC_USHORT) {
+            unsigned short *src = (unsigned short *)datatmp;
+            #pragma omp parallel for reduction(min:fmin) reduction(max:fmax)
+            for (size_t i = 0; i < total_size; i++) {
+                if (src[i] == (unsigned short)cfg->fillvalue) {
+                    datanc->fdata.data_in[i] = NonData;
+                } else {
+                    float val = src[i] * cfg->scale_factor + cfg->add_offset;
+                    if (datanc->level == LEVEL_L1b) {
+                        if (datanc->band_id >= 7) val = (val > 0.0f) ? (cfg->planck_fk2 / (logf((cfg->planck_fk1 / val) + 1.0f)) - cfg->planck_bc1) / cfg->planck_bc2 : 0.0f;
+                        else val *= cfg->kappa0;
+                    }
+                    datanc->fdata.data_in[i] = val;
+                    if (val < fmin) fmin = val;
+                    if (val > fmax) fmax = val;
+                }
+            }
+        } else {
+            short *src = (short *)datatmp;
+            #pragma omp parallel for reduction(min:fmin) reduction(max:fmax)
+            for (size_t i = 0; i < total_size; i++) {
+                if (src[i] == cfg->fillvalue) {
+                    datanc->fdata.data_in[i] = NonData;
+                } else {
+                    float val = src[i] * cfg->scale_factor + cfg->add_offset;
+                    if (datanc->level == LEVEL_L1b) {
+                        if (datanc->band_id >= 7) val = (val > 0.0f) ? (cfg->planck_fk2 / (logf((cfg->planck_fk1 / val) + 1.0f)) - cfg->planck_bc1) / cfg->planck_bc2 : 0.0f;
+                        else val *= cfg->kappa0;
+                    }
+                    datanc->fdata.data_in[i] = val;
+                    if (val < fmin) fmin = val;
+                    if (val > fmax) fmax = val;
+                }
+            }
+        }
+        datanc->fdata.fmin = fmin; datanc->fdata.fmax = fmax;
+    }
+    free(datatmp);
+    return 0;
+}
 
-    // Primero verificar el tipo de datos
-    nc_type var_type;
-    if ((retval = nc_inq_vartype(ncid, rad_varid, &var_type)))
-        ERR(retval);
+/* Fase 5: La Orquestación Final */
+int load_nc_sf(const char *filename, DataNC *datanc) {
+    int ncid, varid, status = -1;
+    NCScaleConfig cfg = { .scale_factor = 1.0f, .add_offset = 0.0f, .fillvalue = -1, .var_type = NC_SHORT };
 
-    if (var_type != NC_BYTE && var_type != NC_UBYTE && var_type != NC_SHORT &&
-        var_type != NC_USHORT) {
-        LOG_FATAL("Unsupported data type %d", var_type);
+    if (nc_open(filename, NC_NOWRITE, &ncid) != NC_NOERR) {
+        LOG_ERROR("Error abriendo NetCDF: %s", filename);
         return -1;
     }
 
-    size_t type_size =
-        (var_type == NC_SHORT || var_type == NC_USHORT) ? sizeof(short) : sizeof(char);
-    void *datatmp = malloc(type_size * total_size);
-    if (datatmp == NULL) {
-        LOG_FATAL("Failed to allocate memory for NetCDF data");
-        return ERRCODE;
-    }
-    if ((retval = nc_get_var(ncid, rad_varid, datatmp)))
-        ERR(retval);
-
-    double tiempo = 0;
-    int time_varid;
-    if (nc_inq_varid(ncid, "t", &time_varid) == NC_NOERR) {
-        nc_get_var_double(ncid, time_varid, &tiempo);
+    varid = datanc_identify_product(ncid, filename, datanc);
+    if (varid < 0) {
+        LOG_WARN("Producto omitido o no soportado: %s", filename);
+        goto cleanup;
     }
 
-    // Convert GOES epoch (2000-01-01 12:00 UTC) to UNIX timestamp.
-    datanc->timestamp = (time_t)(946728000 + (long)tiempo);
+    if (datanc_read_metadata(ncid, varid, datanc, &cfg) != 0) goto cleanup;
 
-    // Identificamos la banda, si existe
-    int band_varid;
-    if (nc_inq_varid(ncid, "band_id", &band_varid) == NC_NOERR) {
-        int bid_val;
-        size_t index = 0;
-        if (nc_get_var1_int(ncid, band_varid, &index, &bid_val) == NC_NOERR) {
-            datanc->band_id = (uint8_t)bid_val;
-            LOG_DEBUG("ABI band detected in metadata: C%02d", datanc->band_id);
-        }
-    } else {
-        LOG_WARN("Variable 'band_id' not found in NetCDF file.");
-    }
+    size_t total_size = (size_t)datanc->fdata.width * (size_t)datanc->fdata.height;
+    LOG_INFO("NetCDF dimensions: %ux%u (total: %zu)", datanc->fdata.width, datanc->fdata.height, total_size);
+    if (datanc_unpack_grid(ncid, varid, total_size, datanc, &cfg) != 0) goto cleanup;
 
-    // Only L1b
-    float planck_fk1, planck_fk2, planck_bc1, planck_bc2, kappa0;
-    if (is_l1b) {
-        datanc->level = LEVEL_L1b;
-        if (datanc->band_id > 6) { // Reads Planck coefficients for thermal IR bands (C07-C16).
-            int fk1_varid, fk2_varid, bc1_varid, bc2_varid;
-            if ((retval = nc_inq_varid(ncid, "planck_fk1", &fk1_varid)))
-                ERR(retval);
-            if ((retval = nc_get_var_float(ncid, fk1_varid, &planck_fk1)))
-                ERR(retval);
-            if ((retval = nc_inq_varid(ncid, "planck_fk2", &fk2_varid)))
-                ERR(retval);
-            if ((retval = nc_get_var_float(ncid, fk2_varid, &planck_fk2)))
-                ERR(retval);
-            if ((retval = nc_inq_varid(ncid, "planck_bc1", &bc1_varid)))
-                ERR(retval);
-            if ((retval = nc_get_var_float(ncid, bc1_varid, &planck_bc1)))
-                ERR(retval);
-            if ((retval = nc_inq_varid(ncid, "planck_bc2", &bc2_varid)))
-                ERR(retval);
-            if ((retval = nc_get_var_float(ncid, bc2_varid, &planck_bc2)))
-                ERR(retval);
-        } else if (datanc->band_id >= 1) {
-            int kappa0_varid;
-            if ((retval = nc_inq_varid(ncid, "kappa0", &kappa0_varid)))
-                ERR(retval);
-            if ((retval = nc_get_var_float(ncid, kappa0_varid, &kappa0)))
-                ERR(retval);
-        }
-    } else {
-        datanc->level = LEVEL_L2;
-    }
-
-    // =========================================================================
-    // PROJECTION METADATA AND GEOTRANSFORM (for GeoTIFF output)
-    // =========================================================================
-    datanc->proj_code = PROJ_UNKNOWN;
-    datanc->proj_info.valid = false;
-    int proj_varid;
-
-    // 1. Read GEOS projection parameters (ellipsoid, satellite height, longitude origin).
-    if (nc_inq_varid(ncid, "goes_imager_projection", &proj_varid) == NC_NOERR) {
-        datanc->proj_code = PROJ_GEOS;
-        nc_get_att_double(ncid, proj_varid, "perspective_point_height",
-                          &datanc->proj_info.sat_height);
-        nc_get_att_double(ncid, proj_varid, "semi_major_axis", &datanc->proj_info.semi_major);
-        nc_get_att_double(ncid, proj_varid, "semi_minor_axis", &datanc->proj_info.semi_minor);
-        nc_get_att_double(ncid, proj_varid, "longitude_of_projection_origin",
-                          &datanc->proj_info.lon_origin);
-        nc_get_att_double(ncid, proj_varid, "inverse_flattening", &datanc->proj_info.inv_flat);
-        datanc->proj_info.valid = true;
-    }
-
-    // 2. Build GDAL GeoTransform from scan-angle coordinates.
-    // x and y in GOES NetCDF are 1D arrays of scan angles in radians.
-    int x_varid_coord, y_varid_coord;
-    if (datanc->proj_info.valid && nc_inq_varid(ncid, "x", &x_varid_coord) == NC_NOERR &&
-        nc_inq_varid(ncid, "y", &y_varid_coord) == NC_NOERR) {
-
-        // Use double precision to avoid ~200 m offset error from float * sat_height.
-        double x_scale, x_offset, y_scale, y_offset;
-        nc_get_att_double(ncid, x_varid_coord, "scale_factor", &x_scale);
-        nc_get_att_double(ncid, x_varid_coord, "add_offset", &x_offset);
-        nc_get_att_double(ncid, y_varid_coord, "scale_factor", &y_scale);
-        nc_get_att_double(ncid, y_varid_coord, "add_offset", &y_offset);
-
-        // Read index-0 values of x and y (scan angles at upper-left corner).
-        short x0_raw, y0_raw;
-        size_t index[] = {0};
-        nc_get_var1_short(ncid, x_varid_coord, index, &x0_raw);
-        nc_get_var1_short(ncid, y_varid_coord, index, &y0_raw);
-
-        // Convert to radians (projection units).
-        double x0_rad = (double)x0_raw * x_scale + x_offset;
-        double y0_rad = (double)y0_raw * y_scale + y_offset;
-
-        // Build GDAL GeoTransform. GDAL requires the upper-left CORNER of the
-        // first pixel, not its center, so shift by half a pixel.
-        datanc->geotransform[0] = x0_rad - (x_scale / 2.0);  // GT[0]: top-left X (radians)
-        datanc->geotransform[1] = x_scale;                    // GT[1]: pixel width (always positive)
-        datanc->geotransform[2] = 0.0;                        // GT[2]: X rotation
-        // y_scale is negative in GOES (North-to-South scan direction).
-        datanc->geotransform[3] = y0_rad - (y_scale / 2.0);  // GT[3]: top-left Y
-        datanc->geotransform[4] = 0.0;                        // GT[4]: Y rotation
-        datanc->geotransform[5] = y_scale;                    // GT[5]: pixel height (negative = N->S)
-
-        LOG_INFO("GeoTransform calculado: Origin (%.6f, %.6f) Res (%.6f, %.6f)",
-                 datanc->geotransform[0], datanc->geotransform[3], datanc->geotransform[1],
-                 datanc->geotransform[5]);
-    }
-    // =========================================================================
-
-    if ((retval = nc_close(ncid)))
-        ERR(retval);
-
-    // Apply scale/offset and compute physical values; track min/max.
-    float fmin = 1e20;
-    float fmax = -fmin;
-    unsigned nondatas = 0;
-
-    if (var_type == NC_BYTE) {
-        // --- RUTA PARA DATOS TIPO BYTE (ej. Cloud Phase) ---
-        LOG_DEBUG("Leyendo tipo de datos BYTE");
-        datanc->is_float = false;
-        datanc->bdata = datab_create(width, height);
-        if (datanc->bdata.data_in == NULL) {
-            LOG_FATAL("Memory allocation failed for byte data buffer");
-            free(datatmp);
-            return ERRCODE;
-        }
-        signed char *src_buffer = (signed char *)datatmp;
-
-        for (size_t i = 0; i < total_size; i++) {
-            if (src_buffer[i] != (signed char)fillvalue) {
-                datanc->bdata.data_in[i] = (int8_t)src_buffer[i];
-            } else {
-                // Usar -128 como valor NonData para int8_t
-                datanc->bdata.data_in[i] = -128;
-                nondatas++;
-            }
-        }
-    } else {
-        // --- RUTA PARA DATOS TIPO SHORT (ej. Radiancia) ---
-        LOG_DEBUG("Leyendo tipo de datos SHORT");
-        datanc->is_float = true;
-        datanc->fdata = dataf_create(width, height);
-        if (datanc->fdata.data_in == NULL) {
-            LOG_FATAL("Memory allocation failed for float data buffer");
-            free(datatmp);
-            return ERRCODE;
-        }
-        short *src_buffer = (short *)datatmp;
-
-#pragma omp parallel for reduction(min : fmin) reduction(max : fmax) reduction(+ : nondatas)
-        for (size_t i = 0; i < total_size; i++) {
-            if (src_buffer[i] != fillvalue) {
-                int raw_val =
-                    (var_type == NC_USHORT) ? (unsigned short)src_buffer[i] : src_buffer[i];
-                float rad = scale_factor * raw_val + add_offset;
-                float f;
-                if (is_l1b && datanc->band_id > 0) {
-                    if (datanc->band_id > 6 && datanc->band_id < 17) { // thermal IR bands (C07-C16): convert to brightness temperature
-                        f = (rad > 0.0f)
-                                ? (planck_fk2 / (log((planck_fk1 / rad) + 1)) - planck_bc1) /
-                                      planck_bc2
-                                : 0;
-                    } else { // Bandas visibles/NIR
-                        f = kappa0 * rad;
-                    }
-                } else { // Variables L2 ya calibradas que no son de radiancia
-                    f = rad;
-                }
-                if (f > fmax)
-                    fmax = f;
-                if (f < fmin)
-                    fmin = f;
-                datanc->fdata.data_in[i] = f;
-            } else {
-                datanc->fdata.data_in[i] = NonData;
-                nondatas++;
-            }
-        }
-        datanc->fdata.fmin = fmin;
-        datanc->fdata.fmax = fmax;
-        LOG_INFO("Data range: min=%g, max=%g, NonData=%g, invalid_count=%u", fmin, fmax, NonData,
-                 nondatas);
-    }
-    free(datatmp);
-
-    return 0;
+    status = 0;
+cleanup:
+    nc_close(ncid);
+    if (status != 0) LOG_FATAL("Fallo en el pipeline de lectura NetCDF para %s", filename);
+    return status;
 }
+
 
 double rad2deg = 180.0 / M_PI;
 double hsat, sm_maj, sm_min, lambda_0, H;
