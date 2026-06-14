@@ -271,7 +271,11 @@ Genera un compuesto RGB a partir de combinaciones lineales de varias bandas.
 						la parte antes de `:` va a `{PROD}` en el nombre de archivo, y la parte tras `:` al campo
 						`product` en el JSON/GeoTIFF. Si no hay `:`, el valor se usa para ambos.
 
-						Especialmente útil con `--mode custom` para identificar la composición.
+Especialmente útil con `--mode custom` para identificar la composición.
+
+  Ejemplos:
+						
+  ```bash						
   # True color con corrección atmosférica de Rayleigh y CLAHE
   hpsv rgb -m truecolor --rayleigh --clahe archivo.nc
 
@@ -283,8 +287,8 @@ Genera un compuesto RGB a partir de combinaciones lineales de varias bandas.
 
   # Composición personalizada con nombre descriptivo en metadatos y nombre de archivo
   hpsv rgb -m custom --expr "C13-C14; C13; -1.0*C15+300" \
-        --name "Ceniza volcánica" -o "{PROD}_{SAT}_{YYYY}{MM}{DD}.png" archivo.nc
-  # → Ceniza volcánica_G16_20250101.png
+        --name "ash:Ceniza volcánica" -o "{PROD}_{SAT}_{YYYY}{MM}{DD}.png" archivo.nc
+  # → ash_G16_20250101.png
   ```
   
 El modo `daynite` hace una mezcla inteligente de los modos `truecolor` 
