@@ -275,10 +275,11 @@ int load_nc_sf(const char *filename, DataNC *datanc) {
     NCScaleConfig cfg = { .scale_factor = 1.0f, .add_offset = 0.0f, .fillvalue = -1, .var_type = NC_SHORT };
     
     if (datanc != NULL) {
+		memset(datanc, 0, sizeof(DataNC));
         datanc->proj_info.valid = false;
-        for (int i = 0; i < 6; i++) {
-            datanc->geotransform[i] = 0.0;
-        }
+        //for (int i = 0; i < 6; i++) {
+          //  datanc->geotransform[i] = 0.0;
+        //}
     }
     
     if (nc_open(filename, NC_NOWRITE, &ncid) != NC_NOERR) {

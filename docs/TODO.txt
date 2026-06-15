@@ -209,6 +209,9 @@ Tue Jun  9 11:52:37 PM CST 2026
 
 Comentarios corregidos, falta traducir todos los logs.
 
-Error de inicialización de DataNC que se usa en processing, por localizar.
+
+Sun Jun 14 08:32:03 PM CST 2026
+
+Error de inicialización de DataNC que se usa en processing, por localizar. La inicialización en load_nc_sf no fue suficiente.
 
 
