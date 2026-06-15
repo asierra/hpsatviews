@@ -288,8 +288,8 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         minmax[0] = c01.fdata.fmin;
         minmax[1] = c01.fdata.fmax;
     }
-    
-    // Crear imagen
+
+	// Crear imagen inicial intacta
     if (c01.is_float) {
         final_image = create_single_gray(c01.fdata, cfg->invert_values, cfg->use_alpha, minmax[0], minmax[1], is_pseudocolor ? cptdata : NULL);
     } else {
@@ -301,142 +301,89 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         goto cleanup;
     }
 
-    // -B: aplicar enhancements, escalar y guardar fixed-grid antes de reproyectar
-    if (cfg->save_both) {
-        if (!is_pseudocolor) {
-            if (cfg->apply_histogram) image_apply_histogram(final_image);
-            if (cfg->apply_clahe)
-                image_apply_clahe(final_image, cfg->clahe_tiles_x, cfg->clahe_tiles_y, cfg->clahe_clip_limit);
+    // Aplicar mejoras radiométricas (solo para escala de grises, el pseudocolor no debe alterarse)
+    if (!is_pseudocolor) {
+        if (cfg->apply_histogram) image_apply_histogram(final_image);
+        if (cfg->apply_clahe)
+            image_apply_clahe(final_image, cfg->clahe_tiles_x, cfg->clahe_tiles_y, cfg->clahe_clip_limit);
+    }
+
+    int final_w = final_image.width;
+    int final_h = final_image.height;
+
+    // ========================================================================
+    // 1. FLUJO FIXED GRID (Se ejecuta si se pide -B, o si NO hay reproyección)
+    // ========================================================================
+    if (cfg->save_both || !cfg->do_reprojection) {
+        ImageData fg_base = final_image;
+        bool fg_base_allocated = false;
+        unsigned crop_x = 0, crop_y = 0;
+
+        // Recorte local para fixed grid
+        if (cfg->has_clip && nav_loaded) {
+            int ix, iy, iw, ih;
+            reprojection_find_bounding_box(&navla_full, &navlo_full, 
+                cfg->clip_coords[0], cfg->clip_coords[1], 
+                cfg->clip_coords[2], cfg->clip_coords[3], 
+                &ix, &iy, &iw, &ih);
+            
+            fg_base = image_crop(&final_image, ix, iy, iw, ih);
+            fg_base_allocated = true;
+            crop_x = (unsigned)ix;
+            crop_y = (unsigned)iy;
         }
-        if (cfg->scale < 0) {
-            temp_image = image_downsample_boxfilter(&final_image, -cfg->scale);
-            image_destroy(&final_image); final_image = temp_image;
-        } else if (cfg->scale > 1) {
-            temp_image = image_upsample_bilinear(&final_image, cfg->scale);
-            image_destroy(&final_image); final_image = temp_image;
+
+        // Remuestreo local
+        ImageData fg_final = fg_base;
+        bool fg_final_allocated = false;
+        if (cfg->scale != 1) {
+            if (cfg->scale < 0) fg_final = image_downsample_boxfilter(&fg_base, -cfg->scale);
+            else fg_final = image_upsample_bilinear(&fg_base, cfg->scale);
+            fg_final_allocated = true;
         }
+
         LOG_INFO("Guardando fixed-grid: %s", outfn);
+
         if (is_geotiff) {
             DataNC meta_fg = c01;
+            meta_fg.geotransform[0] += crop_x * meta_fg.geotransform[1];
+            meta_fg.geotransform[3] += crop_y * meta_fg.geotransform[5];
+
             if (cfg->scale != 1) {
                 double sf = (cfg->scale < 0) ? -(double)cfg->scale : (double)cfg->scale;
-                if (cfg->scale > 1) {
-                    meta_fg.geotransform[1] /= sf;
-                    meta_fg.geotransform[5] /= sf;
-                } else {
-                    meta_fg.geotransform[1] *= sf;
-                    meta_fg.geotransform[5] *= sf;
-                }
+                if (cfg->scale > 1) { meta_fg.geotransform[1] /= sf; meta_fg.geotransform[5] /= sf; }
+                else { meta_fg.geotransform[1] *= sf; meta_fg.geotransform[5] *= sf; }
             }
+
             if (is_pseudocolor && color_array) {
                 if (cfg->use_alpha) {
-                    temp_image = image_expand_palette(&final_image, color_array);
+                    temp_image = image_expand_palette(&fg_final, color_array);
                     write_geotiff_rgb(outfn, &temp_image, &meta_fg, 0, 0, NULL);
                     image_destroy(&temp_image);
                 } else {
-                    write_geotiff_indexed(outfn, &final_image, color_array, &meta_fg, 0, 0);
+                    write_geotiff_indexed(outfn, &fg_final, color_array, &meta_fg, 0, 0);
                 }
             } else {
-                write_geotiff_gray(outfn, &final_image, &meta_fg, 0, 0);
+                write_geotiff_gray(outfn, &fg_final, &meta_fg, 0, 0);
             }
         } else {
-            if (is_pseudocolor && color_array)
-                writer_save_png_palette(outfn, &final_image, color_array);
-            else
-                writer_save_png(outfn, &final_image);
+            if (is_pseudocolor && color_array) writer_save_png_palette(outfn, &fg_final, color_array);
+            else writer_save_png(outfn, &fg_final);
         }
-        // Update outfn to the reprojected filename (insert _geo suffix).
-        char *geo_outfn = insert_geo_suffix(outfn);
-        if (generated_filename) {
-            free(generated_filename);
-        }
-        generated_filename = geo_outfn;
-        outfn = generated_filename;
-        if (!outfn) {
-            LOG_ERROR("No se pudo generar nombre de archivo reproyectado");
-            goto cleanup;
-        }
-        LOG_INFO("Guardando reproyectado: %s", outfn);
-    }
 
-    // Reprojection or crop.
-    float final_lon_min = 0, final_lon_max = 0, final_lat_min = 0, final_lat_max = 0;
-    unsigned crop_x_start = 0, crop_y_start = 0;
-
-    if (cfg->do_reprojection) {
-        if (!nav_loaded) {
-            LOG_ERROR("Navegación requerida para reproyección");
-            goto cleanup;
-        }
-        
-        temp_image = reproject_image_analytical(
-            &final_image, &c01,
-            navla_full.fmin, navla_full.fmax,
-            navlo_full.fmin, navlo_full.fmax,
-            c01.native_resolution_km,
-            cfg->has_clip ? cfg->clip_coords : NULL
-        );
-        image_destroy(&final_image);
-        final_image = temp_image;
-        
-        if (cfg->has_clip) {
-            final_lon_min = cfg->clip_coords[0]; final_lat_max = cfg->clip_coords[1];
-            final_lon_max = cfg->clip_coords[2]; final_lat_min = cfg->clip_coords[3];
-        } else {
-            final_lon_min = navlo_full.fmin; final_lon_max = navlo_full.fmax;
-            final_lat_min = navla_full.fmin; final_lat_max = navla_full.fmax;
-        }
-        
-    } else if (cfg->has_clip && nav_loaded) {
-        int ix, iy, iw, ih;
-        reprojection_find_bounding_box(&navla_full, &navlo_full, 
-            cfg->clip_coords[0], cfg->clip_coords[1], 
-            cfg->clip_coords[2], cfg->clip_coords[3], 
-            &ix, &iy, &iw, &ih);
-        
-        temp_image = image_crop(&final_image, ix, iy, iw, ih);
-        image_destroy(&final_image);
-        final_image = temp_image;
-        crop_x_start = (unsigned)ix;
-        crop_y_start = (unsigned)iy;
-        
-        // Crop bounds.
-        final_lon_min = cfg->clip_coords[0];
-        final_lat_max = cfg->clip_coords[1];
-        final_lon_max = cfg->clip_coords[2];
-        final_lat_min = cfg->clip_coords[3];
-    } else if (nav_loaded) {
-        // No clip or reprojection: use full navigation extents.
-        final_lon_min = navlo_full.fmin; final_lon_max = navlo_full.fmax;
-        final_lat_min = navla_full.fmin; final_lat_max = navla_full.fmax;
-    }
-
-    // Record geometry and projection in metadata.
-    if (nav_loaded) {
-        if (cfg->do_reprojection) {
-            metadata_set_geometry(meta, final_lon_min, final_lat_min, final_lon_max, final_lat_max);
-            metadata_set_projection(meta, "EPSG:4326");
-        } else {
-            // Compute bounds in projection coordinates (metres).
-            // x = x_rad * h, y = y_rad * h
+        // Registrar geometría de fixed grid en los metadatos (si es el paso final)
+        if (nav_loaded && !cfg->do_reprojection) {
             double *gt = c01.geotransform;
             double h = (c01.proj_info.valid) ? c01.proj_info.sat_height : 35786023.0;
+            double x_min = (gt[0] + crop_x * gt[1]) * h;
+            double y_top = (gt[3] + crop_y * gt[5]) * h;
+            double x_max = x_min + (fg_final.width * gt[1] * h);
+            double y_bot = y_top + (fg_final.height * gt[5] * h);
             
-            // gt[0]=TopLeftX, gt[1]=PixelW, gt[3]=TopLeftY, gt[5]=PixelH
-            double x_min = (gt[0] + crop_x_start * gt[1]) * h;
-            double y_top = (gt[3] + crop_y_start * gt[5]) * h;
-            
-            // Opposite corner.
-            double x_max = x_min + (final_image.width * gt[1] * h);
-            double y_bot = y_top + (final_image.height * gt[5] * h);
-            
-            // Sort Y (gt[5] is negative, so y_top > y_bot).
             double y_min = (y_bot < y_top) ? y_bot : y_top;
             double y_max_val = (y_bot > y_top) ? y_bot : y_top;
             
             metadata_set_geometry(meta, (float)x_min, (float)y_min, (float)x_max, (float)y_max_val);
-
-            // Use satellite name as CRS key (e.g., "goes16").
             const char* sat_crs = "geostationary";
             if (c01.sat_id == SAT_GOES16) sat_crs = "goes16";
             else if (c01.sat_id == SAT_GOES17) sat_crs = "goes17";
@@ -444,99 +391,106 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             else if (c01.sat_id == SAT_GOES19) sat_crs = "goes19";
             metadata_set_projection(meta, sat_crs);
         }
-    }
-    
-    // Post-procesamiento (solo para gray; save_both: ya aplicado antes de reproyectar)
-    if (!is_pseudocolor && !cfg->save_both) {
-        if (cfg->apply_histogram) image_apply_histogram(final_image);
-        if (cfg->apply_clahe) {
-            image_apply_clahe(final_image, cfg->clahe_tiles_x, cfg->clahe_tiles_y, cfg->clahe_clip_limit);
-        }
+
+        final_w = fg_final.width;
+        final_h = fg_final.height;
+
+        if (fg_final_allocated) image_destroy(&fg_final);
+        if (fg_base_allocated) image_destroy(&fg_base);
     }
 
-    // Remuestreo (save_both: ya aplicado antes de reproyectar)
-    if (!cfg->save_both) {
-        if (cfg->scale < 0) {
-            temp_image = image_downsample_boxfilter(&final_image, -cfg->scale);
-            image_destroy(&final_image);
-            final_image = temp_image;
-        } else if (cfg->scale > 1) {
-            temp_image = image_upsample_bilinear(&final_image, cfg->scale);
-            image_destroy(&final_image);
-            final_image = temp_image;
+    // ========================================================================
+    // 2. FLUJO GEOGRÁFICO / REPROYECCIÓN (Se ejecuta si se pide -G o -B)
+    // ========================================================================
+    if (cfg->do_reprojection) {
+        if (!nav_loaded) {
+            LOG_ERROR("Navegación requerida para reproyección");
+            goto cleanup;
         }
-    }
-    
-    // Guardar imagen
-    if (is_geotiff) {
-        DataNC meta_out = c01;  // Preserva sat_id, sector_id, band_id, timestamp, etc.
-        
-        if (cfg->do_reprojection) {
+
+        // Reproyectar usando la imagen original inalterada
+        ImageData geo_base = reproject_image_analytical(
+            &final_image, &c01,
+            navla_full.fmin, navla_full.fmax,
+            navlo_full.fmin, navlo_full.fmax,
+            c01.native_resolution_km,
+            cfg->has_clip ? cfg->clip_coords : NULL
+        );
+
+        float final_lon_min, final_lon_max, final_lat_min, final_lat_max;
+        if (cfg->has_clip) {
+            final_lon_min = cfg->clip_coords[0]; final_lat_max = cfg->clip_coords[1];
+            final_lon_max = cfg->clip_coords[2]; final_lat_min = cfg->clip_coords[3];
+        } else {
+            final_lon_min = navlo_full.fmin; final_lon_max = navlo_full.fmax;
+            final_lat_min = navla_full.fmin; final_lat_max = navla_full.fmax;
+        }
+
+        // Remuestreo local
+        ImageData geo_final = geo_base;
+        bool geo_final_allocated = false;
+        if (cfg->scale != 1) {
+            if (cfg->scale < 0) geo_final = image_downsample_boxfilter(&geo_base, -cfg->scale);
+            else geo_final = image_upsample_bilinear(&geo_base, cfg->scale);
+            geo_final_allocated = true;
+        }
+
+        // Si venimos del flujo -B, alteramos el nombre para añadir _geo
+        char *final_outfn = (char*)outfn;
+        if (cfg->save_both) {
+            final_outfn = insert_geo_suffix(outfn);
+            if (generated_filename) free(generated_filename);
+            generated_filename = final_outfn;
+            outfn = generated_filename;
+        }
+
+        LOG_INFO("Guardando reproyectado: %s", outfn);
+
+        if (is_geotiff) {
+            DataNC meta_out = c01;
             meta_out.proj_code = PROJ_LATLON;
-            meta_out.proj_info.valid = false;  // No aplica para lat/lon
+            meta_out.proj_info.valid = false;
             meta_out.geotransform[0] = final_lon_min;
-            meta_out.geotransform[1] = (final_lon_max - final_lon_min) / (double)final_image.width;
+            meta_out.geotransform[1] = (final_lon_max - final_lon_min) / (double)geo_final.width;
             meta_out.geotransform[2] = 0.0;
             meta_out.geotransform[3] = final_lat_max;
             meta_out.geotransform[4] = 0.0;
-            meta_out.geotransform[5] = (final_lat_min - final_lat_max) / (double)final_image.height;
-            
-            if (is_pseudocolor && color_array) {
-                if (cfg->use_alpha) {
-                    temp_image = image_expand_palette(&final_image, color_array);
-                    write_geotiff_rgb(outfn, &temp_image, &meta_out, 0, 0, NULL);
-                    image_destroy(&temp_image);
-                } else {
-                    write_geotiff_indexed(outfn, &final_image, color_array, &meta_out, 0, 0);
-                }
-            } else {
-                write_geotiff_gray(outfn, &final_image, &meta_out, 0, 0);
-            }
-        } else {
-            meta_out = c01;
-            
-            // Aplicar el offset del recorte al origen (en radianes) ANTES de escalar
-            meta_out.geotransform[0] += crop_x_start * meta_out.geotransform[1];
-            meta_out.geotransform[3] += crop_y_start * meta_out.geotransform[5];
+            meta_out.geotransform[5] = (final_lat_min - final_lat_max) / (double)geo_final.height;
 
-            if (cfg->scale != 1) {
-                double scale_factor = (cfg->scale < 0) ? -cfg->scale : cfg->scale;
-                if (cfg->scale > 1) {
-                    meta_out.geotransform[1] /= scale_factor;
-                    meta_out.geotransform[5] /= scale_factor;
-                } else {
-                    meta_out.geotransform[1] *= scale_factor;
-                    meta_out.geotransform[5] *= scale_factor;
-                }
-            }
-            
             if (is_pseudocolor && color_array) {
                 if (cfg->use_alpha) {
-                    temp_image = image_expand_palette(&final_image, color_array);
+                    temp_image = image_expand_palette(&geo_final, color_array);
                     write_geotiff_rgb(outfn, &temp_image, &meta_out, 0, 0, NULL);
                     image_destroy(&temp_image);
                 } else {
-                    write_geotiff_indexed(outfn, &final_image, color_array, &meta_out, 0, 0);
+                    write_geotiff_indexed(outfn, &geo_final, color_array, &meta_out, 0, 0);
                 }
             } else {
-                write_geotiff_gray(outfn, &final_image, &meta_out, 0, 0);
+                write_geotiff_gray(outfn, &geo_final, &meta_out, 0, 0);
             }
-        }
-    } else {
-        if (is_pseudocolor && color_array) {
-            writer_save_png_palette(outfn, &final_image, color_array);
         } else {
-            writer_save_png(outfn, &final_image);
+            if (is_pseudocolor && color_array) writer_save_png_palette(outfn, &geo_final, color_array);
+            else writer_save_png(outfn, &geo_final);
         }
+
+        metadata_set_geometry(meta, final_lon_min, final_lat_min, final_lon_max, final_lat_max);
+        metadata_set_projection(meta, "EPSG:4326");
+
+        final_w = geo_final.width;
+        final_h = geo_final.height;
+
+        if (geo_final_allocated) image_destroy(&geo_final);
+        image_destroy(&geo_base);
     }
-    
+
     metadata_add(meta, "output_file", outfn);
-    metadata_add(meta, "output_width", (int)final_image.width);
-    metadata_add(meta, "output_height", (int)final_image.height);
+    metadata_add(meta, "output_width", final_w);
+    metadata_add(meta, "output_height", final_h);
     
     status = 0;
 
 cleanup:
+
     if (nav_loaded) {
         dataf_destroy(&navla_full);
         dataf_destroy(&navlo_full);

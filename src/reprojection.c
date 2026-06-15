@@ -170,31 +170,51 @@ ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* d
     }
     memset(geo_image.data, 0, width * height * src_image->bpp);
 
-    double t_start = omp_get_wtime();
+double t_start = omp_get_wtime();
     unsigned int bpp = src_image->bpp;
 
     // Output pixel resolution (degrees per pixel).
     double deg_per_px_lon = (double)lon_range / (double)width;
     double deg_per_px_lat = (double)lat_range / (double)height;
 
-    #pragma omp parallel for collapse(2)
+    // 1. Diagnóstico Seguro: Imprimir variables espaciales fuera del ciclo
+    LOG_DEBUG("Reproy Param: a=%.1f, b=%.1f, H=%.1f", a, b, H);
+    LOG_DEBUG("Reproy GT original: [%.6f, %.6f, %.6f, %.6f]", gt[0], gt[1], gt[3], gt[5]);
+
+    // 2. Fallback Analítico para variables físicas (LST) si el Geotransform L2 viene nulo
+    double safe_gt[6];
+    for (int i=0; i<6; i++) safe_gt[i] = gt[i];
+    
+    if (safe_gt[1] == 0.0 || safe_gt[5] == 0.0 || fabs(safe_gt[1]) > 1.0) {
+        LOG_WARN("Geotransform inválido. Generando fallback analítico para Full Disk.");
+        double fov = 0.303744; // FOV Radianes estándar de GOES-R FD
+        safe_gt[0] = -fov / 2.0;
+        safe_gt[1] = fov / (double)src_w;
+        safe_gt[2] = 0.0;
+        safe_gt[3] = fov / 2.0;
+        safe_gt[4] = 0.0;
+        safe_gt[5] = -fov / (double)src_h;
+    }
+
+    // 3. Contadores thread-safe para diagnosticar el rechazo
+    long err_horizon = 0;
+    long err_bounds = 0;
+    long valid_pixels = 0;
+
+    #pragma omp parallel for collapse(2) reduction(+:err_horizon, err_bounds, valid_pixels)
     for (size_t oy = 0; oy < height; oy++) {
         for (size_t ox = 0; ox < width; ox++) {
-            // Geographic center of the output pixel.
             double lon_deg = (double)target_lon_min + ((double)ox + 0.5) * deg_per_px_lon;
             double lat_deg = (double)target_lat_max - ((double)oy + 0.5) * deg_per_px_lat;
             double phi    = lat_deg * (M_PI / 180.0);
             double lambda = lon_deg * (M_PI / 180.0);
 
-            // Geocentric latitude.
             double phi_c = atan((b2 / a2) * tan(phi));
             double cos_phi_c = cos(phi_c);
             double sin_phi_c = sin(phi_c);
 
-            // Geocentric radius.
             double r_c = b / sqrt(1.0 - e2 * cos_phi_c * cos_phi_c);
 
-            // Satellite-to-pixel position vector.
             double d_lambda = lambda - lambda0;
             double cos_dl   = cos(d_lambda);
             double sin_dl   = sin(d_lambda);
@@ -203,63 +223,77 @@ ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* d
             double s_y = -r_c * cos_phi_c * sin_dl;
             double s_z = r_c * sin_phi_c;
 
-            // Visibility check: point must be within satellite field of view.
+            // Visibility check
             if (H * (H - s_x) < s_y * s_y + a2_over_b2 * s_z * s_z) {
-                continue; // below horizon
+                err_horizon++;
+                continue; 
             }
 
-            // Scan angles (GOES-R PUG).
             double s_n = sqrt(s_x * s_x + s_y * s_y + s_z * s_z);
             double x_rad = asin(-s_y / s_n);
             double y_rad = atan2(s_z, s_x);
 
-            // Convert scan angles to source pixel coordinates.
-            double col = (x_rad - gt[0]) / gt[1];
-            double row = (y_rad - gt[3]) / gt[5];
+            // Convert scan angles to source pixel coordinates usando el GT protegido
+            double col = (x_rad - safe_gt[0]) / safe_gt[1];
+            double row = (y_rad - safe_gt[3]) / safe_gt[5];
 
-            // Boundary check (1-pixel margin for bilinear sampling).
+            // Boundary check
             if (col < 0.0 || col >= (double)(src_w - 1) ||
                 row < 0.0 || row >= (double)(src_h - 1)) {
+                err_bounds++;
                 continue;
             }
 
-            // Bilinear interpolation.
-            int c0 = (int)col;
-            int r0 = (int)row;
-            double dc = col - c0;
-            double dr = row - r0;
-
-            int c1 = c0 + 1;
-            int r1 = r0 + 1;
-
-            double w00 = (1.0 - dc) * (1.0 - dr);
-            double w10 = dc * (1.0 - dr);
-            double w01 = (1.0 - dc) * dr;
-            double w11 = dc * dr;
-
-            size_t i00 = ((size_t)r0 * src_w + (size_t)c0) * bpp;
-            size_t i10 = ((size_t)r0 * src_w + (size_t)c1) * bpp;
-            size_t i01 = ((size_t)r1 * src_w + (size_t)c0) * bpp;
-            size_t i11 = ((size_t)r1 * src_w + (size_t)c1) * bpp;
-
+            valid_pixels++;
             size_t dst_idx = (oy * width + ox) * bpp;
 
-            for (unsigned int ch = 0; ch < bpp; ch++) {
-                double val = w00 * src_image->data[i00 + ch]
-                           + w10 * src_image->data[i10 + ch]
-                           + w01 * src_image->data[i01 + ch]
-                           + w11 * src_image->data[i11 + ch];
-                int ival = (int)(val + 0.5);
-                geo_image.data[dst_idx + ch] = (uint8_t)(ival < 0 ? 0 : (ival > 255 ? 255 : ival));
+            if (bpp == 1) {
+                // Vecino Más Cercano
+                int c_nn = (int)(col + 0.5);
+                int r_nn = (int)(row + 0.5);
+                size_t src_idx = ((size_t)r_nn * src_w + (size_t)c_nn) * bpp;
+                geo_image.data[dst_idx] = src_image->data[src_idx];
+            } else {
+                // Bilineal
+                int c0 = (int)col;
+                int r0 = (int)row;
+                double dc = col - c0;
+                double dr = row - r0;
+                int c1 = c0 + 1;
+                int r1 = r0 + 1;
+
+                double w00 = (1.0 - dc) * (1.0 - dr);
+                double w10 = dc * (1.0 - dr);
+                double w01 = (1.0 - dc) * dr;
+                double w11 = dc * dr;
+
+                size_t i00 = ((size_t)r0 * src_w + (size_t)c0) * bpp;
+                size_t i10 = ((size_t)r0 * src_w + (size_t)c1) * bpp;
+                size_t i01 = ((size_t)r1 * src_w + (size_t)c0) * bpp;
+                size_t i11 = ((size_t)r1 * src_w + (size_t)c1) * bpp;
+
+                for (unsigned int ch = 0; ch < bpp; ch++) {
+                    double val = w00 * src_image->data[i00 + ch]
+                               + w10 * src_image->data[i10 + ch]
+                               + w01 * src_image->data[i01 + ch]
+                               + w11 * src_image->data[i11 + ch];
+                    int ival = (int)(val + 0.5);
+                    geo_image.data[dst_idx + ch] = (uint8_t)(ival < 0 ? 0 : (ival > 255 ? 255 : ival));
+                }
             }
         }
     }
 
+    // Reporte final seguro (fuera del hilo de OpenMP)
+    LOG_INFO("Resultados Reproy: %ld válidos, %ld descartes horizonte, %ld descartes de límite", 
+             valid_pixels, err_horizon, err_bounds);
+
     double elapsed = omp_get_wtime() - t_start;
-    LOG_TIMING(elapsed, "Reproyección analítica");
+    LOG_TIMING(elapsed, "Reproyección analítica terminada");
 
     return geo_image;
 }
+
 
 int reprojection_find_bounding_box(const DataF* navla, const DataF* navlo,
                                    float clip_lon_min, float clip_lat_max,

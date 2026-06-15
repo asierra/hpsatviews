@@ -273,7 +273,14 @@ static int datanc_unpack_grid(int ncid, int varid, size_t total_size, DataNC *da
 int load_nc_sf(const char *filename, DataNC *datanc) {
     int ncid, varid, status = -1;
     NCScaleConfig cfg = { .scale_factor = 1.0f, .add_offset = 0.0f, .fillvalue = -1, .var_type = NC_SHORT };
-
+    
+    if (datanc != NULL) {
+        datanc->proj_info.valid = false;
+        for (int i = 0; i < 6; i++) {
+            datanc->geotransform[i] = 0.0;
+        }
+    }
+    
     if (nc_open(filename, NC_NOWRITE, &ncid) != NC_NOERR) {
         LOG_ERROR("Error abriendo NetCDF: %s", filename);
         return -1;
