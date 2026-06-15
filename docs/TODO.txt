@@ -209,3 +209,6 @@ Tue Jun  9 11:52:37 PM CST 2026
 
 Comentarios corregidos, falta traducir todos los logs.
 
+Error de inicialización de DataNC que se usa en processing, por localizar.
+
+
