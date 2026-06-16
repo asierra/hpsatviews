@@ -170,7 +170,7 @@ ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* d
     }
     memset(geo_image.data, 0, width * height * src_image->bpp);
 
-double t_start = omp_get_wtime();
+	double t_start = omp_get_wtime();
     unsigned int bpp = src_image->bpp;
 
     // Output pixel resolution (degrees per pixel).

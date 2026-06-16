@@ -156,7 +156,7 @@ void image_apply_histogram(ImageData im) {
     for (unsigned int i = 0; i < 256; i++)
         histogram[i] = 0;
 
-#pragma omp parallel for shared(im, histogram)
+#pragma omp parallel for reduction(+:histogram[:256])
     for (unsigned int y = 0; y < im.height; y++) {
         for (unsigned int x = 0; x < im.width; x++) {
             unsigned int i = y * im.width + x;

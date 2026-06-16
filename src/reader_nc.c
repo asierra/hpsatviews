@@ -153,15 +153,15 @@ static int datanc_read_metadata(int ncid, int varid, DataNC *datanc, NCScaleConf
     nc_inq_vartype(ncid, varid, &cfg->var_type);
 
     if (nc_inq_varid(ncid, "t", &time_varid) == NC_NOERR) {
-        double tiempo;
-        nc_get_var_double(ncid, time_varid, &tiempo);
-        datanc->timestamp = (time_t)(946728000 + (long)tiempo);
+        double tiempo = 0.0;
+        if (nc_get_var_double(ncid, time_varid, &tiempo) == NC_NOERR)
+            datanc->timestamp = (time_t)(946728000 + (long)tiempo);
     }
 
     if (nc_inq_varid(ncid, "band_id", &band_varid) == NC_NOERR) {
-        int bid; size_t idx = 0;
-        nc_get_var1_int(ncid, band_varid, &idx, &bid);
-        datanc->band_id = (uint8_t)bid;
+        int bid = 0; size_t idx = 0;
+        if (nc_get_var1_int(ncid, band_varid, &idx, &bid) == NC_NOERR)
+            datanc->band_id = (uint8_t)bid;
     }
 
     if (datanc->level == LEVEL_L1b) {
@@ -184,17 +184,31 @@ static int datanc_read_metadata(int ncid, int varid, DataNC *datanc, NCScaleConf
         nc_get_att_double(ncid, proj_varid, "longitude_of_projection_origin", &datanc->proj_info.lon_origin);
         nc_get_att_double(ncid, proj_varid, "inverse_flattening", &datanc->proj_info.inv_flat);
         datanc->proj_info.valid = true;
-        double x_sf, x_ao, y_sf, y_ao;
-        short x0, y0; size_t iz = 0;
-        nc_get_att_double(ncid, xid, "scale_factor", &x_sf); nc_get_att_double(ncid, xid, "add_offset", &x_ao);
-        nc_get_att_double(ncid, yid, "scale_factor", &y_sf); nc_get_att_double(ncid, yid, "add_offset", &y_ao);
-        nc_get_var1_short(ncid, xid, &iz, &x0); nc_get_var1_short(ncid, yid, &iz, &y0);
-        datanc->geotransform[0] = ((double)x0 * x_sf + x_ao) - (x_sf / 2.0);
-        datanc->geotransform[1] = x_sf;
-        datanc->geotransform[2] = 0.0;
-        datanc->geotransform[3] = ((double)y0 * y_sf + y_ao) - (y_sf / 2.0);
-        datanc->geotransform[4] = 0.0;
-        datanc->geotransform[5] = y_sf;
+        // x/y son VARIABLES de coordenadas, no dimensiones: pedir sus varid propios.
+        int xvar, yvar;
+        double x_sf = 1.0, x_ao = 0.0, y_sf = 1.0, y_ao = 0.0;
+        short  x0 = 0, y0 = 0;
+        size_t iz = 0;
+        bool gt_ok =
+            nc_inq_varid(ncid, "x", &xvar)                         == NC_NOERR &&
+            nc_inq_varid(ncid, "y", &yvar)                         == NC_NOERR &&
+            nc_get_att_double(ncid, xvar, "scale_factor", &x_sf)   == NC_NOERR &&
+            nc_get_att_double(ncid, xvar, "add_offset",   &x_ao)   == NC_NOERR &&
+            nc_get_att_double(ncid, yvar, "scale_factor", &y_sf)   == NC_NOERR &&
+            nc_get_att_double(ncid, yvar, "add_offset",   &y_ao)   == NC_NOERR &&
+            nc_get_var1_short(ncid, xvar, &iz, &x0)                == NC_NOERR &&
+            nc_get_var1_short(ncid, yvar, &iz, &y0)                == NC_NOERR;
+        if (gt_ok) {
+            datanc->geotransform[0] = ((double)x0 * x_sf + x_ao) - (x_sf / 2.0);
+            datanc->geotransform[1] = x_sf;
+            datanc->geotransform[2] = 0.0;
+            datanc->geotransform[3] = ((double)y0 * y_sf + y_ao) - (y_sf / 2.0);
+            datanc->geotransform[4] = 0.0;
+            datanc->geotransform[5] = y_sf;
+        } else {
+            LOG_WARN("Geotransform no legible; se marca proyección inválida.");
+            datanc->proj_info.valid = false;
+        }
     }
 
     char spatial_res_str[128] = {0};
@@ -227,10 +241,10 @@ static int datanc_unpack_grid(int ncid, int varid, size_t total_size, DataNC *da
     } else {
         datanc->is_float = true;
         datanc->fdata = dataf_create(datanc->fdata.width, datanc->fdata.height);
-        float fmin = 1e30f, fmax = -1e30f;
+        float local_min = 1e30f, local_max = -1e30f;
         if (cfg->var_type == NC_USHORT) {
             unsigned short *src = (unsigned short *)datatmp;
-            #pragma omp parallel for reduction(min:fmin) reduction(max:fmax)
+            #pragma omp parallel for reduction(min:local_min) reduction(max:local_max)
             for (size_t i = 0; i < total_size; i++) {
                 if (src[i] == (unsigned short)cfg->fillvalue) {
                     datanc->fdata.data_in[i] = NonData;
@@ -241,13 +255,13 @@ static int datanc_unpack_grid(int ncid, int varid, size_t total_size, DataNC *da
                         else val *= cfg->kappa0;
                     }
                     datanc->fdata.data_in[i] = val;
-                    if (val < fmin) fmin = val;
-                    if (val > fmax) fmax = val;
+                    if (val < local_min) local_min = val;
+                    if (val > local_max) local_max = val;
                 }
             }
         } else {
             short *src = (short *)datatmp;
-            #pragma omp parallel for reduction(min:fmin) reduction(max:fmax)
+            #pragma omp parallel for reduction(min:local_min) reduction(max:local_max)
             for (size_t i = 0; i < total_size; i++) {
                 if (src[i] == cfg->fillvalue) {
                     datanc->fdata.data_in[i] = NonData;
@@ -258,12 +272,12 @@ static int datanc_unpack_grid(int ncid, int varid, size_t total_size, DataNC *da
                         else val *= cfg->kappa0;
                     }
                     datanc->fdata.data_in[i] = val;
-                    if (val < fmin) fmin = val;
-                    if (val > fmax) fmax = val;
+                    if (val < local_min) local_min = val;
+                    if (val > local_max) local_max = val;
                 }
             }
         }
-        datanc->fdata.fmin = fmin; datanc->fdata.fmax = fmax;
+        datanc->fdata.fmin = local_min; datanc->fdata.fmax = local_max;
     }
     free(datatmp);
     return 0;
@@ -365,18 +379,21 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
 
     if ((retval = nc_inq_varid(ncid, "goes_imager_projection", &varid)))
         ERR(retval);
-    nc_get_att_double(ncid, varid, "perspective_point_height", &hsat);
-    nc_get_att_double(ncid, varid, "semi_major_axis", &sm_maj);
-    nc_get_att_double(ncid, varid, "semi_minor_axis", &sm_min);
+    if ((retval = nc_get_att_double(ncid, varid, "perspective_point_height", &hsat)))
+        ERR(retval);
+    if ((retval = nc_get_att_double(ncid, varid, "semi_major_axis", &sm_maj)))
+        ERR(retval);
+    if ((retval = nc_get_att_double(ncid, varid, "semi_minor_axis", &sm_min)))
+        ERR(retval);
 
-    double lo_proj_orig;
+    double lo_proj_orig = 0.0;
     if ((retval = nc_get_att_double(ncid, varid, "longitude_of_projection_origin", &lo_proj_orig)))
-        WRN(retval);
+        ERR(retval);
     H = sm_maj + hsat;
     lambda_0 = lo_proj_orig / rad2deg;
 
     // Obtiene el factor de escala y offset de las VARIABLES (no dimensiones)
-    double x_sf, y_sf, x_ao, y_ao;
+    double x_sf = 1.0, y_sf = 1.0, x_ao = 0.0, y_ao = 0.0;
 
     // Buscar las variables x e y (no las dimensiones)
     if ((retval = nc_inq_varid(ncid, "x", &xid)))
@@ -384,10 +401,10 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
     if ((retval = nc_inq_varid(ncid, "y", &yid)))
         ERR(retval);
 
-    nc_get_att_double(ncid, xid, "scale_factor", &x_sf);
-    nc_get_att_double(ncid, xid, "add_offset", &x_ao);
-    nc_get_att_double(ncid, yid, "scale_factor", &y_sf);
-    nc_get_att_double(ncid, yid, "add_offset", &y_ao);
+    if ((retval = nc_get_att_double(ncid, xid, "scale_factor", &x_sf))) ERR(retval);
+    if ((retval = nc_get_att_double(ncid, xid, "add_offset",   &x_ao))) ERR(retval);
+    if ((retval = nc_get_att_double(ncid, yid, "scale_factor", &y_sf))) ERR(retval);
+    if ((retval = nc_get_att_double(ncid, yid, "add_offset",   &y_ao))) ERR(retval);
 
     // Leer los arreglos x[] e y[] del NetCDF
     short *x_vals_raw = malloc(width * sizeof(short));
