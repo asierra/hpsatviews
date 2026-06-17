@@ -259,7 +259,7 @@ int write_geotiff_rgb(const char* filename, const ImageData* img, const DataNC* 
 }
 
 int write_geotiff_gray(const char* filename, const ImageData* img, const DataNC* meta,
-                       int offset_x, int offset_y) {
+                       int offset_x, int offset_y, const char* product) {
     if (!img || (img->bpp != 1 && img->bpp != 2)) {
         LOG_ERROR("Imagen inválida para write_geotiff_gray (se requiere bpp=1 o bpp=2)");
         return -1;
@@ -269,6 +269,9 @@ int write_geotiff_gray(const char* filename, const ImageData* img, const DataNC*
     int num_bands = img->bpp;
     GDALDatasetH ds = create_mem_dataset(img->width, img->height, num_bands, GDT_Byte, meta, offset_x, offset_y);
     if (!ds) return -1;
+
+    if (product && product[0])
+        GDALSetMetadataItem(ds, "product", product, "");
 
     CPLErr err = CE_None;
     
@@ -311,7 +314,7 @@ int write_geotiff_gray(const char* filename, const ImageData* img, const DataNC*
 
 int write_geotiff_indexed(const char* filename, const ImageData* img, const ColorArray* palette,
                           const DataNC* meta, int offset_x, int offset_y,
-                          const ColormapMeta* cm) {
+                          const ColormapMeta* cm, const char* product) {
     if (!img || img->bpp != 1) {
         LOG_ERROR("Imagen inválida para write_geotiff_indexed (se requiere bpp=1)");
         return -1;
@@ -319,6 +322,9 @@ int write_geotiff_indexed(const char* filename, const ImageData* img, const Colo
 
     GDALDatasetH ds = create_mem_dataset(img->width, img->height, 1, GDT_Byte, meta, offset_x, offset_y);
     if (!ds) return -1;
+
+    if (product && product[0])
+        GDALSetMetadataItem(ds, "product", product, "");
 
     GDALRasterBandH band = GDALGetRasterBand(ds, 1);
 

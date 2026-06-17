@@ -80,6 +80,7 @@ typedef struct {
   SectorID sector_id;
   Level level;
   const char* varname;
+  const char* product_name; // L2 product code (e.g. "ACHA", "CMIP"); NULL for L1b or unrecognized products
   time_t timestamp;
   unsigned char band_id;
   float native_resolution_km; // Native ABI band resolution in km (0 if unknown)

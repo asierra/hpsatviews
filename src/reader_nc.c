@@ -16,7 +16,6 @@
 #include <string.h>
 #include <time.h>
 
-const char *VAR_NAME_RAD = "Rad";
 #define ERRCODE 2
 #define ERR(e)                                                                                     \
     {                                                                                              \
@@ -105,22 +104,39 @@ static const char* detect_generic_l2_variable(int ncid) {
     return NULL;
 }
 
-// This list allows to save time but it's not essential, it's fine to use the heuristic
-static const char* detect_variable_from_filename(const char *filename) {
+// This list allows to save time but it's not essential, it's fine to use the heuristic.
+// "product" is the filename substring that identifies the dataset; "variable" is the
+// NetCDF variable that holds its data. L1b ("Rad") has no distinct product identity
+// beyond the channel/band, so it is excluded when populating metadata (see
+// datanc_identify_product).
+typedef struct {
+    const char *product;
+    const char *variable;
+} ProductVariable;
+
+static const ProductVariable PRODUCT_VARIABLES[] = {
+    {"L1b",  "Rad"},
+    {"CMIP", "CMI"},
+    {"ACHA", "HT"},
+    {"ACHT", "TEMP"},
+    {"ACTP", "Phase"},
+    {"LST",  "LST"},
+    {"SST",  "SST"},
+    {NULL, NULL}
+};
+
+static const ProductVariable* detect_product_variable_from_filename(const char *filename) {
     if (!filename) return NULL;
-    if (strstr(filename, "L1b")) return VAR_NAME_RAD;
-    if (strstr(filename, "CMIP")) return "CMI";
-    if (strstr(filename, "ACHA")) return "HT";
-    if (strstr(filename, "ACHT")) return "TEMP";
-    if (strstr(filename, "ACTP")) return "Phase";
-    if (strstr(filename, "LST"))  return "LST";
-    if (strstr(filename, "SST"))  return "SST";
+    for (int i = 0; PRODUCT_VARIABLES[i].variable != NULL; i++) {
+        if (strstr(filename, PRODUCT_VARIABLES[i].product)) return &PRODUCT_VARIABLES[i];
+    }
     return NULL;
 }
 
 /* Fase 2: Identificación Segura */
 static int datanc_identify_product(int ncid, const char *filename, DataNC *datanc) {
-    const char *vname = detect_variable_from_filename(filename);
+    const ProductVariable *pv = detect_product_variable_from_filename(filename);
+    const char *vname = pv ? pv->variable : NULL;
     int varid;
 
     datanc->sat_id = detect_satellite_from_filename(filename);
@@ -132,6 +148,8 @@ static int datanc_identify_product(int ncid, const char *filename, DataNC *datan
 
     datanc->varname = strdup(vname);
     datanc->level = (strcmp(vname, "Rad") == 0) ? LEVEL_L1b : LEVEL_L2;
+    // L1b ("Rad") has no distinct product identity beyond the channel/band.
+    if (datanc->level == LEVEL_L2 && pv) datanc->product_name = pv->product;
     LOG_DEBUG("Detected variable id %d %s", varid, vname);
     return varid;
 }

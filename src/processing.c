@@ -246,6 +246,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     
     // Poblar metadatos desde DataNC
     metadata_from_nc(meta, &c01);
+    if (c01.product_name) metadata_set_product(meta, c01.product_name);
     if (cfg->has_clip)
         metadata_set_clip(meta, true);
     
@@ -364,13 +365,13 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             if (is_pseudocolor && color_array) {
                 if (cfg->use_alpha) {
                     temp_image = image_expand_palette(&fg_final, color_array);
-                    write_geotiff_rgb(outfn, &temp_image, &meta_fg, 0, 0, NULL);
+                    write_geotiff_rgb(outfn, &temp_image, &meta_fg, 0, 0, meta_fg.product_name);
                     image_destroy(&temp_image);
                 } else {
-                    write_geotiff_indexed(outfn, &fg_final, color_array, &meta_fg, 0, 0, &colormap_meta);
+                    write_geotiff_indexed(outfn, &fg_final, color_array, &meta_fg, 0, 0, &colormap_meta, meta_fg.product_name);
                 }
             } else {
-                write_geotiff_gray(outfn, &fg_final, &meta_fg, 0, 0);
+                write_geotiff_gray(outfn, &fg_final, &meta_fg, 0, 0, meta_fg.product_name);
             }
         } else {
             if (is_pseudocolor && color_array) writer_save_png_palette(outfn, &fg_final, color_array);
@@ -466,13 +467,13 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             if (is_pseudocolor && color_array) {
                 if (cfg->use_alpha) {
                     temp_image = image_expand_palette(&geo_final, color_array);
-                    write_geotiff_rgb(outfn, &temp_image, &meta_out, 0, 0, NULL);
+                    write_geotiff_rgb(outfn, &temp_image, &meta_out, 0, 0, meta_out.product_name);
                     image_destroy(&temp_image);
                 } else {
-                    write_geotiff_indexed(outfn, &geo_final, color_array, &meta_out, 0, 0, &colormap_meta);
+                    write_geotiff_indexed(outfn, &geo_final, color_array, &meta_out, 0, 0, &colormap_meta, meta_out.product_name);
                 }
             } else {
-                write_geotiff_gray(outfn, &geo_final, &meta_out, 0, 0);
+                write_geotiff_gray(outfn, &geo_final, &meta_out, 0, 0, meta_out.product_name);
             }
         } else {
             if (is_pseudocolor && color_array) writer_save_png_palette(outfn, &geo_final, color_array);

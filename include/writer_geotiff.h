@@ -32,15 +32,19 @@ int write_geotiff_rgb(const char* filename,
                       int offset_y,
                       const char* product);
 
-// Writes a single-band grayscale image to GeoTIFF. Returns 0 on success.
+// Writes a single-band grayscale image to GeoTIFF.
+// product: optional descriptive tag written to file metadata; NULL to omit.
+// Returns 0 on success.
 int write_geotiff_gray(const char* filename,
                        const ImageData* img,
                        const DataNC* meta,
                        int offset_x,
-                       int offset_y);
+                       int offset_y,
+                       const char* product);
 
 // Writes a palette-indexed image to GeoTIFF with embedded color table.
 // cm: optional colormap metadata; NULL to omit colormap_* tags.
+// product: optional descriptive tag written to file metadata; NULL to omit.
 // Returns 0 on success, -1 on error.
 int write_geotiff_indexed(const char* filename,
                           const ImageData* img,
@@ -48,6 +52,7 @@ int write_geotiff_indexed(const char* filename,
                           const DataNC* meta,
                           int offset_x,
                           int offset_y,
-                          const ColormapMeta* cm);
+                          const ColormapMeta* cm,
+                          const char* product);
 
 #endif /* HPSATVIEWS_WRITER_GEOTIFF_H_ */
