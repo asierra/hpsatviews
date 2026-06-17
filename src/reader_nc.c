@@ -120,6 +120,7 @@ static const ProductVariable PRODUCT_VARIABLES[] = {
     {"ACHA", "HT"},
     {"ACHT", "TEMP"},
     {"ACTP", "Phase"},
+    {"CTP",  "PRES"},
     {"LST",  "LST"},
     {"SST",  "SST"},
     {NULL, NULL}
