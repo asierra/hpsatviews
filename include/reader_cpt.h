@@ -23,6 +23,7 @@ typedef struct {
 
 typedef struct {
     char name[MAX_LINE_LENGTH];
+    char units[32];           // from "# UNIT = <value>" header; empty string if absent
     Color foreground;
     Color background;
     Color nan_color;

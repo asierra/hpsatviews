@@ -12,6 +12,15 @@
 #include "datanc.h"
 #include "reader_cpt.h"
 
+// Physical range and palette size for pseudocolor outputs.
+// Pass NULL to omit colormap metadata tags from the GeoTIFF.
+typedef struct {
+    float       val_min;
+    float       val_max;
+    int         num_colors;
+    const char *units;   // borrowed pointer; NULL omits colormap_units
+} ColormapMeta;
+
 // Writes a 3-band RGB image to GeoTIFF.
 // offset_x/y: pixel offset from the native grid origin (for clipped outputs).
 // product: optional descriptive tag written to file metadata; NULL to omit.
@@ -30,12 +39,15 @@ int write_geotiff_gray(const char* filename,
                        int offset_x,
                        int offset_y);
 
-// Writes a palette-indexed image to GeoTIFF with embedded color table. Returns 0 on success.
+// Writes a palette-indexed image to GeoTIFF with embedded color table.
+// cm: optional colormap metadata; NULL to omit colormap_* tags.
+// Returns 0 on success, -1 on error.
 int write_geotiff_indexed(const char* filename,
                           const ImageData* img,
                           const ColorArray* palette,
                           const DataNC* meta,
                           int offset_x,
-                          int offset_y);
+                          int offset_y,
+                          const ColormapMeta* cm);
 
 #endif /* HPSATVIEWS_WRITER_GEOTIFF_H_ */

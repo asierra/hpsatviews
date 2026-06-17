@@ -42,16 +42,12 @@ ColorArray* cpt_to_color_array(CPTData* cpt) {
     if (cpt->has_foreground) total_colors++;
     if (cpt->has_nan_color) total_colors++;
 
-    // Adjust palette size to the next valid size (2, 4, 16, 256)
-    unsigned int palette_size;
-    if (total_colors <= 2) palette_size = 2;
-    else if (total_colors <= 4) palette_size = 4;
-    else if (total_colors <= 16) palette_size = 16;
-    else palette_size = 256;
+    // El índice de píxel es de 8 bits, así que la paleta no puede tener más de 256 colores.
+    if (total_colors > 256) total_colors = 256;
 
-    cpt->num_colors = palette_size;
+    cpt->num_colors = total_colors;
 
-    ColorArray* color_array = color_array_create(palette_size);
+    ColorArray* color_array = color_array_create(total_colors);
     if (!color_array) {
         return NULL;
     }
@@ -63,12 +59,12 @@ ColorArray* cpt_to_color_array(CPTData* cpt) {
     } else {
         default_color = cpt->has_background ? cpt->background : (Color){0, 0, 0};
     }
-    for (unsigned int i = 0; i < palette_size; i++) {
+    for (unsigned int i = 0; i < total_colors; i++) {
         color_array->colors[i] = default_color;
     }
 
     if (cpt->is_discrete) {
-        for (unsigned int i = 0; i < cpt->entry_count && i < palette_size; i++) {
+        for (unsigned int i = 0; i < cpt->entry_count && i < total_colors; i++) {
             color_array->colors[i] = cpt->entries[i].color;
         }
     } else { // Continuous
@@ -77,17 +73,17 @@ ColorArray* cpt_to_color_array(CPTData* cpt) {
         float range = max_val - min_val;
         unsigned int colors_to_generate = (range > 0) ? base_color_count : 1;
 
-        for (unsigned int i = 0; i < colors_to_generate && i < palette_size; i++) {
+        for (unsigned int i = 0; i < colors_to_generate && i < total_colors; i++) {
             float value = min_val + (range * i) / (colors_to_generate - 1);
             color_array->colors[i] = get_color_for_value(cpt, value);
         }
     }
 
     //if (cpt->has_background) color_array->colors[0] = cpt->background;
-    if (cpt->has_nan_color) color_array->colors[palette_size - 1] = cpt->nan_color;
-    if (cpt->has_foreground) color_array->colors[palette_size - 2] = cpt->foreground;
+    if (cpt->has_nan_color) color_array->colors[total_colors - 1] = cpt->nan_color;
+    if (cpt->has_foreground) color_array->colors[total_colors - 2] = cpt->foreground;
 
-    LOG_DEBUG("colores paleta %d %d", palette_size, color_array->length);
+    LOG_DEBUG("colores paleta %d %d", total_colors, color_array->length);
     return color_array;
 }
 
@@ -177,8 +173,18 @@ CPTData* read_cpt_file(const char* filename) {
     bool in_header = true;
     
     while (fgets(line, sizeof(line), file)) {
-        // Strip newline; skip blank lines and comments.
-        if (line[0] == '#' || line[0] == '\0') {
+        // Strip newline; skip blank lines.
+        if (line[0] == '\0') continue;
+
+        if (line[0] == '#') {
+            // Parse optional "# UNIT = <value>" header tag.
+            const char *p = line + 1;
+            while (*p == ' ') p++;
+            if (strncmp(p, "UNIT", 4) == 0 && (p = strchr(p, '=')) != NULL) {
+                p++;
+                while (*p == ' ') p++;
+                sscanf(p, "%31s", cpt->units);
+            }
             continue;
         }
         

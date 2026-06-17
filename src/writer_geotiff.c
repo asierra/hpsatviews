@@ -18,6 +18,19 @@
 
 // --- Funciones Auxiliares Privadas ---
 
+static void set_colormap_metadata(GDALDatasetH ds, const ColormapMeta *cm) {
+    if (!ds || !cm) return;
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%.6g", cm->val_min);
+    GDALSetMetadataItem(ds, "colormap_min", buf, "");
+    snprintf(buf, sizeof(buf), "%.6g", cm->val_max);
+    GDALSetMetadataItem(ds, "colormap_max", buf, "");
+    snprintf(buf, sizeof(buf), "%d", cm->num_colors);
+    GDALSetMetadataItem(ds, "colormap_size", buf, "");
+    if (cm->units && cm->units[0])
+        GDALSetMetadataItem(ds, "colormap_units", cm->units, "");
+}
+
 /**
  * Escribe metadatos del satélite/sector/banda en el dataset GDAL.
  * Se almacenan como items XML dentro del TIFF (dominio por defecto).
@@ -297,7 +310,8 @@ int write_geotiff_gray(const char* filename, const ImageData* img, const DataNC*
 }
 
 int write_geotiff_indexed(const char* filename, const ImageData* img, const ColorArray* palette,
-                          const DataNC* meta, int offset_x, int offset_y) {
+                          const DataNC* meta, int offset_x, int offset_y,
+                          const ColormapMeta* cm) {
     if (!img || img->bpp != 1) {
         LOG_ERROR("Imagen inválida para write_geotiff_indexed (se requiere bpp=1)");
         return -1;
@@ -319,14 +333,15 @@ int write_geotiff_indexed(const char* filename, const ImageData* img, const Colo
         GDALSetRasterColorInterpretation(band, GCI_PaletteIndex);
     }
 
-    CPLErr err = GDALRasterIO(band, GF_Write, 0, 0, img->width, img->height, 
-                              (void*)img->data, 
-                              img->width, img->height, GDT_Byte, 
+    CPLErr err = GDALRasterIO(band, GF_Write, 0, 0, img->width, img->height,
+                              (void*)img->data,
+                              img->width, img->height, GDT_Byte,
                               0, 0);
 
     if (err != CE_None) {
         GDALClose(ds);
         return -1;
     }
+    set_colormap_metadata(ds, cm);
     return finalize_cog(ds, filename);
 }

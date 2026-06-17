@@ -75,11 +75,17 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     if (cfg->scale != 1) metadata_add(meta, "scale", cfg->scale);
     
     // --- Modo pseudocolor: cargar paleta ---
+    ColormapMeta colormap_meta = {0};
+
     if (is_pseudocolor) {
         metadata_add(meta, "palette", cfg->palette_file);
         cptdata = read_cpt_file(cfg->palette_file);
         if (cptdata) {
             color_array = cpt_to_color_array(cptdata);
+            colormap_meta.val_min    = cptdata->entries[0].value;
+            colormap_meta.val_max    = cptdata->entries[cptdata->entry_count - 1].value;
+            colormap_meta.num_colors = cptdata->is_discrete ? (int)cptdata->entry_count : 256;
+            colormap_meta.units      = cptdata->units[0] ? cptdata->units : NULL;
             char *cpt_dup = strdup(cfg->palette_file);
             if (cpt_dup) {
                 char *base = basename(cpt_dup);
@@ -361,7 +367,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
                     write_geotiff_rgb(outfn, &temp_image, &meta_fg, 0, 0, NULL);
                     image_destroy(&temp_image);
                 } else {
-                    write_geotiff_indexed(outfn, &fg_final, color_array, &meta_fg, 0, 0);
+                    write_geotiff_indexed(outfn, &fg_final, color_array, &meta_fg, 0, 0, &colormap_meta);
                 }
             } else {
                 write_geotiff_gray(outfn, &fg_final, &meta_fg, 0, 0);
@@ -463,7 +469,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
                     write_geotiff_rgb(outfn, &temp_image, &meta_out, 0, 0, NULL);
                     image_destroy(&temp_image);
                 } else {
-                    write_geotiff_indexed(outfn, &geo_final, color_array, &meta_out, 0, 0);
+                    write_geotiff_indexed(outfn, &geo_final, color_array, &meta_out, 0, 0, &colormap_meta);
                 }
             } else {
                 write_geotiff_gray(outfn, &geo_final, &meta_out, 0, 0);

@@ -110,6 +110,30 @@ int writer_save_png_palette(const char *filename, const ImageData *image, const 
     return 1;
   }
 
+  // libpng exige que el PLTE tenga exactamente 2, 4, 16 o 256 entradas
+  // (las únicas profundidades de bit válidas para PNG_COLOR_TYPE_PALETTE).
+  // Si la paleta recibida no calza, se rellena hasta el siguiente tamaño válido.
+  unsigned int padded_size;
+  if (palette->length <= 2) padded_size = 2;
+  else if (palette->length <= 4) padded_size = 4;
+  else if (palette->length <= 16) padded_size = 16;
+  else padded_size = 256;
+
+  ColorArray *padded_palette = NULL;
+  if (padded_size != palette->length) {
+    padded_palette = color_array_create(padded_size);
+    if (!padded_palette) {
+      LOG_FATAL("Falla de memoria al ajustar el tamaño de la paleta.");
+      return 1;
+    }
+    memcpy(padded_palette->colors, palette->colors, sizeof(Color) * palette->length);
+    Color fill_color = palette->colors[palette->length - 1];
+    for (unsigned int i = palette->length; i < padded_size; i++) {
+      padded_palette->colors[i] = fill_color;
+    }
+    palette = padded_palette;
+  }
+
   png_byte *transp = NULL;
   ImageData image_to_write = *image;
   ImageData temp_image = {0};
@@ -120,6 +144,7 @@ int writer_save_png_palette(const char *filename, const ImageData *image, const 
     transp = (png_byte*)calloc(palette->length, sizeof(png_byte));
     if (!transp) {
       LOG_FATAL("Falla de memoria al crear buffer de transparencia.");
+      if (padded_palette) color_array_destroy(padded_palette);
       return 1;
     }
     // Inicializar todos los valores de transparencia a opaco (255).
@@ -130,6 +155,7 @@ int writer_save_png_palette(const char *filename, const ImageData *image, const 
     if (!temp_image.data) {
       LOG_FATAL("Falla de memoria al crear imagen temporal para índices.");
       free(transp);
+      if (padded_palette) color_array_destroy(padded_palette);
       return 1;
     }
 
@@ -156,6 +182,9 @@ int writer_save_png_palette(const char *filename, const ImageData *image, const 
   }
   if (temp_image.data) {
     image_destroy(&temp_image);
+  }
+  if (padded_palette) {
+    color_array_destroy(padded_palette);
   }
 
   return result;
