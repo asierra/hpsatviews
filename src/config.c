@@ -391,8 +391,13 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
     cfg->custom_minmax = ap_found(parser, "minmax") ? ap_get_str_value(parser, "minmax") : NULL;
 
     bool is_rgb = (cfg->command && strcmp(cfg->command, "rgb") == 0);
+    bool is_gray = (cfg->command && strcmp(cfg->command, "gray") == 0);
+    // Alfa real por píxel: soportado en gray (PNG GRAY_ALPHA / GeoTIFF banda extra)
+    // y en rgb (RGBA). En pseudocolor se ignora: el formato indexado no admite
+    // alfa por píxel (ver tRNS de PNG y GCI_PaletteIndex de GDAL), así que ese
+    // modo sigue señalando NonData con el color 'N' del .cpt.
+    cfg->use_alpha = (is_rgb || is_gray) && ap_found(parser, "alpha");
     if (is_rgb) {
-        cfg->use_alpha = ap_found(parser, "alpha");
         cfg->use_citylights = ap_found(parser, "citylights");
         // Full resolution mode for low-res L2 products.
         cfg->use_full_res = ap_found(parser, "full-res");

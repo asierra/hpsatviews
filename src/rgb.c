@@ -962,13 +962,19 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         }
 
         LOG_INFO("Iniciando reproyección...");
+        // Áreas fuera del disco visible deben quedar como NonData (alpha=0),
+        // no como dato real, igual que ya se hace para los píxeles NonData
+        // interiores en apply_enhancements().
+        unsigned char nodata_pattern[4] = {0};
+        const unsigned char *nodata_pixel = ctx.opts.use_alpha ? nodata_pattern : NULL;
         ImageData reprojected =
             reproject_image_analytical(&ctx.final_image,
                                        &ctx.channels[ctx.ref_channel_idx],
                                        ctx.nav_lat.fmin, ctx.nav_lat.fmax,
                                        ctx.nav_lon.fmin, ctx.nav_lon.fmax,
                                        ctx.channels[ctx.ref_channel_idx].native_resolution_km,
-                                       ctx.opts.has_clip ? ctx.opts.clip_coords : NULL);
+                                       ctx.opts.has_clip ? ctx.opts.clip_coords : NULL,
+                                       nodata_pixel);
 
         if (reprojected.data == NULL) {
             LOG_ERROR("Falla durante reproyección");

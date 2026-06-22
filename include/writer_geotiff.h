@@ -8,6 +8,7 @@
 #ifndef HPSATVIEWS_WRITER_GEOTIFF_H_
 #define HPSATVIEWS_WRITER_GEOTIFF_H_
 
+#include <stdbool.h>
 #include "image.h"
 #include "datanc.h"
 #include "reader_cpt.h"
@@ -18,7 +19,9 @@ typedef struct {
     float       val_min;
     float       val_max;
     int         num_colors;
-    const char *units;   // borrowed pointer; NULL omits colormap_units
+    const char *units;     // borrowed pointer; NULL omits colormap_units
+    bool        has_nodata; // if true, nodata_index is tagged via GDALSetRasterNoDataValue
+    int         nodata_index;
 } ColormapMeta;
 
 // Writes a 3-band RGB image to GeoTIFF.

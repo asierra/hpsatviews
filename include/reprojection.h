@@ -27,12 +27,17 @@ int reprojection_find_bounding_box(const DataF* navla, const DataF* navlo,
 
 // Reprojects an image from GOES-R fixed-grid to geographic (lat/lon) projection
 // using the analytical inverse scan-angle equations from GOES-R PUG Vol. 4.
-// Bilinear interpolation; no gap filling. clip_coords is optional [lon_min,lat_max,lon_max,lat_min].
+// Bilinear interpolation. clip_coords is optional [lon_min,lat_max,lon_max,lat_min].
+// nodata_pixel: byte pattern of length src_image->bpp written into destination
+// pixels that fall outside the visible disk or source bounds (the rectangular
+// output grid is necessarily larger than the round Earth disk). Pass NULL to
+// fill those pixels with zero bytes instead (legacy behavior).
 // Returns a new ImageData; caller must free it.
 ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* data_nc,
                                      float lat_min, float lat_max,
                                      float lon_min, float lon_max,
                                      float native_resolution_km,
-                                     const float* clip_coords);
+                                     const float* clip_coords,
+                                     const unsigned char* nodata_pixel);
 
 #endif /* HPSATVIEWS_REPROJECTION_H_ */

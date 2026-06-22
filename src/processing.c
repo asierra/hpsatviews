@@ -86,6 +86,11 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             colormap_meta.val_max    = cptdata->entries[cptdata->entry_count - 1].value;
             colormap_meta.num_colors = cptdata->is_discrete ? (int)cptdata->entry_count : 256;
             colormap_meta.units      = cptdata->units[0] ? cptdata->units : NULL;
+            if (cptdata->has_nan_color) {
+                // Mismo índice reservado que create_single_gray() usa para NonData.
+                colormap_meta.has_nodata   = true;
+                colormap_meta.nodata_index = (int)cptdata->num_colors - 1;
+            }
             char *cpt_dup = strdup(cfg->palette_file);
             if (cpt_dup) {
                 char *base = basename(cpt_dup);
@@ -415,13 +420,30 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             goto cleanup;
         }
 
+        // Patrón a escribir en las áreas de la malla geográfica que quedan
+        // fuera del disco visible/los límites de la fuente (rejilla
+        // rectangular vs. disco redondo): debe verse como NonData, no como
+        // dato real.
+        unsigned char nodata_pattern[4] = {0};
+        const unsigned char *nodata_pixel = NULL;
+        if (cfg->use_alpha) {
+            nodata_pixel = nodata_pattern; // valor=0, alpha=0 (ya es la convención de NonData)
+        } else if (colormap_meta.has_nodata) {
+            nodata_pattern[0] = (unsigned char)colormap_meta.nodata_index;
+            nodata_pixel = nodata_pattern;
+        } else if (is_pseudocolor) {
+            LOG_WARN("Reproyección pseudocolor sin --alpha y sin color N en el .cpt: "
+                     "las áreas fuera del disco no podrán distinguirse de dato real.");
+        }
+
         // Reproyectar usando la imagen original inalterada
         ImageData geo_base = reproject_image_analytical(
             &final_image, &c01,
             navla_full.fmin, navla_full.fmax,
             navlo_full.fmin, navlo_full.fmax,
             c01.native_resolution_km,
-            cfg->has_clip ? cfg->clip_coords : NULL
+            cfg->has_clip ? cfg->clip_coords : NULL,
+            nodata_pixel
         );
 
         float final_lon_min, final_lon_max, final_lat_min, final_lat_max;

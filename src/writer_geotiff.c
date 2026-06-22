@@ -339,6 +339,10 @@ int write_geotiff_indexed(const char* filename, const ImageData* img, const Colo
         GDALSetRasterColorInterpretation(band, GCI_PaletteIndex);
     }
 
+    if (cm && cm->has_nodata) {
+        GDALSetRasterNoDataValue(band, (double)cm->nodata_index);
+    }
+
     CPLErr err = GDALRasterIO(band, GF_Write, 0, 0, img->width, img->height,
                               (void*)img->data,
                               img->width, img->height, GDT_Byte,

@@ -106,7 +106,8 @@ ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* d
                                      float lat_min, float lat_max,
                                      float lon_min, float lon_max,
                                      float native_resolution_km,
-                                     const float* clip_coords) {
+                                     const float* clip_coords,
+                                     const unsigned char* nodata_pixel) {
     if (!src_image || !src_image->data || !data_nc || !data_nc->proj_info.valid) {
         LOG_ERROR("Parámetros inválidos para reproject_image_analytical.");
         return image_create(0, 0, 0);
@@ -204,6 +205,7 @@ ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* d
     #pragma omp parallel for collapse(2) reduction(+:err_horizon, err_bounds, valid_pixels)
     for (size_t oy = 0; oy < height; oy++) {
         for (size_t ox = 0; ox < width; ox++) {
+            size_t dst_idx = (oy * width + ox) * bpp;
             double lon_deg = (double)target_lon_min + ((double)ox + 0.5) * deg_per_px_lon;
             double lat_deg = (double)target_lat_max - ((double)oy + 0.5) * deg_per_px_lat;
             double phi    = lat_deg * (M_PI / 180.0);
@@ -226,7 +228,8 @@ ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* d
             // Visibility check
             if (H * (H - s_x) < s_y * s_y + a2_over_b2 * s_z * s_z) {
                 err_horizon++;
-                continue; 
+                if (nodata_pixel) memcpy(geo_image.data + dst_idx, nodata_pixel, bpp);
+                continue;
             }
 
             double s_n = sqrt(s_x * s_x + s_y * s_y + s_z * s_z);
@@ -241,11 +244,11 @@ ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* d
             if (col < 0.0 || col >= (double)(src_w - 1) ||
                 row < 0.0 || row >= (double)(src_h - 1)) {
                 err_bounds++;
+                if (nodata_pixel) memcpy(geo_image.data + dst_idx, nodata_pixel, bpp);
                 continue;
             }
 
             valid_pixels++;
-            size_t dst_idx = (oy * width + ox) * bpp;
 
             if (bpp == 1) {
                 // Vecino Más Cercano
