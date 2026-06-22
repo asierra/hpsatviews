@@ -212,6 +212,15 @@ Comentarios corregidos, falta traducir todos los logs.
 
 Sun Jun 14 08:32:03 PM CST 2026
 
-Error de inicialización de DataNC que se usa en processing, por localizar. La inicialización en load_nc_sf no fue suficiente.
+Error de inicialización de DataNC que se usa en processing, por
+localizar. La inicialización en load_nc_sf no fue suficiente.
 
+
+Sat Jun 20 08:56:46 PM CST 2026
+
+El error fue corregido el martes 16 con ayuda de oppus y sonnet. Ahora
+ya se producen todos los productos. Un error pendiente es que cuando
+hace la malla para la reproyección, rellena con 0 en lugar de nodata y
+digo que es un error porque poner cero es inventar información que no
+existe así que es preciso corregirlo antes de publicar.
 

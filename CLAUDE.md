@@ -26,14 +26,14 @@ Dependencies: `libnetcdf-dev`, `libpng-dev`, `libgdal-dev`, OpenMP-capable gcc.
 ## Tests
 
 ```bash
-# Run full test suite
-cd tests && ./run_all_tests.sh
+# Run full test suite (works from any directory; resolves repo root itself)
+tests/run_all_tests.sh
 
-# Run individual test
+# Run an individual test
 cd tests && ./test_rgb.sh
 ```
 
-Test scripts: `test_rgb.sh`, `test_pseudo.sh`, `test_clahe.sh`, `test_daynite.sh`, `test_rayleigh.sh`, `test_config.sh`. Sample data lives in `sample_data/` (GOES-16 ABI CONUS L2 CMI NetCDF files).
+These are end-to-end smoke/regression tests: each script runs `hpsv` on `sample_data/` and diffs the output against committed reference PNGs (e.g. `tests/truecolor_reference.png`) — not unit assertions. `run_all_tests.sh` aggregates per-suite pass/fail counts. Test scripts: `test_rgb.sh`, `test_pseudo.sh`, `test_clahe.sh`, `test_daynite.sh`, `test_rayleigh.sh`, `test_config.sh`. Sample `.nc` files in `sample_data/` are git-ignored; fetch them with `reproduction/download_sample.sh` (public NOAA S3, no credentials).
 
 ## Architecture
 
@@ -46,7 +46,15 @@ Entry point `src/main.c` dispatches to command handlers. Flow:
 3. **Apply corrections** → Rayleigh (`src/rayleigh.c`), gamma, CLAHE (`src/image.c`)
 4. **Normalize to 8-bit** → `src/gray.c` or `src/truecolor.c`
 5. **Optional reproject** → `src/reprojection.c`: Fixed grid to geographic (lat/lon equirectangular)
-6. **Write output** → `src/writer_png.c` or `src/writer_geotiff.c`, plus JSON sidecar via `src/metadata.c`
+6. **Write output** → `src/writer_png.c` or `src/writer_geotiff.c` (auto-selected by `-o` extension or `-t`), plus optional JSON sidecar via `src/metadata.c`
+
+### CLI Invocation & Output
+
+Invocation is `hpsv <gray|pseudocolor|rgb> <anchor.nc> [options]` — the anchor file drives scene/channel inference (see Filename Inference). Flags are registered in `src/main.c` (`ap_add_*`) and consumed into `ProcessConfig` in `src/config.c`. Non-obvious behaviors worth knowing:
+
+- **JSON sidecar is opt-in**, gated on `-j`/`--json` (`save_sidecar_json()` in `src/main.c` early-returns otherwise). Note: README §4.7 currently describes it as automatic — the code is authoritative.
+- `-G`/`--geographics` reprojects fixed-grid → lat/lon equirectangular; `-B`/`--both` emits the fixed-grid **and** geographic outputs in a single run.
+- `-o` accepts `{...}` filename tokens (`{SAT}`, `{TS}`, `{CH}`, `{PROD}`, etc.) expanded from metadata; with no `-o`, a deterministic name is generated from the anchor.
 
 ### Core Types
 
@@ -98,8 +106,9 @@ Both apply cloud relaxation: correction fades to zero when C02 reflectance excee
 - Validate GeoTIFF output: `tests/valida_geotiff.py`
 - Active TODO: `docs/TODO.txt`
 
-## Contexto técnico
-- Proyecto en C con paralelización OpenMP
-- Compilador: gcc con flags -fopenmp
-- Patrones usados: parallel for, reduction, critical sections
-- Problema actual: posibles race conditions en variables compartidas
+## Gotchas
+
+- **Channel arrays are 1-indexed**: `RgbContext.channels[17]` uses indices 1–16 (C01–C16); index `[0]` is unused. Don't iterate from 0.
+- **Reprojection gap fill**: the reprojection grid currently fills out-of-data cells with `0` instead of the nodata value (tracked in `docs/TODO.txt`) — a known correctness item, relevant before relying on geographic output quantitatively.
+- **Help text is compile-time selected**: `HPSV_LANG=es` defines `-DHPSV_LANG_ES`, switching `include/help_en.h` ↔ `include/help_es.h`. Keep both in sync when changing CLI help.
+- `.github/copilot-instructions.md` predates some flags (e.g. it lists a `-r` reproject flag and an always-on JSON) — prefer this file and the code when they disagree.
