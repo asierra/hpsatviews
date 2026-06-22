@@ -16,8 +16,12 @@
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
 
+// Bare version number, e.g. "1.0.0".
+#define HPSV_VERSION \
+    STR(HPSV_VERSION_MAJOR) "." STR(HPSV_VERSION_MINOR) "." STR(HPSV_VERSION_PATCH)
+
 // Full version banner string, e.g. "High Performance Satellite Views (hpsv) 1.0.0".
 #define HPSV_VERSION_STRING \
-    "High Performance Satellite Views (hpsv) " STR(HPSV_VERSION_MAJOR) "." STR(HPSV_VERSION_MINOR) "." STR(HPSV_VERSION_PATCH)
+    "High Performance Satellite Views (hpsv) " HPSV_VERSION
 
 #endif /* HPSATVIEWS_VERSION_H_ */

@@ -68,10 +68,10 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     // Register basic parameters in metadata.
     metadata_set_command(meta, cfg->command);
     if (fabsf(cfg->gamma[0] - 1.0f) > 1e-6f) metadata_add(meta, "gamma", cfg->gamma[0]);
-    if (cfg->apply_clahe) metadata_add(meta, "clahe", true);
-    if (cfg->apply_histogram) metadata_add(meta, "histogram", true);
-    if (cfg->invert_values) metadata_add(meta, "invert", true);
-    if (cfg->do_reprojection && !cfg->save_both) metadata_add(meta, "geographics", true);
+    if (cfg->apply_clahe) metadata_add_bool(meta, "clahe", true);
+    if (cfg->apply_histogram) metadata_add_bool(meta, "histogram", true);
+    if (cfg->invert_values) metadata_add_bool(meta, "invert", true);
+    if (cfg->do_reprojection && !cfg->save_both) metadata_add_bool(meta, "geographics", true);
     if (cfg->scale != 1) metadata_add(meta, "scale", cfg->scale);
     
     // --- Modo pseudocolor: cargar paleta ---

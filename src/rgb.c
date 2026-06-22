@@ -794,11 +794,11 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
             metadata_add(meta, "gamma", (const char*)gamma_str);
         }
     }
-    if (ctx.opts.apply_clahe) metadata_add(meta, "clahe", true);
-    if (ctx.opts.apply_rayleigh) metadata_add(meta, "rayleigh", true);
-    if (ctx.opts.apply_histogram) metadata_add(meta, "histogram", true);
-    if (ctx.opts.use_piecewise_stretch) metadata_add(meta, "stretch", true);
-    if (ctx.opts.do_reprojection && !ctx.opts.save_both) metadata_add(meta, "geographics", true);
+    if (ctx.opts.apply_clahe) metadata_add_bool(meta, "clahe", true);
+    if (ctx.opts.apply_rayleigh) metadata_add_bool(meta, "rayleigh", true);
+    if (ctx.opts.apply_histogram) metadata_add_bool(meta, "histogram", true);
+    if (ctx.opts.use_piecewise_stretch) metadata_add_bool(meta, "stretch", true);
+    if (ctx.opts.do_reprojection && !ctx.opts.save_both) metadata_add_bool(meta, "geographics", true);
     if (ctx.opts.has_clip)
         metadata_set_clip(meta, true);
 

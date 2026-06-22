@@ -57,7 +57,57 @@ minuto, segundo).
 
 ---
 
-## 3. Uso básico
+## 3. Instalación
+
+### 3.1 Obtener el código
+
+```bash
+git clone https://github.com/asierra/hpsatviews.git
+cd hpsatviews
+```
+
+### 3.2 Dependencias
+
+* Compilador C compatible con C11 (gcc recomendado, con soporte OpenMP)
+* Bibliotecas:
+  - **libnetcdf-dev** - Lectura de archivos NetCDF GOES L1b/L2
+  - **libpng-dev** - Generación de imágenes PNG
+  - **libgdal-dev** - Generación de imágenes COG (Cloud Optimized GeoTIFF)
+  - **libm** - Funciones matemáticas
+  - **OpenMP** - Paralelismo
+
+En Debian/Ubuntu:
+
+```bash
+sudo apt install build-essential libnetcdf-dev libpng-dev libgdal-dev
+```
+
+### 3.3 Compilar e instalar
+
+```bash
+# Build de producción (HPC: -O3 -march=native)
+make
+
+# Build de depuración (binario bin/hpsv_debug)
+make DEBUG=1
+
+# Build con textos de ayuda en español
+make HPSV_LANG=es
+
+# Instalación a nivel de sistema (binario + página de manual)
+sudo make install
+```
+
+### 3.4 Verificar
+
+```bash
+hpsv --version
+hpsv --help
+```
+
+---
+
+## 4. Uso básico
 
 *High Performance Satellite Views* se utiliza desde la línea de comandos con una sintaxis simple:
 
@@ -77,15 +127,15 @@ Genera una vista en escala de grises del canal C13.
 
 ---
 
-## 4. Uso avanzado
+## 5. Uso avanzado
 
-### 4.1 Comandos disponibles
+### 5.1 Comandos disponibles
 
 * `gray` – Vista en escala de grises de un canal individual o una combinación lineal de canales.
 * `pseudocolor` – Vista con mapa de colores de un canal individual o una combinación lineal de canales.
 * `rgb` – Composición RGB a partir de tres combinaciones lineales de múltiples canales.
 
-### 4.2 Opciones globales
+### 5.2 Opciones globales
 
 * `--help`
 
@@ -99,7 +149,7 @@ Genera una vista en escala de grises del canal C13.
   caribe,Caribe,-93.0476928458730,28.0613844882756,-56.01289145276628,5.12538896303195
 ```
 
-### 4.3 Opciones comunes
+### 5.3 Opciones comunes
 
 * `-a, --alpha`
   Añade un canal alfa para transparencia en regiones sin datos o fuera de un umbral específico.
@@ -203,7 +253,7 @@ Genera una vista en escala de grises del canal C13.
 * `-v, --verbose`
   Activa el modo verboso, mostrando información detallada del procesamiento.
 
-### 4.4 Opciones comando *gray*
+### 5.4 Opciones comando *gray*
 
 Genera una vista en escala de grises.
 
@@ -224,7 +274,7 @@ Genera una vista en escala de grises.
   Sin esta opción, cada imagen escala de forma independiente a su propio
   mínimo y máximo, impidiendo comparaciones visuales directas.
 
-### 4.5 Opciones comando *pseudocolor*
+### 5.5 Opciones comando *pseudocolor*
 
 Asocia un mapa de color a una vista en grises.
 
@@ -236,7 +286,7 @@ Asocia un mapa de color a una vista en grises.
   hpsv pseudocolor -p paleta.cpt archivo_GOES.nc
   ```
 
-### 4.6 Opciones comando *rgb*
+### 5.6 Opciones comando *rgb*
 
 Genera un compuesto RGB a partir de combinaciones lineales de varias bandas.
 
@@ -298,51 +348,61 @@ Rayleigh y realce de contraste.
 
 Para modo `custom` ver **Álgebra de bandas**.
 
-### 4.7 Archivo JSON sidecar
+### 5.7 Archivo JSON sidecar
 
-`hpsv` genera automáticamente un archivo JSON con metadatos del procesamiento junto a cada imagen de salida. Este archivo contiene información radiométrica, geoespacial y de procesamiento útil para trazabilidad y análisis posterior.
+`hpsv` puede escribir un archivo JSON con metadatos del procesamiento junto a la imagen de salida, útil para trazabilidad y para integraciones como `mapdrawer`.
 
-**Convención de nombres:**
-* Si la imagen es `salida.png`, el JSON será `salida.json`
-* El JSON se genera automáticamente, sin necesidad de opciones adicionales
+**Convención de nombres y activación:**
+* El JSON sidecar es opcional: se genera solo si se pasa `-j`/`--json`.
+* Si la imagen es `salida.png`, el JSON será `salida.json`.
 
-**Contenido del JSON:**
+**Contenido del JSON** (ejemplo real, `hpsv gray archivo_CMIP_C13.nc -j -G --clahe -g 1.3`):
 
 ```json
 {
   "tool": "hpsatviews",
-  "version": "1.0",
-  "command": "rgb",
+  "version": "1.0.0",
   "satellite": "G16",
   "sector": "conus",
-  "timestamp": "2024-08-07T18:01:17Z",
-  "product": "True Color RGB (natural)",
-  "crs": "GEOGCS[...]",
-  "bounds": [-110.5, 30.0, -90.0, 15.0],
-  "channels": ["C01", "C02", "C03"],
-  "processing": {
-    "gamma": "1.8;1.5;1.2",
-    "clahe_applied": true,
-    "rayleigh_corrected": true
-  },
+  "timestamp": "2024-08-07T13:02:36Z",
+  "product": "CMIP",
+  "command": "gray",
+  "crs": "EPSG:4326",
+  "bounds": [-151.654, 14.571, -52.947, 56.640],
   "geometry": {
-    "projection": "geographics",
-    "bounds": [-110.5, 15.0, -90.0, 30.0]
+    "projection": "EPSG:4326",
+    "bbox": [-151.654, 14.571, -52.947, 56.640]
   },
-  "output": {
-    "filename": "salida.png",
-    "width": 2000,
-    "height": 1500
+  "channels": [
+    {
+      "name": "C13",
+      "quantity": "brightness_temperature",
+      "min": 191.633,
+      "max": 301.757,
+      "unit": "K"
+    }
+  ],
+  "enhancements": {
+    "gamma": 1.3,
+    "clahe": true,
+    "geographics": true,
+    "output_file": "salida.png",
+    "output_width": 5476,
+    "output_height": 2334
   }
 }
 ```
 
-**Casos de uso:**
-* **Reproducibilidad:** Documentación exacta de parámetros usados
-* **Integración:** Automatización de flujos de visualización (ej. mapdrawer)
-* **Trazabilidad:** Auditoría de procesamiento para publicaciones científicas
+* `crs` refleja la proyección real de la salida: `EPSG:4326` si se reproyectó con `-G`/`--both`, `goes16`/`goes17`/`goes18`/`goes19` (o `geostationary`) en la rejilla nativa del satélite, o el valor por omisión `geographics` cuando no se calculó geometría (PNG plano sin `--clip`, GeoTIFF ni reproyección). `bounds`/`geometry.bbox` solo aparecen cuando sí se calculó geometría, y son redundantes entre sí (mismo recuadro en dos formas).
+* `product` solo aparece para productos L2 (CMIP, ACHA, ACHT, ACTP, CTP, LST, SST); los archivos L1b (radiancia) no lo incluyen porque no tienen una identidad de "producto" distinta del canal.
+* `enhancements` agrega una clave por cada opción de procesamiento efectivamente aplicada (entre otras: `gamma`, `clahe`, `histogram`, `invert`, `rayleigh`/`stretch` en modo `rgb`, `scale`, `palette`, `expression`, `geographics`), además de `output_file`/`output_width`/`output_height`. Las opciones no usadas simplemente no aparecen.
 
-### 4.8 Convenciones de salida
+**Casos de uso:**
+* **Reproducibilidad:** documentación exacta de los parámetros de realce aplicados (gamma, CLAHE, Rayleigh, etc.) y del producto/canal de origen.
+* **Integración:** automatización de flujos de visualización (ej. `mapdrawer`), que consume `crs`/`bounds`/`product` para ubicar y clasificar cada imagen.
+* **Trazabilidad:** identificar satélite, sector, canal(es), producto y proyección que generaron cada imagen.
+
+### 5.8 Convenciones de salida
 
 Si no se especifica la opción `-o` o `--out`, se genera un nombre determinista basado en los metadatos del archivo "ancla", las bandas y las operaciones aplicadas:
 
@@ -355,7 +415,7 @@ Ejemplo:
   # → hpsv_G16_conus_2024219_0300_gray_C13.json (metadatos)
   ```
   
-### 4.9 Álgebra de bandas y composiciones personalizadas
+### 5.9 Álgebra de bandas y composiciones personalizadas
 
 `hpsv` permite definir combinaciones lineales de bandas al vuelo para generar composiciones RGB o imágenes monocanal complejas sin necesidad de generar archivos intermedios.
 
@@ -387,13 +447,13 @@ hpsv rgb archivo_ancla.nc \
 
 ---
 
-## 5. Detalles técnicos
+## 6. Detalles técnicos
 
-### 5.1 Geometría y geolocalización
+### 6.1 Geometría y geolocalización
 
 La generación de vistas se apoya en formulaciones geométricas rigurosas. El sistema implementa reproyección directa desde proyección geoestacionaria a malla lat/lon uniforme (WGS84), con manejo de huecos e inferencia automática de dominios fuera del disco visible. El recorte geográfico se optimiza cuando es posible, realizándolo antes de la reproyección.
 
-### 5.2 Corrección atmosférica (Rayleigh)
+### 6.2 Corrección atmosférica (Rayleigh)
 
 HPSATVIEWS incorpora corrección de dispersión de Rayleigh para canales
 visibles, mejorando la fidelidad visual de escenas diurnas al remover la
@@ -421,11 +481,11 @@ La corrección se reduce linealmente hasta anularse cuando la
 reflectancia alcanza 1.0, evitando sobre-corrección en nubes y
 superficies altamente reflectivas.
 
-### 5.3 CLAHE
+### 6.3 CLAHE
 
 El sistema incluye ecualización adaptativa de histograma con control de contraste local (CLAHE) para mejorar la interpretabilidad visual en escenas con variaciones espaciales pronunciadas de contraste.
 
-### 5.4 Composición True Color
+### 6.4 Composición True Color
 
 El modo `truecolor` genera una imagen de color natural a partir de tres
 canales ABI: C01 (0.47 µm, azul), C02 (0.64 µm, rojo) y C03
@@ -443,21 +503,9 @@ selectivamente los tonos oscuros y comprime los claros, mejorando la
 diferenciación tonal en escenas con rango dinámico comprimido. La curva
 es equivalente a la utilizada por geo2grid.
 
-### 5.5 Rendimiento
+### 6.5 Rendimiento
 
 Implementado en C11 (ISO/IEC 9899:2011) con paralelización mediante OpenMP, HPSATVIEWS prioriza el alto rendimiento, el uso eficiente de memoria y la escalabilidad en sistemas multi-núcleo.
-
----
-
-## 6. Requisitos
-
-* Compilador C compatible con C11
-* Bibliotecas:
-  - **libnetcdf-dev** - Lectura de archivos NetCDF GOES L1b
-  - **libpng-dev** - Generación de imágenes PNG
-  - **libgdal-dev** - Generación de imágenes COG (Cloud Optimized GeoTIFF)
-  - **libm** - Funciones matemáticas
-  - **OpenMP** - Paralelismo.
 
 ---
 

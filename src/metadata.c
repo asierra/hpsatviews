@@ -13,6 +13,7 @@
 #include "writer_json.h"
 #include "datanc.h"
 #include "logger.h"
+#include "version.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -387,7 +388,7 @@ int metadata_save_json(MetadataContext *ctx, const char *filename) {
 
     // Campos requeridos del schema
     json_write(w, "tool", ctx->tool[0] ? ctx->tool : "hpsatviews");
-    json_write(w, "version", "2.0");
+    json_write(w, "version", HPSV_VERSION);
     if (ctx->satellite) json_write(w, "satellite", ctx->satellite);
     if (ctx->sector && ctx->sector[0]) json_write(w, "sector", ctx->sector);
     if (ctx->time_iso[0]) json_write(w, "timestamp", ctx->time_iso);

@@ -52,7 +52,7 @@ Entry point `src/main.c` dispatches to command handlers. Flow:
 
 Invocation is `hpsv <gray|pseudocolor|rgb> <anchor.nc> [options]` — the anchor file drives scene/channel inference (see Filename Inference). Flags are registered in `src/main.c` (`ap_add_*`) and consumed into `ProcessConfig` in `src/config.c`. Non-obvious behaviors worth knowing:
 
-- **JSON sidecar is opt-in**, gated on `-j`/`--json` (`save_sidecar_json()` in `src/main.c` early-returns otherwise). Note: README §4.7 currently describes it as automatic — the code is authoritative.
+- **JSON sidecar is opt-in**, gated on `-j`/`--json` (`save_sidecar_json()` in `src/main.c` early-returns otherwise).
 - `-G`/`--geographics` reprojects fixed-grid → lat/lon equirectangular; `-B`/`--both` emits the fixed-grid **and** geographic outputs in a single run.
 - `-o` accepts `{...}` filename tokens (`{SAT}`, `{TS}`, `{CH}`, `{PROD}`, etc.) expanded from metadata; with no `-o`, a deterministic name is generated from the anchor.
 
