@@ -10,23 +10,19 @@
 
 #include "image.h"
 
-// Value, R, G, B, Alpha
+/// Palette entry.
 typedef struct {
-    double d;
-    float r, g, b, a;
+  double d;         ///< Value
+  float r, g, b, a; ///< Red, Green, Blue, Alpha
 } PaletteData;
 
-
-//  Meteorological palette for surface and high clouds
-//  Temp K,        Color,         Transparency
-//  254 - 340, White - Black, Opaque - Transparent
-//  170 - 253, Rainbow, Opaque
+/// Meteorological palette for surface and high clouds.
 extern PaletteData atmosrainbow[];
 
-ColorArray* atmosrainbow_to_color_array();
+/// Converts the meteorological palette to a ColorArray.
+ColorArray *atmosrainbow_to_color_array();
 
-// Typical rainbow Blue-to-Red
+/// Creates a typical blue-to-red rainbow palette.
 ColorArray *create_rainbow_color_array(unsigned int size);
 
 #endif /* HPSATVIEWS_PALETA_H_ */
-

@@ -11,10 +11,10 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-// 8-bit raster buffer for grayscale or RGB imagery.
+/// 8-bit raster buffer for grayscale or RGB imagery.
 typedef struct {
   unsigned int width, height;
-  unsigned int bpp; // Bytes per pixel: 1 = gray, 2 = gray+a, 3 = rgb, 4 = rgba
+  unsigned int bpp; ///< Bytes per pixel: 1 = gray, 2 = gray+a, 3 = rgb, 4 = rgba
   unsigned char *data;
 } ImageData;
 
@@ -44,42 +44,46 @@ static inline void color_array_destroy(ColorArray *array) {
     free(array);
 }
 
-// Allocates an ImageData buffer. bpp: 1=gray, 2=gray+alpha, 3=RGB, 4=RGBA. data is NULL on failure.
+/// Allocates an ImageData buffer.
 ImageData image_create(unsigned int width, unsigned int height, unsigned int bpp);
 
+/// Frees an ImageData buffer.
 void image_destroy(ImageData *image);
 
+/// Creates a deep copy of an ImageData buffer.
 ImageData copy_image(ImageData orig);
 
-// Extracts a rectangular subimage (pixel window crop).
+/// Extracts a rectangular subimage.
 ImageData image_crop(const ImageData* src, unsigned int x, unsigned int y, unsigned int width, unsigned int height);
 
-// Alpha-blends fg over bg using a grayscale mask (both must be RGB, same size).
+/// Alpha-blends fg over bg using a grayscale mask.
 ImageData blend_images(ImageData bg, ImageData fg, ImageData mask);
 
-// Global histogram equalization.
+/// Global histogram equalization.
 void image_apply_histogram(ImageData im);
 
 /**
- * @brief CLAHE (Contrast Limited Adaptive Histogram Equalization), in-place.
- * @param tiles_x, tiles_y  Grid of contextual regions (typically 8×8).
- * @param clip_limit        Redistribution threshold (2.0–4.0 typical).
+ * CLAHE (Contrast Limited Adaptive Histogram Equalization), in-place.
+ * 
+ * @param tiles_x Grid of contextual regions (typically 8×8).
+ * @param tiles_y Grid of contextual regions (typically 8×8).
+ * @param clip_limit Redistribution threshold (2.0–4.0 typical).
  */
 void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit);
 
-// Bilinear interpolation upsampling by integer factor.
+/// Bilinear interpolation upsampling by integer factor.
 ImageData image_upsample_bilinear(const ImageData* src, int factor);
 
-// Box-filter (averaging) downsampling by integer factor.
+/// Box-filter (averaging) downsampling by integer factor.
 ImageData image_downsample_boxfilter(const ImageData* src, int factor);
 
-// Generates a single-channel validity mask from a DataF (255 = valid, 0 = fill).
+/// Generates a single-channel validity mask from a DataF.
 ImageData image_create_alpha_mask_from_dataf(const void* data);
 
-// Appends an alpha channel using a mask image (bpp 1→2 or 3→4).
+/// Appends an alpha channel using a mask image.
 ImageData image_add_alpha_channel(const ImageData* src, const ImageData* alpha_mask);
 
-// Maps an indexed (bpp=1) or indexed+alpha (bpp=2) image to RGB/RGBA via a color palette.
+/// Maps an indexed or indexed+alpha image to RGB/RGBA via a color palette.
 ImageData image_expand_palette(const ImageData* src, const ColorArray* palette);
 
 #endif /* HPSATVIEWS_IMAGE_H_ */

@@ -11,9 +11,7 @@
 #include "image.h"
 #include "datanc.h"
 
-// Generates a nighttime pseudocolor image from ABI C13 brightness temperature (K).
-// Maps temperatures to a meteorological color palette; blends with fondo (city-lights)
-// background if non-NULL.
+/// Generates a nighttime pseudocolor image from ABI C13 brightness temperature, optionally blended with city lights.
 ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* fondo);
 
 #endif /* HPSATVIEWS_NOCTURNAL_PSEUDOCOLOR_H_ */

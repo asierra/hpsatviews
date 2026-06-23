@@ -12,24 +12,21 @@
 #include "image.h"
 #include <stdbool.h>
 
-// Computes the synthetic green channel using the CIMSS formula:
-// Green = 0.45*Red + 0.10*NIR + 0.45*Blue
+/// Computes the synthetic green channel using the CIMSS formula.
 DataF create_truecolor_synthetic_green(const DataF *c_blue, const DataF *c_red, const DataF *c_nir);
 
-// Packs three float grids (R, G, B) into an 8-bit RGB image using per-channel linear stretch.
+/// Packs three float grids (R, G, B) into an 8-bit RGB image using per-channel linear stretch.
 ImageData create_multiband_rgb(const DataF* r_ch, const DataF* g_ch, const DataF* b_ch,
                                float r_min, float r_max, float g_min, float g_max,
                                float b_min, float b_max);
 
-// Applies solar zenith angle correction in-place: reflectance /= cos(SZA).
+/// Applies solar zenith angle correction in-place.
 void apply_solar_zenith_correction(DataF *data, const DataF *sza);
 
-// Applies a piecewise linear contrast stretch in-place to match Geo2grid/Satpy output.
+/// Applies a piecewise linear contrast stretch in-place to match Geo2grid/Satpy output.
 void apply_piecewise_stretch(DataF *band);
 
-// Builds a sharpening ratio map from a reference channel (typically C02 red).
-// ratio = channel / mean_2x2(channel), clamped to [0, 1.5]; invalid pixels → 1.0.
-// Multiply the ratio map onto other channels to transfer sub-pixel contrast.
+/// Builds a sharpening ratio map from a reference channel.
 DataF dataf_ratio_sharpen_map(const DataF *channel);
 
 #endif // HPSATVIEWS_TRUECOLOR_H

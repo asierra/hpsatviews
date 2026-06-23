@@ -10,13 +10,10 @@
 
 #include "image.h"
 
-// Writes an RGB/grayscale ImageData (bpp 1, 2, 3, or 4) to a PNG file.
-// Returns 0 on success, 1 on error.
+/// Writes an RGB/grayscale ImageData to a PNG file.
 int writer_save_png(const char *filename, const ImageData *image);
 
-// Writes a palette-indexed ImageData to PNG.
-// bpp=1: index-only; bpp=2: [index, alpha] per pixel (generates tRNS chunk).
-// Returns 0 on success, 1 on error.
+/// Writes a palette-indexed ImageData to PNG.
 int writer_save_png_palette(const char *filename, const ImageData *image, const ColorArray *palette);
 
 #endif /* HPSATVIEWS_WRITER_PNG_H_ */

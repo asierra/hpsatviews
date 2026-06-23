@@ -13,21 +13,17 @@
 #include "datanc.h"
 #include "reader_cpt.h"
 
-// Physical range and palette size for pseudocolor outputs.
-// Pass NULL to omit colormap metadata tags from the GeoTIFF.
+/// Physical range and palette size for pseudocolor outputs.
 typedef struct {
     float       val_min;
     float       val_max;
     int         num_colors;
-    const char *units;     // borrowed pointer; NULL omits colormap_units
-    bool        has_nodata; // if true, nodata_index is tagged via GDALSetRasterNoDataValue
+    const char *units;      ///< NULL omits colormap_units
+    bool        has_nodata; ///< If true, nodata_index is tagged
     int         nodata_index;
 } ColormapMeta;
 
-// Writes a 3-band RGB image to GeoTIFF.
-// offset_x/y: pixel offset from the native grid origin (for clipped outputs).
-// product: optional descriptive tag written to file metadata; NULL to omit.
-// Returns 0 on success, -1 on error.
+/// Writes a 3-band RGB image to GeoTIFF.
 int write_geotiff_rgb(const char* filename,
                       const ImageData* img,
                       const DataNC* meta,
@@ -35,9 +31,7 @@ int write_geotiff_rgb(const char* filename,
                       int offset_y,
                       const char* product);
 
-// Writes a single-band grayscale image to GeoTIFF.
-// product: optional descriptive tag written to file metadata; NULL to omit.
-// Returns 0 on success.
+/// Writes a single-band grayscale image to GeoTIFF.
 int write_geotiff_gray(const char* filename,
                        const ImageData* img,
                        const DataNC* meta,
@@ -45,10 +39,7 @@ int write_geotiff_gray(const char* filename,
                        int offset_y,
                        const char* product);
 
-// Writes a palette-indexed image to GeoTIFF with embedded color table.
-// cm: optional colormap metadata; NULL to omit colormap_* tags.
-// product: optional descriptive tag written to file metadata; NULL to omit.
-// Returns 0 on success, -1 on error.
+/// Writes a palette-indexed image to GeoTIFF with embedded color table.
 int write_geotiff_indexed(const char* filename,
                           const ImageData* img,
                           const ColorArray* palette,

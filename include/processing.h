@@ -12,8 +12,7 @@
 #include "config.h"
 #include "metadata.h"
 
-// Runs the single-channel processing pipeline (gray or pseudocolor).
-// Uses immutable ProcessConfig for input and MetadataContext for output.
+/// Runs the single-channel processing pipeline.
 int run_processing(const ProcessConfig *cfg, MetadataContext *meta);
 
 #endif /* HPSATVIEWS_PROCESSING_H_ */
