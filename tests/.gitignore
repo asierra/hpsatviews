@@ -1,0 +1,4 @@
+# El .gitignore raíz excluye *.png y *.tif (salidas generadas por los tests).
+# Mantener versionadas las referencias para comparación con tolerancia.
+!expected_output/*.png
+!expected_output/*.tif

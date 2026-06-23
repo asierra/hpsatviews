@@ -196,7 +196,7 @@ static bool compose_night(RgbContext *ctx) {
 static bool compose_ash(RgbContext *ctx) {
     ctx->comp_r = dataf_op_dataf(&ctx->channels[15].fdata, &ctx->channels[13].fdata, OP_SUB);
     ctx->comp_g = dataf_op_dataf(&ctx->channels[14].fdata, &ctx->channels[11].fdata, OP_SUB);
-    ctx->comp_b = ctx->channels[13].fdata;
+    ctx->comp_b = dataf_copy(&ctx->channels[13].fdata);
     ctx->min_r = -6.7f;
     ctx->max_r = 2.6f;
     ctx->min_g = -6.0f;
@@ -235,7 +235,7 @@ static bool compose_airmass(RgbContext *ctx) {
 static bool compose_so2(RgbContext *ctx) {
     ctx->comp_r = dataf_op_dataf(&ctx->channels[9].fdata, &ctx->channels[10].fdata, OP_SUB);
     ctx->comp_g = dataf_op_dataf(&ctx->channels[13].fdata, &ctx->channels[11].fdata, OP_SUB);
-    ctx->comp_b = ctx->channels[13].fdata;
+    ctx->comp_b = dataf_copy(&ctx->channels[13].fdata);
     ctx->min_r = -4.0f;
     ctx->max_r = 2.0f;
     ctx->min_g = -4.0f;

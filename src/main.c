@@ -216,6 +216,7 @@ int main(int argc, char *argv[]) {
         puts(HPSV_VERSION_STRING);
     }
 
+    int exit_code = ap_get_cmd_exit_code(parser);
     ap_free(parser);
-    return 0;
+    return exit_code;
 }

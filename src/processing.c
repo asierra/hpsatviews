@@ -48,8 +48,8 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     
     LOG_INFO("Procesando: %s", cfg->input_file);
     
-    int status = -1;
-    bool is_pseudocolor = (cfg->palette_file != NULL);
+    int status = 1;
+    bool is_pseudocolor = (cfg->command && strcmp(cfg->command, "pseudocolor") == 0);
     CPTData* cptdata = NULL;
     ColorArray *color_array = NULL;
     DataNC c01 = {0}, channels[17] = {0};
@@ -78,30 +78,42 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     ColormapMeta colormap_meta = {0};
 
     if (is_pseudocolor) {
-        metadata_add(meta, "palette", cfg->palette_file);
-        cptdata = read_cpt_file(cfg->palette_file);
-        if (cptdata) {
-            color_array = cpt_to_color_array(cptdata);
-            colormap_meta.val_min    = cptdata->entries[0].value;
-            colormap_meta.val_max    = cptdata->entries[cptdata->entry_count - 1].value;
-            colormap_meta.num_colors = cptdata->is_discrete ? (int)cptdata->entry_count : 256;
-            colormap_meta.units      = cptdata->units[0] ? cptdata->units : NULL;
-            if (cptdata->has_nan_color) {
-                // Mismo índice reservado que create_single_gray() usa para NonData.
-                colormap_meta.has_nodata   = true;
-                colormap_meta.nodata_index = (int)cptdata->num_colors - 1;
-            }
-            char *cpt_dup = strdup(cfg->palette_file);
-            if (cpt_dup) {
-                char *base = basename(cpt_dup);
-                char *ext = strrchr(base, '.');
-                if (ext) *ext = '\0';
-                palette_name = strdup(base);
-                free(cpt_dup);
+        if (cfg->palette_file) {
+            metadata_add(meta, "palette", cfg->palette_file);
+            cptdata = read_cpt_file(cfg->palette_file);
+            if (cptdata) {
+                color_array = cpt_to_color_array(cptdata);
+                colormap_meta.val_min    = cptdata->entries[0].value;
+                colormap_meta.val_max    = cptdata->entries[cptdata->entry_count - 1].value;
+                colormap_meta.num_colors = cptdata->is_discrete ? (int)cptdata->entry_count : 256;
+                colormap_meta.units      = cptdata->units[0] ? cptdata->units : NULL;
+                if (cptdata->has_nan_color) {
+                    // Mismo índice reservado que create_single_gray() usa para NonData.
+                    colormap_meta.has_nodata   = true;
+                    colormap_meta.nodata_index = (int)cptdata->num_colors - 1;
+                }
+                char *cpt_dup = strdup(cfg->palette_file);
+                if (cpt_dup) {
+                    char *base = basename(cpt_dup);
+                    char *ext = strrchr(base, '.');
+                    if (ext) *ext = '\0';
+                    palette_name = strdup(base);
+                    free(cpt_dup);
+                }
+            } else {
+                LOG_ERROR("No se pudo cargar el archivo de paleta: %s", cfg->palette_file);
+                goto cleanup;
             }
         } else {
-            LOG_ERROR("No se pudo cargar el archivo de paleta: %s", cfg->palette_file);
-            goto cleanup;
+            // Sin -p: paleta interna por defecto (rainbow).
+            metadata_add(meta, "palette", "rainbow");
+            color_array = create_rainbow_color_array(256);
+            if (!color_array) {
+                LOG_ERROR("No se pudo crear la paleta interna por defecto");
+                goto cleanup;
+            }
+            colormap_meta.num_colors = 256;
+            palette_name = strdup("rainbow");
         }
     }
     
@@ -302,6 +314,11 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     }
 
 	// Crear imagen inicial intacta
+    if (is_pseudocolor && !cptdata) {
+        // Paleta interna: el rango mostrado es el auto-escalado de los datos, no uno calibrado.
+        colormap_meta.val_min = minmax[0];
+        colormap_meta.val_max = minmax[1];
+    }
     if (c01.is_float) {
         final_image = create_single_gray(c01.fdata, cfg->invert_values, cfg->use_alpha, minmax[0], minmax[1], is_pseudocolor ? cptdata : NULL);
     } else {

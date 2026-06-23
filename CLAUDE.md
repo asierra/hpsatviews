@@ -33,7 +33,7 @@ tests/run_all_tests.sh
 cd tests && ./test_rgb.sh
 ```
 
-These are end-to-end smoke/regression tests: each script runs `hpsv` on `sample_data/` and diffs the output against committed reference PNGs (e.g. `tests/truecolor_reference.png`) — not unit assertions. `run_all_tests.sh` aggregates per-suite pass/fail counts. Test scripts: `test_rgb.sh`, `test_pseudo.sh`, `test_clahe.sh`, `test_daynite.sh`, `test_rayleigh.sh`, `test_config.sh`. Sample `.nc` files in `sample_data/` are git-ignored; fetch them with `reproduction/download_sample.sh` (public NOAA S3, no credentials).
+These are end-to-end regression tests: each script runs `hpsv` on `sample_data/` and most also verify output content with `tests/compare_image.sh`, a tolerant pixel diff (ImageMagick `compare -metric AE -fuzz 2%`, default 1% of pixels allowed to differ) against reference PNGs/GeoTIFFs committed under `tests/expected_output/` (excepted from the root `*.png`/`*.tif` gitignore rules via `tests/.gitignore`). For `.tif`/`.tiff` inputs, `compare_image.sh` forces page `[0]` on both operands (COG outputs embed overview pyramids as extra TIFF pages that otherwise confuse `compare`/`identify`) and strips libtiff "Unknown field with tag..." warnings (unrecognized GeoTIFF private tags) before parsing the AE value. `run_all_tests.sh` aggregates per-suite pass/fail counts. Test scripts: `test_rgb.sh` (exact pixel diff only for `truecolor`; `night`/`ash`/`daynite` and both Rayleigh variants get a lightweight `check_nonblank` — ImageMagick `identify -format "%[standard-deviation]"` must be `>0` — since maintaining an exact reference per mode isn't worth it, but a blank/degenerate output should still fail; `airmass`/`severestorm`/`so2` aren't exercised because their channels, C05/C07–C10/C12, aren't in `sample_data/`), `test_pseudo.sh`, `test_clahe.sh`, `test_geotiff.sh` (pixel diff + GDAL metadata via `strings | grep`, since `GDALSetMetadataItem()` embeds metadata as readable XML inside the TIFF — no GDAL CLI tools needed), `test_reprojection.sh` (`-G`; also checks a corner pixel directly to catch the nodata-fill regression — see Gotchas), `test_json.sh` (sidecar key/value checks via `grep`, including that `version` matches `include/version.h`), `test_config.sh` (parser-only: most cases append `--help`, so it checks flag acceptance, not pipeline behavior). Requires ImageMagick (`compare`, `identify`) for the content-verification steps. Sample `.nc` files in `sample_data/` are git-ignored; fetch them with `reproduction/download_sample.sh` (public NOAA S3, no credentials).
 
 ## Architecture
 
@@ -55,6 +55,7 @@ Invocation is `hpsv <gray|pseudocolor|rgb> <anchor.nc> [options]` — the anchor
 - **JSON sidecar is opt-in**, gated on `-j`/`--json` (`save_sidecar_json()` in `src/main.c` early-returns otherwise).
 - `-G`/`--geographics` reprojects fixed-grid → lat/lon equirectangular; `-B`/`--both` emits the fixed-grid **and** geographic outputs in a single run.
 - `-o` accepts `{...}` filename tokens (`{SAT}`, `{TS}`, `{CH}`, `{PROD}`, etc.) expanded from metadata; with no `-o`, a deterministic name is generated from the anchor.
+- **`pseudocolor` without `-p`** uses the internal `rainbow` palette (`create_rainbow_color_array()` in `src/palette.c`, 256 colors, generic blue-to-red) auto-scaled to the data's actual min/max — it does not fall back to plain grayscale.
 
 ### Core Types
 
@@ -102,13 +103,14 @@ Both apply cloud relaxation: correction fades to zero when C02 reflectance excee
 ## Debugging
 
 - Inspect NetCDF file structure: `ncdump -h file.nc`
-- Compare output against geo2grid/GDAL reference: `tests/compara_gdal.sh`
-- Validate GeoTIFF output: `tests/valida_geotiff.py`
+- Inspect GeoTIFF GDAL metadata without GDAL CLI tools: `strings file.tif | grep -A0 'Item name'`
 - Active TODO: `docs/TODO.txt`
 
 ## Gotchas
 
 - **Channel arrays are 1-indexed**: `RgbContext.channels[17]` uses indices 1–16 (C01–C16); index `[0]` is unused. Don't iterate from 0.
-- **Reprojection gap fill**: the reprojection grid currently fills out-of-data cells with `0` instead of the nodata value (tracked in `docs/TODO.txt`) — a known correctness item, relevant before relying on geographic output quantitatively.
+- **Don't alias `ctx->comp_{r,g,b}` to a `channels[N].fdata` struct directly** (e.g. `ctx->comp_b = ctx->channels[13].fdata;`): `DataF` copies by value but its heap buffer doesn't, so the alias and the original share one buffer. `rgb_context_destroy()` unconditionally frees both `channels[1..16]` *and* `comp_r/g/b`, so an alias double-frees and segfaults on cleanup — found via `tests/test_rgb.sh`'s `ash` sanity check (`compose_ash`/`compose_so2` in `src/rgb.c` both did this; fixed with `dataf_copy()`, matching the pattern `compose_truecolor` already used). If a composer needs to reuse a channel verbatim as one of the three output planes, copy it.
+- **Reprojection gap fill**: corner/out-of-disk cells in the reprojection grid are filled with a nodata pattern (`-a`/`--alpha` → transparent; pseudocolor with a `.cpt` `N` color → that color), not real data. Pseudocolor without `--alpha` and without an `N` entry in the palette logs a `LOG_WARN` since out-of-disk cells can't be distinguished from real data in that case. Covered by `tests/test_reprojection.sh`.
+- **Command exit codes**: `args.c`'s `ap_parse()` invokes the active subcommand's callback and stores its return value in `parser->cmd_callback_exit_code`, retrievable via `ap_get_cmd_exit_code()` — but `ap_parse()` itself only returns a `bool` for *argument-parsing* success. `main()` must explicitly call `ap_get_cmd_exit_code()` after `ap_parse()` and return that; returning a hardcoded `0` (the bug prior to this fix) makes every runtime failure (bad file, bad palette, OOM, etc.) silently report success to the shell. Any code path in `run_processing()`/`run_rgb()` that adds a new `goto cleanup` must leave `status` at its non-zero initial value (`1`) on failure — don't reset it to 0 except on the success fallthrough.
 - **Help text is compile-time selected**: `HPSV_LANG=es` defines `-DHPSV_LANG_ES`, switching `include/help_en.h` ↔ `include/help_es.h`. Keep both in sync when changing CLI help.
 - `.github/copilot-instructions.md` predates some flags (e.g. it lists a `-r` reproject flag and an always-on JSON) — prefer this file and the code when they disagree.
