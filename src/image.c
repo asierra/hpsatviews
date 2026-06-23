@@ -14,11 +14,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Constructor for ImageData structure
 ImageData image_create(unsigned int width, unsigned int height, unsigned int bpp) {
     ImageData image;
 
-    // Initialize all fields
     image.width = width;
     image.height = height;
     image.bpp = bpp;
@@ -35,11 +33,9 @@ ImageData image_create(unsigned int width, unsigned int height, unsigned int bpp
     // Calculate total size needed
     size_t total_size = (size_t)width * height * bpp;
 
-    // Allocate memory with error checking
     if (total_size > 0) {
         image.data = malloc(total_size);
         if (image.data == NULL) {
-            // On allocation failure, reset all fields
             image.width = 0;
             image.height = 0;
             image.bpp = 0;
@@ -49,14 +45,12 @@ ImageData image_create(unsigned int width, unsigned int height, unsigned int bpp
     return image;
 }
 
-// Destructor for ImageData structure
 void image_destroy(ImageData *image) {
     if (image != NULL) {
         if (image->data != NULL) {
             free(image->data);
             image->data = NULL;
         }
-        // Reset all fields to safe values
         image->width = 0;
         image->height = 0;
         image->bpp = 0;
@@ -107,14 +101,13 @@ ImageData image_crop(const ImageData *src, unsigned int x, unsigned int y, unsig
     return cropped_img;
 }
 
-
 ImageData blend_images(ImageData bg, ImageData fg, ImageData mask) {
     if (bg.width != fg.width || bg.height != fg.height || bg.width != mask.width ||
         bg.height != mask.height) {
         LOG_ERROR("Las dimensiones de las imágenes y la máscara no coinciden.");
         return image_create(0, 0, 0);
     }
- 
+
     size_t size = bg.width * bg.height;
     ImageData imout = image_create(bg.width, bg.height, bg.bpp);
 
@@ -139,11 +132,9 @@ ImageData blend_images(ImageData bg, ImageData fg, ImageData mask) {
     return imout;
 }
 
-
 static inline float luminance_from_rgb(uint8_t R, uint8_t G, uint8_t B) {
-    return 0.2126f*R + 0.7152f*G + 0.0722f*B;
+    return 0.2126f * R + 0.7152f * G + 0.0722f * B;
 }
-
 
 // ============================================================================
 // Histogram Equalization (Global)
@@ -156,14 +147,16 @@ void image_apply_histogram(ImageData im) {
     for (unsigned int i = 0; i < 256; i++)
         histogram[i] = 0;
 
-#pragma omp parallel for reduction(+:histogram[:256])
+#pragma omp parallel for reduction(+ : histogram[ : 256])
     for (unsigned int y = 0; y < im.height; y++) {
         for (unsigned int x = 0; x < im.width; x++) {
             unsigned int i = y * im.width + x;
             unsigned int po = i * im.bpp;
             unsigned int q;
             if (im.bpp >= 3)
-                q = (unsigned int)(luminance_from_rgb(im.data[po],im.data[po + 1],im.data[po + 2])+0.5);
+                q = (unsigned int)(luminance_from_rgb(im.data[po], im.data[po + 1],
+                                                      im.data[po + 2]) +
+                                   0.5);
             else
                 q = im.data[po];
             histogram[q]++;
@@ -206,9 +199,9 @@ ImageData extract_luminance_rgb(const ImageData *rgb) {
     }
 
     size_t size = rgb->width * rgb->height;
-    #pragma omp parallel for
+#pragma omp parallel for
     for (size_t i = 0; i < size; i++) {
-		size_t po = i * rgb->bpp;
+        size_t po = i * rgb->bpp;
         uint8_t R = rgb->data[po];
         uint8_t G = rgb->data[po + 1];
         uint8_t B = rgb->data[po + 2];
@@ -233,17 +226,14 @@ void apply_luminance_to_rgb(ImageData *rgb, const ImageData *lum_clahe) {
         return;
     }
     size_t size = rgb->width * rgb->height;
-    #pragma omp parallel for
+#pragma omp parallel for
     for (size_t i = 0; i < size; i++) {
-		size_t po = i * rgb->bpp;
-		float r = rgb->data[po];
+        size_t po = i * rgb->bpp;
+        float r = rgb->data[po];
         float g = rgb->data[po + 1];
         float b = rgb->data[po + 2];
 
-        float L0 =
-            0.2126f * r +
-            0.7152f * g +
-            0.0722f * b;
+        float L0 = 0.2126f * r + 0.7152f * g + 0.0722f * b;
         float L1 = lum_clahe->data[i];
 
         float ratio = L1 / (L0 + 1e-6f);
@@ -255,12 +245,15 @@ void apply_luminance_to_rgb(ImageData *rgb, const ImageData *lum_clahe) {
         r *= ratio;
         g *= ratio;
         b *= ratio;
-        
-        if (r > 255.0f) r = 255.0f;
-        if (g > 255.0f) g = 255.0f;
-        if (b > 255.0f) b = 255.0f;
 
-        rgb->data[po]     = (uint8_t)(r + 0.5f);
+        if (r > 255.0f)
+            r = 255.0f;
+        if (g > 255.0f)
+            g = 255.0f;
+        if (b > 255.0f)
+            b = 255.0f;
+
+        rgb->data[po] = (uint8_t)(r + 0.5f);
         rgb->data[po + 1] = (uint8_t)(g + 0.5f);
         rgb->data[po + 2] = (uint8_t)(b + 0.5f);
     }
@@ -317,7 +310,7 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
         LOG_ERROR("Parámetros inválidos para CLAHE");
         return;
     }
-	ImageData lum = (im.bpp < 3) ? im: extract_luminance_rgb(&im);
+    ImageData lum = (im.bpp < 3) ? im : extract_luminance_rgb(&im);
 
     int tile_width = im.width / tiles_x;
     int tile_height = im.height / tiles_y;
@@ -397,10 +390,14 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
             float dx = fx - tx;
             float dy = fy - ty;
 
-            if (dx < 0) dx = 0;
-            if (dy < 0) dy = 0;
-            if (dx > 1) dx = 1;
-            if (dy > 1) dy = 1;
+            if (dx < 0)
+                dx = 0;
+            if (dy < 0)
+                dy = 0;
+            if (dx > 1)
+                dx = 1;
+            if (dy > 1)
+                dy = 1;
 
             // Obtener valores mapeados de los 4 tiles vecinos
             unsigned char val_tl = lut[ty][tx][pixel_val];         // Top-Left
@@ -418,13 +415,12 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
     }
     free(lut);
 
-	if (im.bpp >= 3) {
+    if (im.bpp >= 3) {
         apply_luminance_to_rgb(&im, &lum);
         image_destroy(&lum);
     }
     LOG_INFO("CLAHE aplicado: tiles=%dx%d, clip_limit=%.2f", tiles_x, tiles_y, clip_limit);
 }
-
 
 // ============================================================================
 // Image Resampling

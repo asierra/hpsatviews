@@ -32,7 +32,6 @@
 
 void rgb_context_init(RgbContext *ctx) {
     memset(ctx, 0, sizeof(RgbContext));
-    // Inicializar defaults de opciones
     ctx->opts.gamma[0] = ctx->opts.gamma[1] = ctx->opts.gamma[2] = 1.0f;
     ctx->opts.clahe_tiles_x = 8;
     ctx->opts.clahe_tiles_y = 8;
@@ -44,7 +43,6 @@ void rgb_context_destroy(RgbContext *ctx) {
     if (!ctx)
         return;
 
-    // Liberar ChannelSet
     channelset_destroy(ctx->channel_set);
 
     for (int i = 1; i <= 16; i++) {
@@ -65,7 +63,6 @@ void rgb_context_destroy(RgbContext *ctx) {
         free(ctx->opts.output_filename);
     }
 }
-
 
 // --- PHASE 2: COMPOSERS (STRATEGY PATTERN) ---
 
@@ -94,10 +91,12 @@ static bool compose_truecolor(RgbContext *ctx) {
         // Reuse pre-computed lat/lon to avoid a costly compute_navigation_nc call.
         bool nav_ok;
         if (ctx->has_navigation && ctx->nav_lat.data_in && ctx->nav_lon.data_in) {
-            nav_ok = rayleigh_load_navigation_from_latlon(nav_file, &ctx->nav_lat, &ctx->nav_lon,
-                                                         &nav, ctx->comp_b.width, ctx->comp_b.height);
+            nav_ok =
+                rayleigh_load_navigation_from_latlon(nav_file, &ctx->nav_lat, &ctx->nav_lon, &nav,
+                                                     ctx->comp_b.width, ctx->comp_b.height);
         } else {
-            nav_ok = rayleigh_load_navigation(nav_file, &nav, ctx->comp_b.width, ctx->comp_b.height);
+            nav_ok =
+                rayleigh_load_navigation(nav_file, &nav, ctx->comp_b.width, ctx->comp_b.height);
         }
         if (nav_ok) {
             apply_solar_zenith_correction(&ctx->comp_b, &nav.sza);
@@ -310,7 +309,7 @@ static bool compose_custom(RgbContext *ctx) {
         free(minmax_copy);
     }
     LOG_DEBUG("Rangos custom RGB: %s: %f,%f  %f,%f %f,%f", ctx->opts.minmax, ranges[0][0],
-             ranges[0][1], ranges[1][0], ranges[1][1], ranges[2][0], ranges[2][1]);
+              ranges[0][1], ranges[1][0], ranges[1][1], ranges[2][0], ranges[2][1]);
 
     // 3. Evaluar las combinaciones lineales
     ctx->comp_r = evaluate_linear_combo(&combo[0], ctx->channels);
@@ -342,7 +341,11 @@ static const RgbStrategy STRATEGIES[] = {
     {"night", {"C13", NULL}, compose_night, "Nocturnal IR with temperature pseudocolor", false},
     {"ash", {"C11", "C13", "C14", "C15", NULL}, compose_ash, "Volcanic Ash RGB", false},
     {"airmass", {"C08", "C10", "C12", "C13", NULL}, compose_airmass, "Air Mass RGB", false},
-    {"severestorm", {"C02", "C05", "C07", "C08","C10", "C13", NULL}, compose_severestorm, "Severe Convection RGB", false},
+    {"severestorm",
+     {"C02", "C05", "C07", "C08", "C10", "C13", NULL},
+     compose_severestorm,
+     "Severe Convection RGB",
+     false},
     {"so2", {"C09", "C10", "C11", "C13", NULL}, compose_so2, "SO2 Detection RGB", false},
     {"daynite", {"C01", "C02", "C03", "C13", NULL}, compose_daynite, "Day/Night Composite", true},
     {"custom", {NULL}, compose_custom, "Custom mode", false},
@@ -537,8 +540,7 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
         if (nav_width != ref_width) {
             if (nav_width > ref_width) {
                 int factor = nav_width / ref_width;
-                LOG_DEBUG("Remuestreando navegación (downsample factor %d)",
-                         factor);
+                LOG_DEBUG("Remuestreando navegación (downsample factor %d)", factor);
                 DataF nav_lat_resampled = downsample_boxfilter(ctx->nav_lat, factor);
                 DataF nav_lon_resampled = downsample_boxfilter(ctx->nav_lon, factor);
 
@@ -553,8 +555,7 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
                 }
             } else {
                 int factor = ref_width / nav_width;
-                LOG_DEBUG("Remuestreando navegación (upsample factor %d)",
-                         factor);
+                LOG_DEBUG("Remuestreando navegación (upsample factor %d)", factor);
                 DataF nav_lat_resampled = upsample_bilinear(ctx->nav_lat, factor);
                 DataF nav_lon_resampled = upsample_bilinear(ctx->nav_lon, factor);
 
@@ -626,7 +627,7 @@ static bool apply_enhancements(RgbContext *ctx) {
         image_destroy(&ctx->alpha_mask);
         memset(&ctx->alpha_mask, 0, sizeof(ImageData));
     }
-    
+
     return true;
 }
 
@@ -640,7 +641,7 @@ static bool apply_scaling(RgbContext *ctx) {
             LOG_INFO("Ampliando imagen por factor %d", ctx->opts.scale);
             scaled_img = image_upsample_bilinear(&ctx->final_image, ctx->opts.scale);
         }
-        
+
         if (scaled_img.data) {
             image_destroy(&ctx->final_image);
             ctx->final_image = scaled_img;
@@ -659,24 +660,27 @@ static bool write_output(RgbContext *ctx, const char *product_label) {
 
     if (is_geotiff) {
         LOG_DEBUG("Formato de salida: GeoTIFF");
-        DataNC meta_out = ctx->channels[ctx->ref_channel_idx];  // Preserva sat_id, sector_id, band_id, timestamp, etc.
+        DataNC meta_out = ctx->channels[ctx->ref_channel_idx]; // Preserva sat_id, sector_id,
+                                                               // band_id, timestamp, etc.
         if (ctx->opts.do_reprojection) {
             meta_out.proj_code = PROJ_LATLON;
-            meta_out.proj_info.valid = false;  // No aplica para lat/lon
+            meta_out.proj_info.valid = false; // No aplica para lat/lon
             meta_out.geotransform[0] = ctx->final_lon_min;
-            meta_out.geotransform[1] = (ctx->final_lon_max - ctx->final_lon_min) / (double)ctx->final_image.width;
+            meta_out.geotransform[1] =
+                (ctx->final_lon_max - ctx->final_lon_min) / (double)ctx->final_image.width;
             meta_out.geotransform[2] = 0.0;
             meta_out.geotransform[3] = ctx->final_lat_max;
             meta_out.geotransform[4] = 0.0;
-            meta_out.geotransform[5] = (ctx->final_lat_min - ctx->final_lat_max) / (double)ctx->final_image.height;
+            meta_out.geotransform[5] =
+                (ctx->final_lat_min - ctx->final_lat_max) / (double)ctx->final_image.height;
         } else {
             // Metadatos nativos (geoestacionarios)
             meta_out = ctx->channels[ctx->ref_channel_idx];
-            
+
             // 1. Aplicar offset de recorte al origen (en radianes originales)
             meta_out.geotransform[0] += ctx->crop_x_offset * meta_out.geotransform[1];
             meta_out.geotransform[3] += ctx->crop_y_offset * meta_out.geotransform[5];
-            
+
             // Adjust pixel scale in geotransform if the image was scaled.
             if (ctx->opts.scale != 1) {
                 double scale_factor = (ctx->opts.scale < 0) ? -ctx->opts.scale : ctx->opts.scale;
@@ -690,8 +694,8 @@ static bool write_output(RgbContext *ctx, const char *product_label) {
             }
         }
         // Pasamos 0,0 como offset porque ya lo integramos en meta_out.geotransform
-        write_geotiff_rgb(ctx->opts.output_filename, &ctx->final_image, &meta_out,
-                          0, 0, product_label);
+        write_geotiff_rgb(ctx->opts.output_filename, &ctx->final_image, &meta_out, 0, 0,
+                          product_label);
     } else {
         writer_save_png(ctx->opts.output_filename, &ctx->final_image);
     }
@@ -781,24 +785,32 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
 
     // Use the short product name (-N flag) if provided; otherwise fall back to mode string.
     const char *mode_label = (cfg->product_short && cfg->product_short[0])
-                             ? cfg->product_short
-                             : (ctx.opts.mode ? ctx.opts.mode : "unknown");
+                                 ? cfg->product_short
+                                 : (ctx.opts.mode ? ctx.opts.mode : "unknown");
     metadata_add(meta, "mode", mode_label);
-    
-    if (fabsf(ctx.opts.gamma[0] - 1.0f) > 1e-6f || fabsf(ctx.opts.gamma[1] - 1.0f) > 1e-6f || fabsf(ctx.opts.gamma[2] - 1.0f) > 1e-6f) {
-        if (fabsf(ctx.opts.gamma[0] - ctx.opts.gamma[1]) < 1e-6f && fabsf(ctx.opts.gamma[0] - ctx.opts.gamma[2]) < 1e-6f) {
+
+    if (fabsf(ctx.opts.gamma[0] - 1.0f) > 1e-6f || fabsf(ctx.opts.gamma[1] - 1.0f) > 1e-6f ||
+        fabsf(ctx.opts.gamma[2] - 1.0f) > 1e-6f) {
+        if (fabsf(ctx.opts.gamma[0] - ctx.opts.gamma[1]) < 1e-6f &&
+            fabsf(ctx.opts.gamma[0] - ctx.opts.gamma[2]) < 1e-6f) {
             metadata_add(meta, "gamma", ctx.opts.gamma[0]);
         } else {
             char gamma_str[48];
-            snprintf(gamma_str, sizeof(gamma_str), "%.4g;%.4g;%.4g", ctx.opts.gamma[0], ctx.opts.gamma[1], ctx.opts.gamma[2]);
-            metadata_add(meta, "gamma", (const char*)gamma_str);
+            snprintf(gamma_str, sizeof(gamma_str), "%.4g;%.4g;%.4g", ctx.opts.gamma[0],
+                     ctx.opts.gamma[1], ctx.opts.gamma[2]);
+            metadata_add(meta, "gamma", (const char *)gamma_str);
         }
     }
-    if (ctx.opts.apply_clahe) metadata_add_bool(meta, "clahe", true);
-    if (ctx.opts.apply_rayleigh) metadata_add_bool(meta, "rayleigh", true);
-    if (ctx.opts.apply_histogram) metadata_add_bool(meta, "histogram", true);
-    if (ctx.opts.use_piecewise_stretch) metadata_add_bool(meta, "stretch", true);
-    if (ctx.opts.do_reprojection && !ctx.opts.save_both) metadata_add_bool(meta, "geographics", true);
+    if (ctx.opts.apply_clahe)
+        metadata_add_bool(meta, "clahe", true);
+    if (ctx.opts.apply_rayleigh)
+        metadata_add_bool(meta, "rayleigh", true);
+    if (ctx.opts.apply_histogram)
+        metadata_add_bool(meta, "histogram", true);
+    if (ctx.opts.use_piecewise_stretch)
+        metadata_add_bool(meta, "stretch", true);
+    if (ctx.opts.do_reprojection && !ctx.opts.save_both)
+        metadata_add_bool(meta, "geographics", true);
     if (ctx.opts.has_clip)
         metadata_set_clip(meta, true);
 
@@ -813,7 +825,8 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
 
         char available[512] = {0};
         for (int i = 0; STRATEGIES[i].mode_name != NULL; i++) {
-            if (i > 0) strcat(available, ", ");
+            if (i > 0)
+                strcat(available, ", ");
             strcat(available, STRATEGIES[i].mode_name);
         }
         LOG_INFO("Modos disponibles: %s", available);
@@ -828,7 +841,8 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     // Rayleigh correction is not meaningful for night mode (thermal IR only).
     if (strcmp(ctx.opts.mode, "night") == 0) {
         if (ctx.opts.apply_rayleigh || ctx.opts.rayleigh_analytic) {
-            LOG_WARN("La corrección Rayleigh se ignora en modo 'night' (solo afecta canales visibles).");
+            LOG_WARN(
+                "La corrección Rayleigh se ignora en modo 'night' (solo afecta canales visibles).");
         }
         if (ctx.opts.use_piecewise_stretch) {
             LOG_WARN("El estiramiento de contraste (stretch) se ignora en modo 'night'.");
@@ -880,22 +894,25 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
                          fabsf(ctx.opts.gamma[1] - 1.0f) > 1e-6f ||
                          fabsf(ctx.opts.gamma[2] - 1.0f) > 1e-6f;
         if (any_gamma) {
-            LOG_INFO("Aplicando Gamma R=%.2f G=%.2f B=%.2f",
-                     ctx.opts.gamma[0], ctx.opts.gamma[1], ctx.opts.gamma[2]);
+            LOG_INFO("Aplicando Gamma R=%.2f G=%.2f B=%.2f", ctx.opts.gamma[0], ctx.opts.gamma[1],
+                     ctx.opts.gamma[2]);
             // Solo actualizar el rango a [0,1] en canales donde gamma != 1.0;
             // de lo contrario dataf_apply_gamma no modifica los datos y el rango
             // del --minmax (ya en ctx.min_*/max_*) debe conservarse para el render.
             if (fabsf(ctx.opts.gamma[0] - 1.0f) > 1e-6f) {
                 dataf_apply_gamma(&ctx.comp_r, ctx.opts.gamma[0], ctx.min_r, ctx.max_r);
-                ctx.min_r = 0.0f;  ctx.max_r = 1.0f;
+                ctx.min_r = 0.0f;
+                ctx.max_r = 1.0f;
             }
             if (fabsf(ctx.opts.gamma[1] - 1.0f) > 1e-6f) {
                 dataf_apply_gamma(&ctx.comp_g, ctx.opts.gamma[1], ctx.min_g, ctx.max_g);
-                ctx.min_g = 0.0f;  ctx.max_g = 1.0f;
+                ctx.min_g = 0.0f;
+                ctx.max_g = 1.0f;
             }
             if (fabsf(ctx.opts.gamma[2] - 1.0f) > 1e-6f) {
                 dataf_apply_gamma(&ctx.comp_b, ctx.opts.gamma[2], ctx.min_b, ctx.max_b);
-                ctx.min_b = 0.0f;  ctx.max_b = 1.0f;
+                ctx.min_b = 0.0f;
+                ctx.max_b = 1.0f;
             }
             ctx.opts.gamma[0] = ctx.opts.gamma[1] = ctx.opts.gamma[2] = 1.0f;
         }
@@ -967,14 +984,11 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         // interiores en apply_enhancements().
         unsigned char nodata_pattern[4] = {0};
         const unsigned char *nodata_pixel = ctx.opts.use_alpha ? nodata_pattern : NULL;
-        ImageData reprojected =
-            reproject_image_analytical(&ctx.final_image,
-                                       &ctx.channels[ctx.ref_channel_idx],
-                                       ctx.nav_lat.fmin, ctx.nav_lat.fmax,
-                                       ctx.nav_lon.fmin, ctx.nav_lon.fmax,
-                                       ctx.channels[ctx.ref_channel_idx].native_resolution_km,
-                                       ctx.opts.has_clip ? ctx.opts.clip_coords : NULL,
-                                       nodata_pixel);
+        ImageData reprojected = reproject_image_analytical(
+            &ctx.final_image, &ctx.channels[ctx.ref_channel_idx], ctx.nav_lat.fmin,
+            ctx.nav_lat.fmax, ctx.nav_lon.fmin, ctx.nav_lon.fmax,
+            ctx.channels[ctx.ref_channel_idx].native_resolution_km,
+            ctx.opts.has_clip ? ctx.opts.clip_coords : NULL, nodata_pixel);
 
         if (reprojected.data == NULL) {
             LOG_ERROR("Falla durante reproyección");
@@ -1000,16 +1014,15 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         // No reprojection: apply clip in native fixed-grid coordinates if requested.
         if (ctx.opts.has_clip && ctx.has_navigation) {
             int ix, iy, iw, ih;
-            reprojection_find_bounding_box(&ctx.nav_lat, &ctx.nav_lon, 
-                ctx.opts.clip_coords[0], ctx.opts.clip_coords[1], 
-                ctx.opts.clip_coords[2], ctx.opts.clip_coords[3], 
-                &ix, &iy, &iw, &ih);
-            
+            reprojection_find_bounding_box(&ctx.nav_lat, &ctx.nav_lon, ctx.opts.clip_coords[0],
+                                           ctx.opts.clip_coords[1], ctx.opts.clip_coords[2],
+                                           ctx.opts.clip_coords[3], &ix, &iy, &iw, &ih);
+
             // Aplicar el recorte a la imagen generada
             ImageData cropped = image_crop(&ctx.final_image, ix, iy, iw, ih);
             image_destroy(&ctx.final_image);
             ctx.final_image = cropped;
-            
+
             ctx.crop_x_offset = (unsigned)ix;
             ctx.crop_y_offset = (unsigned)iy;
         } else if (ctx.has_navigation) {
@@ -1023,7 +1036,8 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     // Write geometry metadata for JSON sidecar.
     if (ctx.has_navigation || ctx.opts.has_clip) {
         if (ctx.opts.do_reprojection) {
-            metadata_set_geometry(meta, ctx.final_lon_min, ctx.final_lat_min, ctx.final_lon_max, ctx.final_lat_max);
+            metadata_set_geometry(meta, ctx.final_lon_min, ctx.final_lat_min, ctx.final_lon_max,
+                                  ctx.final_lat_max);
             metadata_set_projection(meta, "EPSG:4326");
         } else {
             // Compute bounds in metres for geostationary projection metadata.
@@ -1036,18 +1050,22 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
                 double y_top = (gt[3] + ctx.crop_y_offset * gt[5]) * h;
                 double x_max = x_min + (ctx.final_image.width * gt[1] * h);
                 double y_bot = y_top + (ctx.final_image.height * gt[5] * h);
-                
+
                 double y_min = (y_bot < y_top) ? y_bot : y_top;
                 double y_max = (y_bot > y_top) ? y_bot : y_top;
                 metadata_set_geometry(meta, (float)x_min, (float)y_min, (float)x_max, (float)y_max);
             }
 
-            const char* sat_crs = "geostationary";
+            const char *sat_crs = "geostationary";
             int sid = ctx.channels[ctx.ref_channel_idx].sat_id;
-            if (sid == SAT_GOES16) sat_crs = "goes16";
-            else if (sid == SAT_GOES17) sat_crs = "goes17";
-            else if (sid == SAT_GOES18) sat_crs = "goes18";
-            else if (sid == SAT_GOES19) sat_crs = "goes19";
+            if (sid == SAT_GOES16)
+                sat_crs = "goes16";
+            else if (sid == SAT_GOES17)
+                sat_crs = "goes17";
+            else if (sid == SAT_GOES18)
+                sat_crs = "goes18";
+            else if (sid == SAT_GOES19)
+                sat_crs = "goes19";
             metadata_set_projection(meta, sat_crs);
         }
     }
@@ -1063,7 +1081,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         const char *ext = ctx.opts.force_geotiff ? ".tif" : ".png";
         ctx.opts.output_filename = metadata_build_filename(meta, ext);
         ctx.opts.output_generated = true;
-        
+
         if (ctx.opts.output_filename == NULL) {
             LOG_ERROR("Falla al generar nombre de archivo de salida");
             goto cleanup;
