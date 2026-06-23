@@ -49,3 +49,4 @@ bin/
 *.log
 geo2grid_v_1_2
 testtc/
+.cache
