@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.0.0] - 2026-06-23
 
-Initial public release.
+Initial public release. DOI: [10.5281/zenodo.20817974](https://doi.org/10.5281/zenodo.20817974).
 
 ### Added
 - CLI with `gray`, `pseudocolor`, and `rgb` subcommands for GOES-R ABI L1b/L2

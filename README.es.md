@@ -3,6 +3,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![C11](https://img.shields.io/badge/C-C11-blue.svg)](https://en.wikipedia.org/wiki/C11)
 [![CI](https://github.com/asierra/hpsatviews/actions/workflows/ci.yml/badge.svg)](https://github.com/asierra/hpsatviews/actions/workflows/ci.yml)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20817974.svg)](https://doi.org/10.5281/zenodo.20817974)
 
 Idiomas: [English](README.md) | **Español**
 
@@ -588,7 +589,8 @@ archivo un botón "Cite this repository" en la página principal del repo.
   version   = {1.0.0},
   year      = {2026},
   publisher = {Zenodo},
-  url       = {https://github.com/asierra/hpsatviews}
+  doi       = {10.5281/zenodo.20817974},
+  url       = {https://doi.org/10.5281/zenodo.20817974}
 }
 ```
 
