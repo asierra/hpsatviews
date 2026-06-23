@@ -534,7 +534,7 @@ Implementado en C11 (ISO/IEC 9899:2011) con paralelización mediante OpenMP, HPS
 
 HPSATVIEWS se encuentra en desarrollo activo, funcional estable y ampliación progresiva de capacidades y documentación.
 
-**Trabajo futuro:** se contempla explorar paralelismo de grano fino en GPU
+**Trabajo futuro:** permitir más satélites y no solamente los GOES. Se contempla explorar paralelismo de grano fino en GPU
 (CUDA/OpenCL) para las etapas de mayor costo computacional (corrección
 Rayleigh, reproyección), como complemento al paralelismo OpenMP actual.
 

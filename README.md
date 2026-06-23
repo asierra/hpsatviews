@@ -534,10 +534,10 @@ Implemented in C11 (ISO/IEC 9899:2011) with OpenMP parallelization, HPSATVIEWS p
 
 HPSATVIEWS is under active development, functionally stable, with progressive expansion of capabilities and documentation.
 
-**Future work:** exploring fine-grained GPU parallelism (CUDA/OpenCL) is
-under consideration for the most computationally expensive stages
-(Rayleigh correction, reprojection), as a complement to the current
-OpenMP-based parallelism.
+**Future work:** support for more satellites, not just GOES. Exploring
+fine-grained GPU parallelism (CUDA/OpenCL) is also under consideration for
+the most computationally expensive stages (Rayleigh correction,
+reprojection), as a complement to the current OpenMP-based parallelism.
 
 Want to contribute, report a problem, or get support? See
 [CONTRIBUTING.md](CONTRIBUTING.md). This project follows the
