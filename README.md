@@ -573,8 +573,29 @@ Want to contribute, report a problem, or get support? See
   Equalization. In P. S. Heckbert (Ed.), Graphics Gems IV (pp. 474–485). 
   Academic Press.
   
+---
 
-## 9. Author and license
+## 9. How to cite
+
+If HPSATVIEWS is useful in your research or software, please cite it.
+Citation metadata (authors, ORCID, version, license) is maintained in
+[CITATION.cff](CITATION.cff) — GitHub renders a "Cite this repository"
+button from it on the repo's main page.
+
+```bibtex
+@software{aguilar_sierra_hpsatviews,
+  author    = {Aguilar Sierra, Alejandro},
+  title     = {hpsatviews: High Performance Satellite Views},
+  version   = {1.0.0},
+  year      = {2026},
+  publisher = {Zenodo},
+  url       = {https://github.com/asierra/hpsatviews}
+}
+```
+
+---
+
+## 10. Author and license
 
 ```
 Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)

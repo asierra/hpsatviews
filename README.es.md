@@ -572,8 +572,29 @@ Rayleigh, reproyección), como complemento al paralelismo OpenMP actual.
   Equalization. In P. S. Heckbert (Ed.), Graphics Gems IV (pp. 474–485). 
   Academic Press.
   
+---
 
-## 9. Autor y licencia
+## 9. Cómo citar
+
+Si HPSATVIEWS te resulta útil en tu investigación o software, por favor
+cítalo. La metadata de citación (autores, ORCID, versión, licencia) se
+mantiene en [CITATION.cff](CITATION.cff) — GitHub genera a partir de este
+archivo un botón "Cite this repository" en la página principal del repo.
+
+```bibtex
+@software{aguilar_sierra_hpsatviews,
+  author    = {Aguilar Sierra, Alejandro},
+  title     = {hpsatviews: High Performance Satellite Views},
+  version   = {1.0.0},
+  year      = {2026},
+  publisher = {Zenodo},
+  url       = {https://github.com/asierra/hpsatviews}
+}
+```
+
+---
+
+## 10. Autor y licencia
 
 ```
 Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
