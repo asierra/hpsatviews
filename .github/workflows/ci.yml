@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libnetcdf-dev libpng-dev libgdal-dev libwebp-dev imagemagick
+
+      - name: Cache sample data
+        uses: actions/cache@v4
+        with:
+          path: sample_data
+          key: sample-data-${{ hashFiles('reproduction/download_sample.sh') }}
+
+      - name: Download sample data
+        run: reproduction/download_sample.sh
+
+      # run_all_tests.sh builds the project itself (make clean && make)
+      # before running the suites, so no separate build step is needed.
+      - name: Run test suite
+        run: tests/run_all_tests.sh

@@ -21,7 +21,7 @@ sudo make install
 make clean
 ```
 
-Dependencies: `libnetcdf-dev`, `libpng-dev`, `libgdal-dev`, OpenMP-capable gcc.
+Dependencies: `libnetcdf-dev`, `libpng-dev`, `libgdal-dev`, `libwebp-dev`, OpenMP-capable gcc.
 
 ## Tests
 
@@ -34,6 +34,8 @@ cd tests && ./test_rgb.sh
 ```
 
 These are end-to-end regression tests: each script runs `hpsv` on `sample_data/` and most also verify output content with `tests/compare_image.sh`, a tolerant pixel diff (ImageMagick `compare -metric AE -fuzz 2%`, default 1% of pixels allowed to differ) against reference PNGs/GeoTIFFs committed under `tests/expected_output/` (excepted from the root `*.png`/`*.tif` gitignore rules via `tests/.gitignore`). For `.tif`/`.tiff` inputs, `compare_image.sh` forces page `[0]` on both operands (COG outputs embed overview pyramids as extra TIFF pages that otherwise confuse `compare`/`identify`) and strips libtiff "Unknown field with tag..." warnings (unrecognized GeoTIFF private tags) before parsing the AE value. `run_all_tests.sh` aggregates per-suite pass/fail counts. Test scripts: `test_rgb.sh` (exact pixel diff only for `truecolor`; `night`/`ash`/`daynite` and both Rayleigh variants get a lightweight `check_nonblank` — ImageMagick `identify -format "%[standard-deviation]"` must be `>0` — since maintaining an exact reference per mode isn't worth it, but a blank/degenerate output should still fail; `airmass`/`severestorm`/`so2` aren't exercised because their channels, C05/C07–C10/C12, aren't in `sample_data/`), `test_pseudo.sh`, `test_clahe.sh`, `test_geotiff.sh` (pixel diff + GDAL metadata via `strings | grep`, since `GDALSetMetadataItem()` embeds metadata as readable XML inside the TIFF — no GDAL CLI tools needed), `test_reprojection.sh` (`-G`; also checks a corner pixel directly to catch the nodata-fill regression — see Gotchas), `test_json.sh` (sidecar key/value checks via `grep`, including that `version` matches `include/version.h`), `test_config.sh` (parser-only: most cases append `--help`, so it checks flag acceptance, not pipeline behavior). Requires ImageMagick (`compare`, `identify`) for the content-verification steps. Sample `.nc` files in `sample_data/` are git-ignored; fetch them with `reproduction/download_sample.sh` (public NOAA S3, no credentials).
+
+CI (`.github/workflows/ci.yml`) runs the same `tests/run_all_tests.sh` on every push/PR to `main`: installs dependencies via `apt-get`, downloads `sample_data/` (cached by a hash of `download_sample.sh`, so the cache busts automatically if the channel list changes), and lets `run_all_tests.sh` build the project itself.
 
 ## Architecture
 
