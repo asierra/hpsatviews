@@ -179,7 +179,7 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo, float *d
     }
     *dnratio = (nite == 0) ? 100 : 100.0 * day / navla.size;
     double end = omp_get_wtime();
-    LOG_TIMING(end - start, "Máscara día/noche");
+    LOG_TIMING(end - start, "Day/night mask");
 
     return imout;
 }

@@ -28,8 +28,8 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <ctype.h>
-#include <libgen.h>  // Para dirname()
-#include <math.h>    // Para fabs()
+#include <libgen.h>
+#include <math.h>
 
 
 bool strinstr(const char *main_str, const char *sub) {
@@ -42,11 +42,11 @@ bool strinstr(const char *main_str, const char *sub) {
 
 int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     if (!cfg || !meta) {
-        LOG_ERROR("run_processing: parámetros NULL");
+        LOG_ERROR("run_processing: NULL parameters");
         return 1;
     }
     
-    LOG_INFO("Procesando: %s", cfg->input_file);
+    LOG_INFO("Processing: %s", cfg->input_file);
     
     int status = 1;
     bool is_pseudocolor = (cfg->command && strcmp(cfg->command, "pseudocolor") == 0);
@@ -74,7 +74,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     if (cfg->do_reprojection && !cfg->save_both) metadata_add_bool(meta, "geographics", true);
     if (cfg->scale != 1) metadata_add(meta, "scale", cfg->scale);
     
-    // --- Modo pseudocolor: cargar paleta ---
+    // --- Pseudocolor mode: load palette ---
     ColormapMeta colormap_meta = {0};
 
     if (is_pseudocolor) {
@@ -88,7 +88,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
                 colormap_meta.num_colors = cptdata->is_discrete ? (int)cptdata->entry_count : 256;
                 colormap_meta.units      = cptdata->units[0] ? cptdata->units : NULL;
                 if (cptdata->has_nan_color) {
-                    // Mismo índice reservado que create_single_gray() usa para NonData.
+                    // Same reserved index that create_single_gray() uses for NonData.
                     colormap_meta.has_nodata   = true;
                     colormap_meta.nodata_index = (int)cptdata->num_colors - 1;
                 }
@@ -101,15 +101,15 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
                     free(cpt_dup);
                 }
             } else {
-                LOG_ERROR("No se pudo cargar el archivo de paleta: %s", cfg->palette_file);
+                LOG_ERROR("Could not load palette file: %s", cfg->palette_file);
                 goto cleanup;
             }
         } else {
-            // Sin -p: paleta interna por defecto (rainbow).
+            // No -p flag: default internal palette (rainbow).
             metadata_add(meta, "palette", "rainbow");
             color_array = create_rainbow_color_array(256);
             if (!color_array) {
-                LOG_ERROR("No se pudo crear la paleta interna por defecto");
+                LOG_ERROR("Could not create default internal palette.");
                 goto cleanup;
             }
             colormap_meta.num_colors = 256;
@@ -121,73 +121,73 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     if (cfg->custom_minmax) {
         if (sscanf(cfg->custom_minmax, "%f,%f", &minmax[0], &minmax[1]) == 2) {
             minmax_provided = true;
-            LOG_INFO("Rango de salida especificado: [%.2f, %.2f]", minmax[0], minmax[1]);
+            LOG_INFO("Output range specified: [%.2f, %.2f]", minmax[0], minmax[1]);
         }
     }
 
     // --- Band algebra (expr) mode ---
     if (expr_mode) {
-        LOG_INFO("Modo álgebra de bandas: %s", cfg->custom_expr);
+        LOG_INFO("Band algebra mode: %s", cfg->custom_expr);
         metadata_add(meta, "expression", cfg->custom_expr);
         
         if (parse_expr_string(cfg->custom_expr, &combo) != 0) {
-            LOG_ERROR("Error al parsear la expresión: %s", cfg->custom_expr);
+            LOG_ERROR("Failed to parse expression: %s", cfg->custom_expr);
             goto cleanup;
         }
         
         num_required_channels = extract_required_channels(&combo, required_channels);
         if (num_required_channels == 0) {
-            LOG_ERROR("No se encontraron bandas válidas en la expresión.");
+            LOG_ERROR("No valid bands found in expression.");
             goto cleanup;
         }
         
         // Load multiple channels.
         ChannelSet* cset = channelset_create((const char**)required_channels, num_required_channels);
         if (!cset) {
-            LOG_ERROR("No se pudo crear el ChannelSet.");
+            LOG_ERROR("Could not create ChannelSet.");
             goto cleanup;
         }
         
         char id_signature[256];
         char* input_dup = strdup(cfg->input_file);
         if (!input_dup) {
-            LOG_ERROR("Error de memoria.");
+            LOG_ERROR("Memory error.");
             channelset_destroy(cset); goto cleanup;
         }
         const char* basename_input = basename(input_dup);
         
         if (find_id_from_name(basename_input, id_signature, sizeof(id_signature)) != 0) {
-            LOG_ERROR("No se pudo extraer firma de identificación: %s", basename_input);
+            LOG_ERROR("Could not extract identification signature: %s", basename_input);
             free(input_dup); channelset_destroy(cset); goto cleanup;
         }
         strcpy(cset->id_signature, id_signature);
         find_scan_mode_from_name(basename_input, cset->scan_mode, sizeof(cset->scan_mode));
         free(input_dup);
         
-        // Buscar archivos
+        // Locate channel files.
         char* dir_dup = strdup(cfg->input_file);
         const char* dirnm = dirname(dir_dup);
         bool is_l2_product = strinstr(cfg->input_file, "CMIP");
         
         if (find_channel_filenames(dirnm, cset, is_l2_product) != 0) {
-            LOG_ERROR("No se pudieron encontrar archivos en %s", dirnm);
+            LOG_ERROR("Could not find files in %s", dirnm);
             free(dir_dup); channelset_destroy(cset); goto cleanup;
         }
         free(dir_dup);
         
-        // Cargar canales
+        // Load each channel's NetCDF data.
         for (int i = 0; i < cset->count; i++) {
             int band_id = atoi(cset->channels[i].name + 1);
             if (band_id < 1 || band_id > 16) continue;
             
-            LOG_INFO("Cargando canal %s", cset->channels[i].name);
+            LOG_INFO("Loading channel %s", cset->channels[i].name);
             if (load_nc_sf(cset->channels[i].filename, &channels[band_id]) != 0) {
-                LOG_ERROR("Fallo al cargar canal %s", cset->channels[i].name);
+                LOG_ERROR("Failed to load channel %s", cset->channels[i].name);
                 channelset_destroy(cset); goto cleanup;
             }
         }
         
-        // Identificar canal de referencia y resamplear
+        // Identify the reference channel (target resolution).
         int ref_channel_idx = 0;
         for (int i = 0; i < cset->count; i++) {
             int cn = atoi(cset->channels[i].name + 1);
@@ -202,9 +202,9 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             }
         }
         
-        LOG_INFO("Canal de referencia: C%02d", ref_channel_idx);
+        LOG_INFO("Reference channel: C%02d", ref_channel_idx);
         
-        // Resamplear canales
+        // Resample channels to match the reference resolution.
         float ref_res = channels[ref_channel_idx].native_resolution_km;
         for (int i = 0; i < cset->count; i++) {
             int cn = atoi(cset->channels[i].name + 1);
@@ -232,7 +232,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         // Evaluate the band algebra expression.
         result_data = evaluate_linear_combo(&combo, channels);
         if (!result_data.data_in) {
-            LOG_ERROR("Fallo al evaluar expresión.");
+            LOG_ERROR("Failed to evaluate expression.");
             channelset_destroy(cset); goto cleanup;
         }
         
@@ -250,9 +250,9 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         channelset_destroy(cset);
         
     } else {
-        // Modo normal: un solo canal
+        // Normal mode: single channel.
         if (load_nc_sf(cfg->input_file, &c01) != 0) {
-            LOG_ERROR("No se pudo cargar: %s", cfg->input_file);
+            LOG_ERROR("Could not load: %s", cfg->input_file);
             goto cleanup;
         }
         if (!minmax_provided) {
@@ -261,7 +261,6 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         }
     }
     
-    // Poblar metadatos desde DataNC
     metadata_from_nc(meta, &c01);
     if (c01.product_name) metadata_set_product(meta, c01.product_name);
     if (cfg->has_clip)
@@ -271,17 +270,16 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     const char* outfn = cfg->output_path_override;
     
     if (!outfn) {
-        // Determine file extension.
         const char* ext = (cfg->force_geotiff) ? ".tif" : ".png";
         generated_filename = metadata_build_filename(meta, ext);
         outfn = generated_filename;
         if (!outfn) {
-            LOG_ERROR("No se pudo generar nombre de archivo");
+            LOG_ERROR("Could not generate output filename.");
             goto cleanup;
         }
     }
     
-    LOG_INFO("Archivo de salida: %s", outfn);
+    LOG_INFO("Output file: %s", outfn);
     
     // Load navigation if needed for clip, GeoTIFF, or reprojection.
     bool is_geotiff = cfg->force_geotiff || (outfn && (strstr(outfn, ".tif") || strstr(outfn, ".tiff")));
@@ -290,21 +288,21 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         if (compute_navigation_nc(cfg->input_file, &navla_full, &navlo_full) == 0) {
             nav_loaded = true;
         } else {
-            LOG_WARN("No se pudo cargar navegación");
+            LOG_WARN("Could not load navigation.");
             if (is_geotiff) {
-                LOG_ERROR("Navegación requerida para GeoTIFF");
+                LOG_ERROR("Navigation required for GeoTIFF.");
                 goto cleanup;
             }
         }
     }
     
-    // Aplicar gamma
+    // Apply gamma.
     if (fabsf(cfg->gamma[1] - cfg->gamma[0]) > 1e-6f || fabsf(cfg->gamma[2] - cfg->gamma[0]) > 1e-6f) {
-        LOG_WARN("Modo canal único: se usará solo gamma[0]=%.2f (ignorando gamma[1]=%.2f, gamma[2]=%.2f)",
+        LOG_WARN("Single-channel mode: only gamma[0]=%.2f will be used (ignoring gamma[1]=%.2f, gamma[2]=%.2f)",
                  cfg->gamma[0], cfg->gamma[1], cfg->gamma[2]);
     }
     if (fabsf(cfg->gamma[0] - 1.0f) > 1e-6f && c01.is_float && c01.fdata.data_in) {
-        LOG_INFO("Aplicando gamma %.2f", cfg->gamma[0]);
+        LOG_INFO("Applying gamma %.2f", cfg->gamma[0]);
         float gmin = minmax_provided ? minmax[0] : c01.fdata.fmin;
         float gmax = minmax_provided ? minmax[1] : c01.fdata.fmax;
         dataf_apply_gamma(&c01.fdata, cfg->gamma[0], gmin, gmax);
@@ -313,9 +311,8 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         minmax[1] = c01.fdata.fmax;
     }
 
-	// Crear imagen inicial intacta
     if (is_pseudocolor && !cptdata) {
-        // Paleta interna: el rango mostrado es el auto-escalado de los datos, no uno calibrado.
+        // Internal palette: displayed range is the data's auto-scaled range, not a calibrated one.
         colormap_meta.val_min = minmax[0];
         colormap_meta.val_max = minmax[1];
     }
@@ -326,11 +323,11 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     }
     
     if (!final_image.data) {
-        LOG_ERROR("Fallo al crear imagen");
+        LOG_ERROR("Failed to create image.");
         goto cleanup;
     }
 
-    // Aplicar mejoras radiométricas (solo para escala de grises, el pseudocolor no debe alterarse)
+    // Apply radiometric enhancements (grayscale only; pseudocolor must not be altered).
     if (!is_pseudocolor) {
         if (cfg->apply_histogram) image_apply_histogram(final_image);
         if (cfg->apply_clahe)
@@ -341,14 +338,14 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     int final_h = final_image.height;
 
     // ========================================================================
-    // 1. FLUJO FIXED GRID (Se ejecuta si se pide -B, o si NO hay reproyección)
+    // 1. FIXED-GRID FLOW (runs if -B was requested, or if there is NO reprojection)
     // ========================================================================
     if (cfg->save_both || !cfg->do_reprojection) {
         ImageData fg_base = final_image;
         bool fg_base_allocated = false;
         unsigned crop_x = 0, crop_y = 0;
 
-        // Recorte local para fixed grid
+        // Local crop for the fixed-grid output.
         if (cfg->has_clip && nav_loaded) {
             int ix, iy, iw, ih;
             reprojection_find_bounding_box(&navla_full, &navlo_full, 
@@ -362,7 +359,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             crop_y = (unsigned)iy;
         }
 
-        // Remuestreo local
+        // Local resampling (scale option).
         ImageData fg_final = fg_base;
         bool fg_final_allocated = false;
         if (cfg->scale != 1) {
@@ -371,7 +368,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             fg_final_allocated = true;
         }
 
-        LOG_INFO("Guardando fixed-grid: %s", outfn);
+        LOG_INFO("Saving fixed-grid: %s", outfn);
 
         if (is_geotiff) {
             DataNC meta_fg = c01;
@@ -400,7 +397,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             else writer_save_png(outfn, &fg_final);
         }
 
-        // Registrar geometría de fixed grid en los metadatos (si es el paso final)
+        // Record fixed-grid geometry in metadata (only if this is the final step).
         if (nav_loaded && !cfg->do_reprojection) {
             double *gt = c01.geotransform;
             double h = (c01.proj_info.valid) ? c01.proj_info.sat_height : 35786023.0;
@@ -429,31 +426,29 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     }
 
     // ========================================================================
-    // 2. FLUJO GEOGRÁFICO / REPROYECCIÓN (Se ejecuta si se pide -G o -B)
+    // 2. GEOGRAPHIC / REPROJECTION FLOW (runs if -G or -B was requested)
     // ========================================================================
     if (cfg->do_reprojection) {
         if (!nav_loaded) {
-            LOG_ERROR("Navegación requerida para reproyección");
+            LOG_ERROR("Navigation required for reprojection.");
             goto cleanup;
         }
 
-        // Patrón a escribir en las áreas de la malla geográfica que quedan
-        // fuera del disco visible/los límites de la fuente (rejilla
-        // rectangular vs. disco redondo): debe verse como NonData, no como
-        // dato real.
+        // Pattern written to areas of the geographic grid that fall outside the visible disk/source
+        // bounds (rectangular grid vs. round disk): must read as NonData, not real data.
         unsigned char nodata_pattern[4] = {0};
         const unsigned char *nodata_pixel = NULL;
         if (cfg->use_alpha) {
-            nodata_pixel = nodata_pattern; // valor=0, alpha=0 (ya es la convención de NonData)
+            nodata_pixel = nodata_pattern; // value=0, alpha=0 (already the NonData convention).
         } else if (colormap_meta.has_nodata) {
             nodata_pattern[0] = (unsigned char)colormap_meta.nodata_index;
             nodata_pixel = nodata_pattern;
         } else if (is_pseudocolor) {
-            LOG_WARN("Reproyección pseudocolor sin --alpha y sin color N en el .cpt: "
-                     "las áreas fuera del disco no podrán distinguirse de dato real.");
+            LOG_WARN("Pseudocolor reprojection without --alpha and without an N color in the .cpt: "
+                     "areas outside the disk will be indistinguishable from real data.");
         }
 
-        // Reproyectar usando la imagen original inalterada
+        // Reproject using the original, unaltered image.
         ImageData geo_base = reproject_image_analytical(
             &final_image, &c01,
             navla_full.fmin, navla_full.fmax,
@@ -472,7 +467,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             final_lat_min = navla_full.fmin; final_lat_max = navla_full.fmax;
         }
 
-        // Remuestreo local
+        // Local resampling (scale option).
         ImageData geo_final = geo_base;
         bool geo_final_allocated = false;
         if (cfg->scale != 1) {
@@ -481,7 +476,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             geo_final_allocated = true;
         }
 
-        // Si venimos del flujo -B, alteramos el nombre para añadir _geo
+        // If running both flows (-B), append a _geo suffix to the filename.
         char *final_outfn = (char*)outfn;
         if (cfg->save_both) {
             final_outfn = insert_geo_suffix(outfn);
@@ -490,7 +485,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             outfn = generated_filename;
         }
 
-        LOG_INFO("Guardando reproyectado: %s", outfn);
+        LOG_INFO("Saving reprojected: %s", outfn);
 
         if (is_geotiff) {
             DataNC meta_out = c01;

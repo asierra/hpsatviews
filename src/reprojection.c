@@ -24,7 +24,7 @@ void reprojection_find_pixel_for_coord(const DataF* navla, const DataF* navlo,
     if (!navla || !navla->data_in || !navlo || !navlo->data_in || !out_ix || !out_iy) {
         if (out_ix) *out_ix = -1;
         if (out_iy) *out_iy = -1;
-        LOG_WARN("reprojection_find_pixel_for_coord: parámetros inválidos");
+        LOG_WARN("reprojection_find_pixel_for_coord: invalid parameters");
         return;
     }
 
@@ -88,13 +88,13 @@ void reprojection_find_pixel_for_coord(const DataF* navla, const DataF* navlo,
     }
 
     if (valid_pixels_found == 0) {
-        LOG_WARN("reprojection_find_pixel_for_coord: no se encontraron píxeles válidos (checked=%d, target=[%.3f, %.3f])", 
+        LOG_WARN("reprojection_find_pixel_for_coord: no valid pixels found (checked=%d, target=[%.3f, %.3f])", 
                  candidates_checked, target_lat, target_lon);
     } else if (best_ix == -1 || best_iy == -1) {
-        LOG_WARN("reprojection_find_pixel_for_coord: búsqueda falló (valid=%d/%d, target=[%.3f, %.3f])", 
+        LOG_WARN("reprojection_find_pixel_for_coord: search failed (valid=%d/%d, target=[%.3f, %.3f])", 
                  valid_pixels_found, candidates_checked, target_lat, target_lon);
     } else {
-        LOG_DEBUG("reprojection_find_pixel_for_coord: encontrado píxel [%d, %d] para coord [%.3f, %.3f] (dist=%.6f, valid=%d/%d)",
+        LOG_DEBUG("reprojection_find_pixel_for_coord: found pixel [%d, %d] for coord [%.3f, %.3f] (dist=%.6f, valid=%d/%d)",
                   best_ix, best_iy, target_lat, target_lon, sqrtf(min_dist_sq), valid_pixels_found, candidates_checked);
     }
 
@@ -109,7 +109,7 @@ ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* d
                                      const float* clip_coords,
                                      const unsigned char* nodata_pixel) {
     if (!src_image || !src_image->data || !data_nc || !data_nc->proj_info.valid) {
-        LOG_ERROR("Parámetros inválidos para reproject_image_analytical.");
+        LOG_ERROR("Invalid parameters for reproject_image_analytical.");
         return image_create(0, 0, 0);
     }
 
@@ -161,12 +161,12 @@ ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* d
     if (width  > MAX_DIM) width  = MAX_DIM;
     if (height > MAX_DIM) height = MAX_DIM;
 
-    LOG_INFO("Reproyección analítica: %ux%u (bpp:%u) -> %zux%zu",
+    LOG_INFO("Analytic reprojection: %ux%u (bpp:%u) -> %zux%zu",
              src_image->width, src_image->height, src_image->bpp, width, height);
 
     ImageData geo_image = image_create(width, height, src_image->bpp);
     if (!geo_image.data) {
-        LOG_FATAL("Falla de memoria al crear la imagen geográfica de destino.");
+        LOG_FATAL("Memory allocation failed for destination geographic image.");
         return geo_image;
     }
     memset(geo_image.data, 0, width * height * src_image->bpp);
@@ -179,15 +179,15 @@ ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* d
     double deg_per_px_lat = (double)lat_range / (double)height;
 
     // 1. Diagnóstico Seguro: Imprimir variables espaciales fuera del ciclo
-    LOG_DEBUG("Reproy Param: a=%.1f, b=%.1f, H=%.1f", a, b, H);
-    LOG_DEBUG("Reproy GT original: [%.6f, %.6f, %.6f, %.6f]", gt[0], gt[1], gt[3], gt[5]);
+    LOG_DEBUG("Reprojection params: a=%.1f, b=%.1f, H=%.1f", a, b, H);
+    LOG_DEBUG("Original reprojection GT: [%.6f, %.6f, %.6f, %.6f]", gt[0], gt[1], gt[3], gt[5]);
 
     // 2. Fallback Analítico para variables físicas (LST) si el Geotransform L2 viene nulo
     double safe_gt[6];
     for (int i=0; i<6; i++) safe_gt[i] = gt[i];
     
     if (safe_gt[1] == 0.0 || safe_gt[5] == 0.0 || fabs(safe_gt[1]) > 1.0) {
-        LOG_WARN("Geotransform inválido. Generando fallback analítico para Full Disk.");
+        LOG_WARN("Invalid geotransform. Generating analytic fallback for Full Disk.");
         double fov = 0.303744; // FOV Radianes estándar de GOES-R FD
         safe_gt[0] = -fov / 2.0;
         safe_gt[1] = fov / (double)src_w;
@@ -288,11 +288,11 @@ ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* d
     }
 
     // Reporte final seguro (fuera del hilo de OpenMP)
-    LOG_INFO("Resultados Reproy: %ld válidos, %ld descartes horizonte, %ld descartes de límite", 
+    LOG_INFO("Reprojection results: %ld valid, %ld horizon discards, %ld bounds discards", 
              valid_pixels, err_horizon, err_bounds);
 
     double elapsed = omp_get_wtime() - t_start;
-    LOG_TIMING(elapsed, "Reproyección analítica terminada");
+    LOG_TIMING(elapsed, "Analytic reprojection finished");
 
     return geo_image;
 }

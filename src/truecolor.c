@@ -229,7 +229,7 @@ void apply_piecewise_stretch(DataF *band) {
     band->fmin = local_min;
     band->fmax = local_max;
 
-    LOG_DEBUG("Piecewise Stretch aplicado. Nuevo rango: [%.4f, %.4f]", local_min, local_max);
+    LOG_DEBUG("Piecewise stretch applied, new range: [%.4f, %.4f]", local_min, local_max);
 }
 
 

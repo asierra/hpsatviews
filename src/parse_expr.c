@@ -36,7 +36,7 @@ int parse_expr_string(const char *input, LinearCombo *out) {
             skip_spaces(&ptr);
             expect_operator = false;
         } else if (expect_operator) {
-            LOG_ERROR("Se esperaba un operador (+ o -) en -> '%s'", ptr); // Caso "C13 C15"
+            LOG_ERROR("Expected an operator (+ or -) at -> '%s'", ptr); // Caso "C13 C15"
             return -1;
         }
 
@@ -45,7 +45,7 @@ int parse_expr_string(const char *input, LinearCombo *out) {
         if (isdigit(*ptr) || *ptr == '.') {
             double val = strtod(ptr, &next_ptr);
             if (ptr == next_ptr) {
-                LOG_ERROR("Número mal formado en -> '%s'", ptr); // Caso "2.0.3*C13"
+                LOG_ERROR("Malformed number at -> '%s'", ptr); // Caso "2.0.3*C13"
                 return -1;
             }
 
@@ -56,14 +56,14 @@ int parse_expr_string(const char *input, LinearCombo *out) {
                 ptr++;
                 skip_spaces(&ptr);
                 if (*ptr != 'C') {
-                    LOG_ERROR("Se esperaba 'C' después de '*' en -> '%s'", ptr);
+                    LOG_ERROR("Expected 'C' after '*' at -> '%s'", ptr);
                     return -1;
                 }
                 ptr++;
 
                 int bid = (int)strtol(ptr, &next_ptr, 10);
                 if (ptr == next_ptr || bid < 1 || bid > 16) {
-                    LOG_ERROR("Banda C%02d inválida (rango permitido: C01-C16) en -> '%s'", bid, ptr); // Caso "C99"
+                    LOG_ERROR("Invalid band C%02d (allowed range: C01-C16) at -> '%s'", bid, ptr); // Caso "C99"
                     return -1;
                 }
 
@@ -81,7 +81,7 @@ int parse_expr_string(const char *input, LinearCombo *out) {
             ptr++;
             int bid = (int)strtol(ptr, &next_ptr, 10);
             if (ptr == next_ptr || bid < 1 || bid > 16) {
-                LOG_ERROR("Banda C%02d inválida (rango permitido: C01-C16) en -> '%s'", bid, ptr);
+                LOG_ERROR("Invalid band C%02d (allowed range: C01-C16) at -> '%s'", bid, ptr);
                 return -1;
             }
 
@@ -92,7 +92,7 @@ int parse_expr_string(const char *input, LinearCombo *out) {
             ptr = next_ptr;
         } else {
             // Caso de caracteres prohibidos como / , ( , ^
-            LOG_ERROR("Carácter o símbolo no soportado '%c' en -> '%s'", *ptr, ptr); // Caso "C13/C15"
+            LOG_ERROR("Unsupported character or symbol '%c' at -> '%s'", *ptr, ptr); // Caso "C13/C15"
             return -1;
         }
 
@@ -101,7 +101,7 @@ int parse_expr_string(const char *input, LinearCombo *out) {
     }
 
     if (out->num_terms == 0) {
-        LOG_ERROR("La expresión debe contener al menos una banda (C01-C16)");
+        LOG_ERROR("Expression must contain at least one band (C01-C16).");
         return -1;
     }
 

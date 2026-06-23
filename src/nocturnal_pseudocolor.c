@@ -17,19 +17,18 @@
 
 ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* fondo) {
   if (!temp_data || !temp_data->data_in) {
-    LOG_ERROR("Datos de temperatura inválidos para create_nocturnal_pseudocolor.");
+    LOG_ERROR("Invalid temperature data for create_nocturnal_pseudocolor.");
     return image_create(0, 0, 0); // return empty image on invalid input
   }
 
   ImageData imout = image_create(temp_data->width, temp_data->height, 3);
   
   if (imout.data == NULL) {
-    LOG_ERROR("No fue posible apartar memoria para la imagen nocturna.");
+    LOG_ERROR("Failed to allocate memory for nocturnal image.");
     return imout;
   }
 
   double start = omp_get_wtime();
-  LOG_INFO("Iniciando generación de pseudocolor nocturno...");
 
   const float max_ir_temp = 263.15f; // upper bound for high cold clouds (~-10°C)
 
@@ -73,7 +72,7 @@ ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* 
   }
 
   double end = omp_get_wtime();
-  LOG_TIMING(end - start, "Pseudocolor nocturno");
+  LOG_TIMING(end - start, "Nocturnal pseudocolor");
 
   return imout;
 }

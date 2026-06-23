@@ -20,7 +20,7 @@ GeoClip buscar_clip_por_clave(const char *ruta_archivo, const char *clave_buscad
 
     FILE *fp = fopen(ruta_archivo, "r");
     if (fp == NULL) {
-        LOG_ERROR("No se pudo abrir el archivo de recortes: %s", ruta_archivo);
+        LOG_ERROR("Could not open clip catalog file: %s", ruta_archivo);
         return resultado;
     }
 
@@ -66,7 +66,7 @@ GeoClip buscar_clip_por_clave(const char *ruta_archivo, const char *clave_buscad
 void listar_clips_disponibles(const char *ruta_archivo) {
     FILE *fp = fopen(ruta_archivo, "r");
     if (fp == NULL) {
-        LOG_WARN("No se puede leer el archivo en %s", ruta_archivo);
+        LOG_WARN("Could not read file at %s", ruta_archivo);
         return;
     }
 

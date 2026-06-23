@@ -148,7 +148,7 @@ static bool config_parse_clip(ArgParser* parser, ProcessConfig* cfg) {
             cfg->clip_coords[i] = coords[i];
         }
         cfg->has_clip = true;
-        LOG_INFO("Clip con coordenadas: lon[%.3f, %.3f], lat[%.3f, %.3f]",
+        LOG_INFO("Clip with coordinates: lon[%.3f, %.3f], lat[%.3f, %.3f]",
                  cfg->clip_coords[0], cfg->clip_coords[2], 
                  cfg->clip_coords[3], cfg->clip_coords[1]);
         return true;
@@ -159,11 +159,11 @@ static bool config_parse_clip(ArgParser* parser, ProcessConfig* cfg) {
     GeoClip clip = buscar_clip_por_clave(clip_csv, clip_value);
     
     if (!clip.encontrado) {
-        LOG_WARN("No se encontró el recorte '%s' en %s", clip_value, clip_csv);
+        LOG_WARN("Clip '%s' not found in %s", clip_value, clip_csv);
         return false;
     }
     
-    LOG_INFO("Usando recorte '%s': %s", clip_value, clip.region);
+    LOG_INFO("Using clip '%s': %s", clip_value, clip.region);
     cfg->clip_coords[0] = clip.ul_x;  // lon_min
     cfg->clip_coords[1] = clip.ul_y;  // lat_max
     cfg->clip_coords[2] = clip.lr_x;  // lon_max
@@ -261,13 +261,13 @@ static char* config_parse_output(ArgParser* parser, const char* input_file, cons
 
 bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
     if (!parser || !cfg) {
-        LOG_ERROR("config_from_argparser: parámetros NULL");
+        LOG_ERROR("config_from_argparser: NULL parameters");
         return false;
     }
     
     // --- Archivo de entrada (requerido) ---
     if (!ap_has_args(parser)) {
-        LOG_ERROR("Se requiere un archivo NetCDF de entrada.");
+        LOG_ERROR("An input NetCDF file is required.");
         return false;
     }
     cfg->input_file = ap_get_arg_at_index(parser, 0);
@@ -322,14 +322,14 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
         const char *gamma_str = ap_get_str_value(parser, "gamma");
         if (gamma_str) {
             char *gamma_copy = strdup(gamma_str);
-            if (!gamma_copy) { LOG_ERROR("Falla de memoria al parsear gamma."); return false; }
+            if (!gamma_copy) { LOG_ERROR("Memory allocation failed while parsing gamma."); return false; }
             float vals[3] = {1.0f, 1.0f, 1.0f};
             int count = 0;
             char *tok = strtok(gamma_copy, ";");
             while (tok != NULL && count < 4) {
                 if (count < 3) {
                     if (sscanf(tok, "%f", &vals[count]) != 1) {
-                        LOG_ERROR("Gamma inválido: %s", tok);
+                        LOG_ERROR("Invalid gamma: %s", tok);
                         free(gamma_copy);
                         return false;
                     }
@@ -345,7 +345,7 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
                 cfg->gamma[1] = vals[1];
                 cfg->gamma[2] = vals[2];
             } else {
-                LOG_ERROR("Gamma acepta 1 o 3 valores separados por ';', se proporcionaron %d.", count);
+                LOG_ERROR("Gamma accepts 1 or 3 values separated by ';', got %d.", count);
                 return false;
             }
         }
@@ -405,7 +405,7 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
         if (ap_found(parser, "cloud-temp")) {
             const char *ct_str = ap_get_str_value(parser, "cloud-temp");
             if (ct_str && sscanf(ct_str, "%f", &cfg->cloud_temp) != 1) {
-                LOG_ERROR("--cloud-temp: valor inválido '%s', se espera un número en Kelvin.", ct_str);
+                LOG_ERROR("--cloud-temp: invalid value '%s', expected a number in Kelvin.", ct_str);
                 return false;
             }
         }
@@ -438,7 +438,7 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
             if (new_path) {
                 strncpy(new_path, cfg->output_path_override, base_len);
                 strcpy(new_path + base_len, ".tif");
-                LOG_INFO("Extensión cambiada de .png a .tif: %s", new_path);
+                LOG_INFO("Extension changed from .png to .tif: %s", new_path);
                 free((void*)cfg->output_path_override);
                 cfg->output_path_override = new_path;
             }
@@ -466,14 +466,14 @@ bool config_validate(const ProcessConfig* cfg) {
     
     // Validar archivo de entrada
     if (!cfg->input_file || strlen(cfg->input_file) == 0) {
-        LOG_ERROR("Archivo de entrada requerido");
+        LOG_ERROR("Input file required.");
         return false;
     }
     
     // Validar gamma
     for (int i = 0; i < 3; i++) {
         if (cfg->gamma[i] <= 0.0f || cfg->gamma[i] > 5.0f) {
-            LOG_ERROR("Gamma[%d] debe estar en el rango (0.0, 5.0], valor: %.2f", i, cfg->gamma[i]);
+            LOG_ERROR("Gamma[%d] must be in range (0.0, 5.0], value: %.2f", i, cfg->gamma[i]);
             return false;
         }
     }
@@ -481,15 +481,15 @@ bool config_validate(const ProcessConfig* cfg) {
     // Validar CLAHE
     if (cfg->apply_clahe) {
         if (cfg->clahe_tiles_x < 2 || cfg->clahe_tiles_x > 64) {
-            LOG_ERROR("clahe_tiles_x debe estar en [2, 64], valor: %d", cfg->clahe_tiles_x);
+            LOG_ERROR("clahe_tiles_x must be in [2, 64], value: %d", cfg->clahe_tiles_x);
             return false;
         }
         if (cfg->clahe_tiles_y < 2 || cfg->clahe_tiles_y > 64) {
-            LOG_ERROR("clahe_tiles_y debe estar en [2, 64], valor: %d", cfg->clahe_tiles_y);
+            LOG_ERROR("clahe_tiles_y must be in [2, 64], value: %d", cfg->clahe_tiles_y);
             return false;
         }
         if (cfg->clahe_clip_limit <= 0.0f || cfg->clahe_clip_limit > 100.0f) {
-            LOG_ERROR("clahe_clip_limit debe estar en (0.0, 100.0], valor: %.2f", 
+            LOG_ERROR("clahe_clip_limit must be in (0.0, 100.0], value: %.2f", 
                      cfg->clahe_clip_limit);
             return false;
         }
@@ -497,7 +497,7 @@ bool config_validate(const ProcessConfig* cfg) {
     
     // Validar scale
     if (cfg->scale == 0 || cfg->scale > 20 || cfg->scale < -20) {
-        LOG_ERROR("scale debe ser entero en el rango [-20, 20], valor: %d", cfg->scale);
+        LOG_ERROR("scale must be an integer in range [-20, 20], value: %d", cfg->scale);
         return false;
     }
     
@@ -509,27 +509,27 @@ bool config_validate(const ProcessConfig* cfg) {
         float lat_min = cfg->clip_coords[3];
         
         if (lon_min >= lon_max) {
-            LOG_ERROR("Clip inválido: lon_min (%.2f) >= lon_max (%.2f)", lon_min, lon_max);
+            LOG_ERROR("Invalid clip: lon_min (%.2f) >= lon_max (%.2f)", lon_min, lon_max);
             return false;
         }
         if (lat_min >= lat_max) {
-            LOG_ERROR("Clip inválido: lat_min (%.2f) >= lat_max (%.2f)", lat_min, lat_max);
+            LOG_ERROR("Invalid clip: lat_min (%.2f) >= lat_max (%.2f)", lat_min, lat_max);
             return false;
         }
         if (lon_min < -180.0f || lon_max > 180.0f) {
-            LOG_ERROR("Longitudes fuera del rango válido [-180, 180]");
+            LOG_ERROR("Longitudes outside valid range [-180, 180].");
             return false;
         }
         if (lat_min < -90.0f || lat_max > 90.0f) {
-            LOG_ERROR("Latitudes fuera del rango válido [-90, 90]");
+            LOG_ERROR("Latitudes outside valid range [-90, 90].");
             return false;
         }
     }
     
     // Advertencias (no son errores fatales)
     if (cfg->apply_rayleigh && cfg->rayleigh_analytic) {
-        LOG_WARN("Se especificaron --rayleigh y --ray-analytic. "
-                "Se usará el método analítico.");
+        LOG_WARN("Both --rayleigh and --ray-analytic were specified. "
+                "The analytic method will be used.");
     }
     
     return true;
@@ -537,7 +537,7 @@ bool config_validate(const ProcessConfig* cfg) {
 
 void config_print_debug(const ProcessConfig* cfg) {
     if (!cfg) {
-        LOG_DEBUG("config_print_debug: cfg es NULL");
+        LOG_DEBUG("config_print_debug: cfg is NULL");
         return;
     }
     
@@ -547,7 +547,7 @@ void config_print_debug(const ProcessConfig* cfg) {
     LOG_DEBUG("  input_file: %s", cfg->input_file ? cfg->input_file : "NULL");
     LOG_DEBUG("  is_l2_product: %s", cfg->is_l2_product ? "true" : "false");
     
-    LOG_DEBUG("--- Realce ---");
+    LOG_DEBUG("--- Enhancement ---");
     LOG_DEBUG("  gamma: %.2f;%.2f;%.2f", cfg->gamma[0], cfg->gamma[1], cfg->gamma[2]);
     LOG_DEBUG("  apply_clahe: %s", cfg->apply_clahe ? "true" : "false");
     if (cfg->apply_clahe) {
@@ -560,7 +560,7 @@ void config_print_debug(const ProcessConfig* cfg) {
     LOG_DEBUG("  use_piecewise_stretch: %s", cfg->use_piecewise_stretch ? "true" : "false");
     LOG_DEBUG("  invert_values: %s", cfg->invert_values ? "true" : "false");
     
-    LOG_DEBUG("--- Composición ---");
+    LOG_DEBUG("--- Composition ---");
     LOG_DEBUG("  scale: %d", cfg->scale);
     LOG_DEBUG("  use_alpha: %s", cfg->use_alpha ? "true" : "false");
     LOG_DEBUG("  use_citylights: %s", cfg->use_citylights ? "true" : "false");
@@ -576,7 +576,7 @@ void config_print_debug(const ProcessConfig* cfg) {
     LOG_DEBUG("--- Pseudocolor ---");
     LOG_DEBUG("  palette_file: %s", cfg->palette_file ? cfg->palette_file : "NULL");
     
-    LOG_DEBUG("--- Geometría ---");
+    LOG_DEBUG("--- Geometry ---");
     LOG_DEBUG("  has_clip: %s", cfg->has_clip ? "true" : "false");
     if (cfg->has_clip) {
         LOG_DEBUG("    coords: [%.3f, %.3f, %.3f, %.3f]", 
@@ -585,7 +585,7 @@ void config_print_debug(const ProcessConfig* cfg) {
     }
     LOG_DEBUG("  do_reprojection: %s", cfg->do_reprojection ? "true" : "false");
     
-    LOG_DEBUG("--- Salida ---");
+    LOG_DEBUG("--- Output ---");
     LOG_DEBUG("  force_geotiff: %s", cfg->force_geotiff ? "true" : "false");
     LOG_DEBUG("  output_override: %s", 
              cfg->output_path_override ? cfg->output_path_override : "NULL");

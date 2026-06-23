@@ -101,7 +101,7 @@ static char* get_projection_wkt(const DataNC* meta) {
                  meta->proj_info.sat_height);
         
         if (OSRImportFromProj4(hSRS, proj4) != OGRERR_NONE) {
-            LOG_ERROR("Error importando proyección PROJ.4: %s", proj4);
+            LOG_ERROR("Error importing PROJ.4 projection: %s", proj4);
         }
 
     } else if (meta->proj_code == PROJ_LATLON) {
@@ -133,13 +133,13 @@ static GDALDatasetH create_mem_dataset(int width,
     GDALAllRegister();
     GDALDriverH driver = GDALGetDriverByName("MEM");
     if (!driver) {
-        LOG_ERROR("Driver MEM no disponible en GDAL.");
+        LOG_ERROR("MEM driver not available in GDAL.");
         return NULL;
     }
 
     GDALDatasetH ds = GDALCreate(driver, "", width, height, bands, type, NULL);
     if (!ds) {
-        LOG_ERROR("No se pudo crear dataset en memoria.");
+        LOG_ERROR("Could not create in-memory dataset.");
         return NULL;
     }
 
@@ -188,7 +188,7 @@ static GDALDatasetH create_mem_dataset(int width,
 static int finalize_cog(GDALDatasetH mem_ds, const char* filename) {
     GDALDriverH cog_driver = GDALGetDriverByName("COG");
     if (!cog_driver) {
-        LOG_ERROR("Driver COG no disponible en GDAL.");
+        LOG_ERROR("COG driver not available in GDAL.");
         GDALClose(mem_ds);
         return -1;
     }
@@ -201,12 +201,12 @@ static int finalize_cog(GDALDatasetH mem_ds, const char* filename) {
 
     double t0 = omp_get_wtime();
     GDALDatasetH cog_ds = GDALCreateCopy(cog_driver, filename, mem_ds, FALSE, opts, NULL, NULL);
-    LOG_TIMING(omp_get_wtime() - t0, "COG escrito: %s", filename);
+    LOG_TIMING(omp_get_wtime() - t0, "COG written: %s", filename);
     CSLDestroy(opts);
     GDALClose(mem_ds);
 
     if (!cog_ds) {
-        LOG_ERROR("No se pudo crear el archivo COG: %s", filename);
+        LOG_ERROR("Could not create COG file: %s", filename);
         return -1;
     }
 
@@ -214,7 +214,7 @@ static int finalize_cog(GDALDatasetH mem_ds, const char* filename) {
     int h = GDALGetRasterYSize(cog_ds);
     int b = GDALGetRasterCount(cog_ds);
     GDALClose(cog_ds);
-    LOG_INFO("GeoTIFF guardado: %s (%dx%d, %d banda%s)", filename, w, h, b, b == 1 ? "" : "s");
+    LOG_INFO("GeoTIFF saved: %s (%dx%d, %d band%s)", filename, w, h, b, b == 1 ? "" : "s");
     return 0;
 }
 
@@ -223,7 +223,7 @@ static int finalize_cog(GDALDatasetH mem_ds, const char* filename) {
 int write_geotiff_rgb(const char* filename, const ImageData* img, const DataNC* meta,
                       int offset_x, int offset_y, const char* product) {
     if (!img || (img->bpp != 3 && img->bpp != 4)) {
-        LOG_ERROR("Imagen inválida para write_geotiff_rgb (se requiere bpp=3 o bpp=4)");
+        LOG_ERROR("Invalid image for write_geotiff_rgb (bpp=3 or bpp=4 required).");
         return -1;
     }
 
@@ -261,7 +261,7 @@ int write_geotiff_rgb(const char* filename, const ImageData* img, const DataNC* 
 int write_geotiff_gray(const char* filename, const ImageData* img, const DataNC* meta,
                        int offset_x, int offset_y, const char* product) {
     if (!img || (img->bpp != 1 && img->bpp != 2)) {
-        LOG_ERROR("Imagen inválida para write_geotiff_gray (se requiere bpp=1 o bpp=2)");
+        LOG_ERROR("Invalid image for write_geotiff_gray (bpp=1 or bpp=2 required).");
         return -1;
     }
 
@@ -316,7 +316,7 @@ int write_geotiff_indexed(const char* filename, const ImageData* img, const Colo
                           const DataNC* meta, int offset_x, int offset_y,
                           const ColormapMeta* cm, const char* product) {
     if (!img || img->bpp != 1) {
-        LOG_ERROR("Imagen inválida para write_geotiff_indexed (se requiere bpp=1)");
+        LOG_ERROR("Invalid image for write_geotiff_indexed (bpp=1 required).");
         return -1;
     }
 

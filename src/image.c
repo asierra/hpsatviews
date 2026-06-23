@@ -22,7 +22,6 @@ ImageData image_create(unsigned int width, unsigned int height, unsigned int bpp
     image.bpp = bpp;
     image.data = NULL;
 
-    // Validate bpp parameter
     if (bpp < 1 || bpp > 4) {
         image.width = 0;
         image.height = 0;
@@ -30,7 +29,6 @@ ImageData image_create(unsigned int width, unsigned int height, unsigned int bpp
         return image;
     }
 
-    // Calculate total size needed
     size_t total_size = (size_t)width * height * bpp;
 
     if (total_size > 0) {
@@ -61,7 +59,6 @@ ImageData copy_image(ImageData orig) {
     size_t size = orig.width * orig.height;
     ImageData imout = image_create(orig.width, orig.height, orig.bpp);
 
-    // Check if allocation was successful
     if (imout.data != NULL && orig.data != NULL) {
         memcpy(imout.data, orig.data, size * orig.bpp);
     }
@@ -71,18 +68,17 @@ ImageData copy_image(ImageData orig) {
 
 ImageData image_crop(const ImageData *src, unsigned int x, unsigned int y, unsigned int width,
                      unsigned int height) {
-    // Sanity checks
     if (src == NULL || src->data == NULL || width == 0 || height == 0) {
         return image_create(0, 0, 0);
     }
     if (x + width > src->width || y + height > src->height) {
-        LOG_ERROR("El área de recorte excede las dimensiones de la imagen original.");
+        LOG_ERROR("Crop area exceeds the original image dimensions.");
         return image_create(0, 0, 0);
     }
 
     ImageData cropped_img = image_create(width, height, src->bpp);
     if (cropped_img.data == NULL) {
-        LOG_FATAL("Falla de memoria al crear la imagen recortada.");
+        LOG_FATAL("Memory allocation failed for cropped image.");
         return cropped_img;
     }
 
@@ -91,9 +87,7 @@ ImageData image_crop(const ImageData *src, unsigned int x, unsigned int y, unsig
 
 #pragma omp parallel for
     for (unsigned int i = 0; i < height; ++i) {
-        // Pointer to the start of the source row
         const unsigned char *src_row = src->data + (y + i) * src_row_stride + x * src->bpp;
-        // Pointer to the start of the destination row
         unsigned char *dst_row = cropped_img.data + i * cropped_row_stride;
         memcpy(dst_row, src_row, cropped_row_stride);
     }
@@ -104,7 +98,7 @@ ImageData image_crop(const ImageData *src, unsigned int x, unsigned int y, unsig
 ImageData blend_images(ImageData bg, ImageData fg, ImageData mask) {
     if (bg.width != fg.width || bg.height != fg.height || bg.width != mask.width ||
         bg.height != mask.height) {
-        LOG_ERROR("Las dimensiones de las imágenes y la máscara no coinciden.");
+        LOG_ERROR("Image and mask dimensions do not match.");
         return image_create(0, 0, 0);
     }
 
@@ -112,7 +106,7 @@ ImageData blend_images(ImageData bg, ImageData fg, ImageData mask) {
     ImageData imout = image_create(bg.width, bg.height, bg.bpp);
 
     if (imout.data == NULL) {
-        return imout; // Return empty image on allocation failure
+        return imout;
     }
 
     double start = omp_get_wtime();
@@ -128,7 +122,7 @@ ImageData blend_images(ImageData bg, ImageData fg, ImageData mask) {
         imout.data[p + 2] = (unsigned char)(w * bg.data[p + 2] + (1 - w) * fg.data[p + 2]);
     }
     double end = omp_get_wtime();
-    LOG_TIMING(end - start, "Blend imágenes");
+    LOG_TIMING(end - start, "Image blend");
     return imout;
 }
 
@@ -189,12 +183,12 @@ void image_apply_histogram(ImageData im) {
 
 ImageData extract_luminance_rgb(const ImageData *rgb) {
     if (rgb->bpp < 3) {
-        LOG_ERROR("Solo se puede extraer luminancia de una imagen con 3 canales");
+        LOG_ERROR("Luminance can only be extracted from a 3-channel image.");
         return image_create(0, 0, 0);
     }
     ImageData lum = image_create(rgb->width, rgb->height, 1);
     if (lum.data == NULL) {
-        LOG_ERROR("No se pudo asignar memoria para luminancia.");
+        LOG_ERROR("Failed to allocate memory for luminance.");
         return image_create(0, 0, 0);
     }
 
@@ -206,10 +200,9 @@ ImageData extract_luminance_rgb(const ImageData *rgb) {
         uint8_t G = rgb->data[po + 1];
         uint8_t B = rgb->data[po + 2];
 
-        /* Luminancia lineal Rec.709 */
+        // Linear luminance per Rec.709 weights.
         float L = luminance_from_rgb(R, G, B);
 
-        /* Clamp y cast */
         if (L < 0.0f)
             L = 0.0f;
         if (L > 255.0f)
@@ -222,7 +215,7 @@ ImageData extract_luminance_rgb(const ImageData *rgb) {
 
 void apply_luminance_to_rgb(ImageData *rgb, const ImageData *lum_clahe) {
     if (rgb->bpp < 3) {
-        LOG_ERROR("Solo se puede aplicar luminancia a una imagen RGB.");
+        LOG_ERROR("Luminance can only be applied to an RGB image.");
         return;
     }
     size_t size = rgb->width * rgb->height;
@@ -238,7 +231,7 @@ void apply_luminance_to_rgb(ImageData *rgb, const ImageData *lum_clahe) {
 
         float ratio = L1 / (L0 + 1e-6f);
 
-        /* Limitar ganancia extrema */
+        // Limit extreme gain (avoid blown-out highlights).
         if (ratio > 4.0f)
             ratio = 4.0f;
 
@@ -259,15 +252,11 @@ void apply_luminance_to_rgb(ImageData *rgb, const ImageData *lum_clahe) {
     }
 }
 
-/**
- * @brief Recorta el histograma y redistribuye el exceso uniformemente.
- * @param hist Puntero al histograma (array de 256 enteros).
- * @param limit Límite máximo de píxeles permitidos por bin.
- */
+/// Clips the histogram to limit and redistributes the excess uniformly across all bins.
 static void clip_histogram(unsigned int *hist, unsigned int limit) {
     unsigned int excess = 0;
 
-    // Paso 1: Calcular exceso y recortar
+    // Step 1: Compute excess and clip values exceeding the limit.
     for (int i = 0; i < CLAHE_NUM_BINS; i++) {
         if (hist[i] > limit) {
             excess += (hist[i] - limit);
@@ -283,18 +272,13 @@ static void clip_histogram(unsigned int *hist, unsigned int limit) {
             hist[i] += avg_inc;
         }
     }
-    // Paso 3: Redistribuir el remanente secuencialmente
+    // Step 3: Redistribute the remainder sequentially.
     for (unsigned int i = 0; i < remainder; i++) {
         hist[i]++;
     }
 }
 
-/**
- * @brief Calcula el mapeo CDF (Cumulative Distribution Function) para un tile.
- * @param hist Histograma del tile.
- * @param map_lut Array de salida con el mapeo [0-255] -> [0-255].
- * @param pixels_per_tile Total de píxeles en el tile.
- */
+/// Computes the per-tile CDF (Cumulative Distribution Function) mapping [0-255] -> [0-255].
 static void calculate_cdf_mapping(unsigned int *hist, unsigned char *map_lut, int pixels_per_tile) {
     unsigned int sum = 0;
     float scale = 255.0f / pixels_per_tile;
@@ -307,7 +291,7 @@ static void calculate_cdf_mapping(unsigned int *hist, unsigned char *map_lut, in
 
 void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit) {
     if (im.data == NULL || tiles_x < 1 || tiles_y < 1 || im.bpp < 1) {
-        LOG_ERROR("Parámetros inválidos para CLAHE");
+        LOG_ERROR("Invalid parameters for CLAHE.");
         return;
     }
     ImageData lum = (im.bpp < 3) ? im : extract_luminance_rgb(&im);
@@ -329,11 +313,11 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
         malloc(sizeof(unsigned char[tiles_y][tiles_x][CLAHE_NUM_BINS]));
 
     if (lut == NULL) {
-        LOG_ERROR("No se pudo asignar memoria para CLAHE LUTs");
+        LOG_ERROR("Failed to allocate memory for CLAHE LUTs.");
         return;
     }
 
-// Paso 1: Calcular LUTs para cada tile (paralelizable)
+// Step 1: Compute LUTs for each tile (parallelizable).
 #pragma omp parallel for collapse(2)
     for (int ty = 0; ty < tiles_y; ty++) {
         for (int tx = 0; tx < tiles_x; tx++) {
@@ -345,7 +329,6 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
             unsigned int x_end = (tx == tiles_x - 1) ? im.width : x_start + tile_width;
             unsigned int y_end = (ty == tiles_y - 1) ? im.height : y_start + tile_height;
 
-            // Calcular histograma local
             for (unsigned int y = y_start; y < y_end; y++) {
                 for (unsigned int x = x_start; x < x_end; x++) {
                     unsigned int idx = (y * lum.width + x) * lum.bpp;
@@ -353,10 +336,8 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
                 }
             }
 
-            // Recortar histograma
             clip_histogram(hist, clip_limit_pixels);
 
-            // Calcular mapeo CDF y guardar en LUT
             int actual_pixels = (x_end - x_start) * (y_end - y_start);
             calculate_cdf_mapping(hist, lut[ty][tx], actual_pixels);
         }
@@ -372,7 +353,6 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
             float fx = ((float)x / tile_width) - 0.5f;
             float fy = ((float)y / tile_height) - 0.5f;
 
-            // Encontrar tiles vecinos
             int tx = (int)fx;
             int ty = (int)fy;
 
@@ -399,7 +379,6 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
             if (dy > 1)
                 dy = 1;
 
-            // Obtener valores mapeados de los 4 tiles vecinos
             unsigned char val_tl = lut[ty][tx][pixel_val];         // Top-Left
             unsigned char val_tr = lut[ty][tx + 1][pixel_val];     // Top-Right
             unsigned char val_bl = lut[ty + 1][tx][pixel_val];     // Bottom-Left
@@ -419,7 +398,7 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
         apply_luminance_to_rgb(&im, &lum);
         image_destroy(&lum);
     }
-    LOG_INFO("CLAHE aplicado: tiles=%dx%d, clip_limit=%.2f", tiles_x, tiles_y, clip_limit);
+    LOG_INFO("CLAHE applied: tiles=%dx%d, clip_limit=%.2f", tiles_x, tiles_y, clip_limit);
 }
 
 // ============================================================================
@@ -436,7 +415,7 @@ ImageData image_upsample_bilinear(const ImageData *src, int factor) {
     ImageData result = image_create(new_width, new_height, src->bpp);
 
     if (result.data == NULL) {
-        LOG_ERROR("No se pudo asignar memoria para el upsampling.");
+        LOG_ERROR("Failed to allocate memory for upsampling.");
         return result;
     }
 
@@ -475,7 +454,7 @@ ImageData image_upsample_bilinear(const ImageData *src, int factor) {
     }
 
     double end = omp_get_wtime();
-    LOG_TIMING(end - start, "Upsampling bilinear (factor=%d)", factor);
+    LOG_TIMING(end - start, "Bilinear upsampling (factor=%d)", factor);
 
     return result;
 }
@@ -489,14 +468,14 @@ ImageData image_downsample_boxfilter(const ImageData *src, int factor) {
     unsigned int new_height = src->height / factor;
 
     if (new_width == 0 || new_height == 0) {
-        LOG_ERROR("El factor de downsampling es demasiado grande para esta imagen.");
+        LOG_ERROR("Downsampling factor is too large for this image.");
         return image_create(0, 0, 0);
     }
 
     ImageData result = image_create(new_width, new_height, src->bpp);
 
     if (result.data == NULL) {
-        LOG_ERROR("No se pudo asignar memoria para el downsampling.");
+        LOG_ERROR("Failed to allocate memory for downsampling.");
         return result;
     }
 
@@ -530,7 +509,7 @@ ImageData image_downsample_boxfilter(const ImageData *src, int factor) {
     }
 
     double end = omp_get_wtime();
-    LOG_TIMING(end - start, "Downsampling box filter (factor=%d)", factor);
+    LOG_TIMING(end - start, "Box filter downsampling (factor=%d)", factor);
 
     return result;
 }
@@ -544,7 +523,7 @@ ImageData image_create_alpha_mask_from_dataf(const void *data_ptr) {
     // Create a 1-channel (grayscale) image for the alpha mask.
     ImageData mask = image_create(data->width, data->height, 1);
     if (mask.data == NULL) {
-        LOG_ERROR("No se pudo crear máscara alpha.");
+        LOG_ERROR("Failed to create alpha mask.");
         return mask;
     }
 
@@ -554,7 +533,7 @@ ImageData image_create_alpha_mask_from_dataf(const void *data_ptr) {
         mask.data[i] = IS_NONDATA(data->data_in[i]) ? 0 : 255;
     }
 
-    LOG_INFO("Máscara alpha creada: %ux%u", mask.width, mask.height);
+    LOG_INFO("Alpha mask created: %ux%u", mask.width, mask.height);
     return mask;
 }
 
@@ -564,24 +543,24 @@ ImageData image_add_alpha_channel(const ImageData *src, const ImageData *alpha_m
     }
 
     if (src->width != alpha_mask->width || src->height != alpha_mask->height) {
-        LOG_ERROR("Las dimensiones de la imagen y la máscara alpha no coinciden.");
+        LOG_ERROR("Image and alpha mask dimensions do not match.");
         return image_create(0, 0, 0);
     }
 
-    // Determinar nuevo bpp: 1->2 (gray+alpha), 3->4 (rgb+alpha)
+    // New bpp: 1->2 (gray+alpha), 3->4 (rgb+alpha).
     unsigned int new_bpp;
     if (src->bpp == 1) {
         new_bpp = 2;
     } else if (src->bpp == 3) {
         new_bpp = 4;
     } else {
-        LOG_ERROR("Solo se puede agregar alpha a imágenes de 1 o 3 canales (bpp=%u).", src->bpp);
+        LOG_ERROR("Alpha can only be added to 1- or 3-channel images (bpp=%u).", src->bpp);
         return image_create(0, 0, 0);
     }
 
     ImageData result = image_create(src->width, src->height, new_bpp);
     if (result.data == NULL) {
-        LOG_ERROR("No se pudo crear imagen con canal alpha.");
+        LOG_ERROR("Failed to create image with alpha channel.");
         return result;
     }
 
@@ -592,7 +571,6 @@ ImageData image_add_alpha_channel(const ImageData *src, const ImageData *alpha_m
         size_t src_idx = i * src->bpp;
         size_t dst_idx = i * new_bpp;
 
-        // Copiar canales originales
         for (unsigned int ch = 0; ch < src->bpp; ch++) {
             result.data[dst_idx + ch] = src->data[src_idx + ch];
         }
@@ -601,20 +579,19 @@ ImageData image_add_alpha_channel(const ImageData *src, const ImageData *alpha_m
         result.data[dst_idx + src->bpp] = alpha_mask->data[i];
     }
 
-    LOG_INFO("Canal alpha agregado: %ux%u, bpp %u->%u", result.width, result.height, src->bpp,
+    LOG_INFO("Alpha channel added: %ux%u, bpp %u->%u", result.width, result.height, src->bpp,
              new_bpp);
     return result;
 }
 
 ImageData image_expand_palette(const ImageData *src, const ColorArray *palette) {
     if (!src || !palette) {
-        LOG_ERROR("Parámetros inválidos para image_expand_palette.");
+        LOG_ERROR("Invalid parameters for image_expand_palette.");
         return image_create(0, 0, 0);
     }
 
-    // Solo soportamos bpp=1 (indexed) o bpp=2 (indexed+alpha)
     if (src->bpp != 1 && src->bpp != 2) {
-        LOG_ERROR("image_expand_palette solo acepta bpp=1 o bpp=2 (recibido: %u)", src->bpp);
+        LOG_ERROR("image_expand_palette only accepts bpp=1 or bpp=2 (got: %u)", src->bpp);
         return image_create(0, 0, 0);
     }
 
@@ -622,7 +599,7 @@ ImageData image_expand_palette(const ImageData *src, const ColorArray *palette) 
     unsigned int out_bpp = (src->bpp == 2) ? 4 : 3;
     ImageData result = image_create(src->width, src->height, out_bpp);
     if (result.data == NULL) {
-        LOG_ERROR("No se pudo crear imagen expandida.");
+        LOG_ERROR("Failed to create expanded image.");
         return result;
     }
 
@@ -647,13 +624,12 @@ ImageData image_expand_palette(const ImageData *src, const ColorArray *palette) 
             result.data[dst_idx + 2] = 0;
         }
 
-        // Si la fuente tiene alpha, copiarlo
         if (src->bpp == 2) {
             result.data[dst_idx + 3] = src->data[src_idx + 1];
         }
     }
 
-    LOG_INFO("Imagen expandida de paleta: %ux%u, bpp %u->%u", result.width, result.height, src->bpp,
+    LOG_INFO("Palette-expanded image: %ux%u, bpp %u->%u", result.width, result.height, src->bpp,
              out_bpp);
     return result;
 }

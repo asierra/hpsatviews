@@ -21,31 +21,28 @@
 #endif
 
 
-// Funciones comunes
-
+/// Resamples a navigation grid to the target resolution (upsampling occurs only with --full-res).
 static void enforce_resolution(DataF *data, unsigned int target_w, unsigned int target_h) {
     if (data == NULL || data->data_in == NULL) return;
 
     if (data->width == target_w && data->height == target_h) return;
 
-    // Navigation grid is larger than target: downsample.
     if (data->width > target_w) {
         int factor = data->width / target_w;
         if (factor < 1) factor = 1;
 
-        LOG_DEBUG("Ajustando navegación Rayleigh: %dx%d -> %dx%d (downsample factor %d)", 
+        LOG_DEBUG("Adjusting Rayleigh navigation: %dx%d -> %dx%d (downsample factor %d)",
                  data->width, data->height, target_w, target_h, factor);
-        
+
         DataF resized = downsample_boxfilter(*data, factor);
         dataf_destroy(data);
         *data = resized;
     }
-    // Navigation grid is smaller than target: upsample (needed for --full-res).
     else if (data->width < target_w) {
         int factor = target_w / data->width;
         if (factor < 1) factor = 1;
 
-        LOG_DEBUG("Ajustando navegación Rayleigh: %dx%d -> %dx%d (upsample factor %d)", 
+        LOG_DEBUG("Adjusting Rayleigh navigation: %dx%d -> %dx%d (upsample factor %d)", 
                  data->width, data->height, target_w, target_h, factor);
         
         DataF resized = upsample_bilinear(*data, factor);
@@ -70,27 +67,21 @@ bool rayleigh_load_navigation_from_latlon(const char *filename,
     nav->vza.data_in = NULL;
     nav->raa.data_in = NULL;
 
-    LOG_DEBUG("Generando navegación Rayleigh (SZA, VZA, RAA) desde lat/lon precalculados...");
-
-    // 1. Usar lat/lon ya calculados (copia no-owning mediante cast)
     DataF la = *navla, lo = *navlo;  // shallow copy; data not freed here
 
-    // Compute solar angles (SZA, SAA).
     DataF saa = {0};
     if (compute_solar_angles_nc(filename, &la, &lo, &nav->sza, &saa) != 0) {
-        LOG_ERROR("Falla al computar ángulos solares.");
+        LOG_ERROR("Failed to compute solar angles.");
         return false;
     }
 
-    // Compute satellite viewing angles (VZA, VAA).
     DataF vaa = {0};
     if (compute_satellite_angles_nc(filename, &la, &lo, &nav->vza, &vaa) != 0) {
-        LOG_ERROR("Falla al computar ángulos del satélite.");
+        LOG_ERROR("Failed to compute satellite angles.");
         dataf_destroy(&saa); dataf_destroy(&nav->sza);
         return false;
     }
 
-    // 4. Calcular Azimut Relativo (RAA)
     compute_relative_azimuth(&saa, &vaa, &nav->raa);
     dataf_destroy(&saa);
     dataf_destroy(&vaa);
@@ -105,7 +96,7 @@ bool rayleigh_load_navigation_from_latlon(const char *filename,
         enforce_resolution(&nav->vza, target_width, target_height);
         enforce_resolution(&nav->raa, target_width, target_height);
         if (nav->sza.width != target_width) {
-            LOG_ERROR("Falla redimensionando navegación Rayleigh: %dx%d != %dx%d",
+            LOG_ERROR("Failed resizing Rayleigh navigation: %dx%d != %dx%d",
                       nav->sza.width, nav->sza.height, target_width, target_height);
             rayleigh_free_navigation(nav);
             return false;
@@ -114,14 +105,11 @@ bool rayleigh_load_navigation_from_latlon(const char *filename,
     return true;
 }
 
-bool rayleigh_load_navigation(const char *filename, RayleighNav *nav, 
+bool rayleigh_load_navigation(const char *filename, RayleighNav *nav,
 				unsigned int target_width, unsigned int target_height) {
-    // Inicializar estructura
     nav->sza.data_in = NULL;
     nav->vza.data_in = NULL;
     nav->raa.data_in = NULL;
-
-    LOG_DEBUG("Generando navegación Rayleigh (SZA, VZA, RAA)...");
 
     // Compute lat/lon navigation needed for angle calculations.
     DataF navla = {0}, navlo = {0};
@@ -130,7 +118,7 @@ bool rayleigh_load_navigation(const char *filename, RayleighNav *nav,
         return false;
     }
 
-    // Delegar al helper con lat/lon propios — liberar antes de retornar
+    // Delegate to the helper using locally-owned lat/lon; free them before returning.
     bool ok = rayleigh_load_navigation_from_latlon(filename, &navla, &navlo, nav,
                                                    target_width, target_height);
     dataf_destroy(&navla);
@@ -197,11 +185,10 @@ void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lam
         LOG_WARN("Navigation size (%zu) does not match band size (%zu).", sza->size, band->size);
 
     size_t n = band->size;
-    
-    // Compute Rayleigh optical depth for this wavelength.
+
     float tau_r = (float)calc_bucholtz_tau(lambda_um);
     
-    LOG_DEBUG("Rayleigh analítico: Lambda=%.3f um, Tau=%.4f", lambda_um, tau_r);
+    LOG_DEBUG("Analytic Rayleigh: Lambda=%.3f um, Tau=%.4f", lambda_um, tau_r);
 
     double start_time = omp_get_wtime();
     
@@ -221,7 +208,6 @@ void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lam
         float sza_val = sza->data_in[i];
         float vza_val = vza->data_in[i];
         
-        // Convert geometry to radians.
         float theta_s = sza_val * (float)(M_PI / 180.0);
         float theta_v = vza_val * (float)(M_PI / 180.0);
         float phi_rel = raa->data_in[i] * (float)(M_PI / 180.0);
@@ -253,10 +239,10 @@ void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lam
     }
 
     double end_time = omp_get_wtime();
-    LOG_TIMING(end_time - start_time, "Rayleigh analítico (λ=%.3fμm, %zu px)", lambda_um, valid_pixels);
+    LOG_TIMING(end_time - start_time, "Analytic Rayleigh (λ=%.3fμm, %zu px)", lambda_um, valid_pixels);
     
     if (valid_pixels > 0) {
-        LOG_DEBUG("  media %.4f -> %.4f, clamped %.1f%%",
+        LOG_DEBUG("  mean %.4f -> %.4f, clamped %.1f%%",
             sum_orig/valid_pixels, sum_corr/valid_pixels, 
             100.0 * (double)clamped_pixels / valid_pixels);
     }
@@ -309,7 +295,7 @@ static inline float get_rayleigh_value(const RayleighLUT *lut, float s, float v,
 
     float *t = lut->table;
 
-    // 6. Obtener los 8 vecinos (Cubo)
+    // Fetch the 8 surrounding cube corners.
     float c000 = t[s0 * stride_s + v0 * stride_v + a0];
     float c001 = t[s0 * stride_s + v0 * stride_v + a1];
     float c010 = t[s0 * stride_s + v1 * stride_v + a0];
@@ -333,23 +319,11 @@ static inline float get_rayleigh_value(const RayleighLUT *lut, float s, float v,
 }
 
 
-/**
- * Carga una LUT de Rayleigh desde datos embebidos en memoria.
- * 
- * Formato del archivo:
- * - Header (48 bytes): 9 floats (min, max, step) + 3 ints (dimensiones)
- * - Data: Array 3D float32 [sza][vza][azimuth]
- * 
- * @param data Puntero a los datos binarios embebidos
- * @param data_len Longitud de los datos en bytes
- * @param name Nombre descriptivo para logs (ej: "C01")
- * @return Estructura RayleighLUT cargada (table será NULL si falla)
- */
+/// Loads the embedded Rayleigh LUT for the given ABI channel (table is NULL on failure).
 static RayleighLUT rayleigh_lut_load_from_memory(const uint8_t channel) {
     RayleighLUT lut = {0};
     const unsigned char *data;
     unsigned int data_len;
-    // Select embedded LUT for the requested ABI channel.
     if (channel == 1) {
         data = rayleigh_lut_c01_data;
         data_len = rayleigh_lut_c01_data_len;
@@ -360,19 +334,18 @@ static RayleighLUT rayleigh_lut_load_from_memory(const uint8_t channel) {
         data = rayleigh_lut_c03_data;
         data_len = rayleigh_lut_c03_data_len;
     } else {
-        LOG_ERROR("Canal de LUT no reconocido %d", channel);
+        LOG_ERROR("Unrecognized LUT channel %d", channel);
         return lut;
     }
     
     if (!data || data_len < 48) {
-        LOG_ERROR("Datos embebidos inválidos para LUT %d", channel);
+        LOG_ERROR("Invalid embedded data for LUT %d", channel);
         return lut;
     }
     
-    // Copiar datos a un buffer para leer el header
     const unsigned char *ptr = data;
-    
-    // Leer header (48 bytes: 9 floats + 3 ints)
+
+    // Header layout: 9 floats (min/max/step per axis) + 3 ints (axis dimensions), 48 bytes total.
     memcpy(&lut.sz_min, ptr, sizeof(float)); ptr += sizeof(float);
     memcpy(&lut.sz_max, ptr, sizeof(float)); ptr += sizeof(float);
     memcpy(&lut.sz_step, ptr, sizeof(float)); ptr += sizeof(float);
@@ -386,20 +359,18 @@ static RayleighLUT rayleigh_lut_load_from_memory(const uint8_t channel) {
     memcpy(&lut.n_vz, ptr, sizeof(int)); ptr += sizeof(int);
     memcpy(&lut.n_az, ptr, sizeof(int)); ptr += sizeof(int);
     
-    // Validar dimensiones
     if (lut.n_sz <= 0 || lut.n_vz <= 0 || lut.n_az <= 0 ||
         lut.n_sz > 1000 || lut.n_vz > 1000 || lut.n_az > 1000) {
-        LOG_ERROR("Dimensiones inválidas en LUT %d: %dx%dx%d", channel, lut.n_sz, lut.n_vz, lut.n_az);
+        LOG_ERROR("Invalid dimensions in LUT %d: %dx%dx%d", channel, lut.n_sz, lut.n_vz, lut.n_az);
         lut.n_sz = lut.n_vz = lut.n_az = 0;
         return lut;
     }
     
-    // Alocar memoria para la tabla
     size_t table_size = (size_t)lut.n_sz * lut.n_vz * lut.n_az;
     size_t expected_size = 48 + table_size * sizeof(float);
     
     if (data_len != expected_size) {
-        LOG_ERROR("Tamaño de datos embebidos incorrecto para LUT %d: esperado %zu, obtenido %u", 
+        LOG_ERROR("Incorrect embedded data size for LUT %d: expected %zu, got %u", 
                   channel, expected_size, data_len);
         lut.n_sz = lut.n_vz = lut.n_az = 0;
         return lut;
@@ -407,12 +378,11 @@ static RayleighLUT rayleigh_lut_load_from_memory(const uint8_t channel) {
     
     lut.table = malloc(table_size * sizeof(float));
     if (!lut.table) {
-        LOG_ERROR("Falla de memoria al alocar LUT %d (%zu valores)", channel, table_size);
+        LOG_ERROR("Memory allocation failed for LUT %d (%zu values)", channel, table_size);
         lut.n_sz = lut.n_vz = lut.n_az = 0;
         return lut;
     }
     
-    // Copiar datos de la tabla
     memcpy(lut.table, ptr, table_size * sizeof(float));
     
     // Verify LUT value range.
@@ -424,7 +394,7 @@ static RayleighLUT rayleigh_lut_load_from_memory(const uint8_t channel) {
         if (v > max_val) max_val = v;
     }
     
-    LOG_DEBUG("LUT C%02d: %d×%d×%d, rango [%.4f, %.4f]",
+    LOG_DEBUG("LUT C%02d: %d×%d×%d, range [%.4f, %.4f]",
              channel, lut.n_sz, lut.n_vz, lut.n_az, min_val, max_val);
     
     return lut;
@@ -436,20 +406,18 @@ void rayleigh_lut_destroy(RayleighLUT *lut) {
         free(lut->table);
         lut->table = NULL;
         lut->n_sz = lut->n_vz = lut->n_az = 0;
-        LOG_DEBUG("LUT de Rayleigh liberada.");
     }
 }
 
 
 void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t channel, const DataF *redband) {
-	// Validar dimensiones
     if (img->width != nav->sza.width || img->height != nav->sza.height) {
-        LOG_ERROR("Mismatch dimensiones en Rayleigh Analytic: Img %dx%d vs Nav %dx%d",
+        LOG_ERROR("Dimension mismatch in Rayleigh Analytic: Img %dx%d vs Nav %dx%d",
                   img->width, img->height, nav->sza.width, nav->sza.height);
         return;
     }
     if (redband && redband->data_in && redband->size != img->size) {
-        LOG_WARN("Redband size mismatch (%zu vs %zu), desactivando relajación por nubes",
+        LOG_WARN("Redband size mismatch (%zu vs %zu), disabling cloud relaxation",
                  redband->size, img->size);
         redband = NULL;
     }
@@ -474,10 +442,8 @@ void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t 
     for (size_t i = 0; i < n; i++) {
         float theta_s = nav->sza.data_in[i];
         float original = img->data_in[i];
-        
-        // Skip invalid data - usar macro IS_NONDATA
+
         if (IS_NONDATA(original)) {
-            // Mantener como NonData
             continue;
         }
         
@@ -507,16 +473,14 @@ void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t 
         
         float r_corr = get_rayleigh_value(&lut, theta_s_sec, vza_sec, nav->raa.data_in[i]);
         
-        // Taper correction linearly for SZA 70°-88° to avoid over-correction
-        // near the day/night terminator (matching satpy/pyspectral behavior).
+        // Taper correction linearly for SZA 70°-88° to avoid over-correction near the day/night terminator (matches satpy/pyspectral).
         if (theta_s > 70.0f) {
             float reduce_factor = 1.0f - (theta_s - 70.0f) / (88.0f - 70.0f);
             if (reduce_factor < 0.0f) reduce_factor = 0.0f;
             r_corr *= reduce_factor;
         }
         
-        // Relax correction over bright clouds (matching pyspectral):
-        // where red-band reflectance >= 0.20, reduce correction linearly.
+        // Relax correction over bright clouds (matching pyspectral): reduce linearly once red-band reflectance >= 0.20.
         if (redband && redband->data_in && !IS_NONDATA(redband->data_in[i])) {
             float rb = redband->data_in[i];
             if (rb >= 0.20f) {
@@ -545,7 +509,7 @@ void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t 
 
     double end_time = omp_get_wtime();
     LOG_TIMING(end_time - start_time, "Rayleigh LUT C%02d (%zu px)", channel, valid_pixels);
-    LOG_DEBUG("  noche=%zu clamped=%zu media=%.4f->%.4f corr_max=%.4f",
+    LOG_DEBUG("  night=%zu clamped=%zu mean=%.4f->%.4f corr_max=%.4f",
              night_pixels, negative_pixels,
              valid_pixels > 0 ? sum_original/valid_pixels : 0.0,
              valid_pixels > 0 ? sum_corrected/valid_pixels : 0.0,
@@ -566,7 +530,7 @@ void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t 
     if (new_max > new_min) {
         img->fmin = new_min;
         img->fmax = new_max;
-        LOG_DEBUG("  Rango post-Rayleigh: [%.6f, %.6f]", new_min, new_max);
+        LOG_DEBUG("  Post-Rayleigh range: [%.6f, %.6f]", new_min, new_max);
     }
 
     rayleigh_lut_destroy(&lut);

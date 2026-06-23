@@ -21,12 +21,12 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha,
 
   ImageData imout = image_create(c01.width, c01.height, bpp);
   if (imout.data == NULL) {
-    LOG_ERROR("No fue posible apartar memoria para la imagen en gray.");
+    LOG_ERROR("Failed to allocate memory for gray image.");
     return imout;
   }
 
   double start = omp_get_wtime();
-  LOG_INFO("Iniciando loop gray con rango [%.2f, %.2f] iw %lu ih %lu",
+  LOG_INFO("Starting gray loop with range [%.2f, %.2f], iw %lu ih %lu",
            min_val, max_val, imout.width, imout.height);
 
   uint8_t last_color = (cpt && cpt->has_nan_color) ? cpt->num_colors - 1 : 255;
@@ -83,12 +83,12 @@ ImageData create_single_grayb(DataB c01, bool invert_value, bool use_alpha, cons
 
   ImageData imout = image_create(c01.width, c01.height, bpp);
   if (imout.data == NULL) {
-    LOG_ERROR("No fue posible apartar memoria para la imagen en grayb.");
+    LOG_ERROR("Failed to allocate memory for grayb image.");
     return imout;
   }
 
   double start = omp_get_wtime();
-  LOG_INFO("Iniciando loop grayb iw %lu ih %lu min %d max %d", imout.width, imout.height, c01.min, c01.max);
+  LOG_INFO("Starting grayb loop, iw %lu ih %lu min %d max %d", imout.width, imout.height, c01.min, c01.max);
 
   uint8_t last_color = (cpt && cpt->has_nan_color) ? cpt->num_colors-1: 0;
   #pragma omp parallel for

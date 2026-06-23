@@ -25,13 +25,13 @@
 #include "help_en.h"
 #endif
 
-// Ruta por defecto (se puede definir en un header global o pasar como macro -D)
+/// Default path to the clip catalog; overridable via a build-time -D macro.
 #define RUTA_CLIPS "/usr/local/share/lanot/docs/recortes_coordenadas.csv"
 
-// Processing function type for command runners (run_rgb, run_processing).
+/// Function pointer type shared by the command runners (run_rgb, run_processing).
 typedef int (*ProcessingFunc)(const ProcessConfig *, MetadataContext *);
 
-// --- Helper: Guardar JSON sidecar ---
+/// Saves the JSON metadata sidecar when --json was requested.
 static void save_sidecar_json(const ProcessConfig *cfg, MetadataContext *meta, ArgParser *parser) {
     if (!ap_found(parser, "json")) {
         return;
@@ -54,7 +54,6 @@ static void save_sidecar_json(const ProcessConfig *cfg, MetadataContext *meta, A
             *last_dot = '\0';
         }
         
-        // Concatenar .json de forma segura
         strncat(json_path_buffer, ".json", sizeof(json_path_buffer) - strlen(json_path_buffer) - 1);
         final_json_path = json_path_buffer;
     } else {
@@ -64,37 +63,36 @@ static void save_sidecar_json(const ProcessConfig *cfg, MetadataContext *meta, A
     }
 
     if (final_json_path) {
-        LOG_INFO("Guardando metadatos en: %s", final_json_path);
+        LOG_INFO("Saving metadata to: %s", final_json_path);
         metadata_save_json(meta, final_json_path);
     }
     free(generated_path);
 }
 
-// --- Generic command handler ---
+/// Shared driver for the gray/pseudocolor/rgb callbacks: validates config, runs the pipeline, and saves the JSON sidecar.
 static int generic_cmd_handler(const char *cmd_mode, ArgParser *cmd_parser, ProcessingFunc run_func) {
     ProcessConfig cfg = {0};
     cfg.command = cmd_mode;
 
     if (!config_from_argparser(cmd_parser, &cfg)) {
-        LOG_ERROR("Error al parsear configuración");
+        LOG_ERROR("Failed to parse configuration.");
         config_destroy(&cfg);
         return 1;
     }
 
     if (!config_validate(&cfg)) {
-        LOG_ERROR("Configuración inválida");
+        LOG_ERROR("Invalid configuration.");
         config_destroy(&cfg);
         return 1;
     }
 
     MetadataContext *meta = metadata_create();
     if (!meta) {
-        LOG_ERROR("Error al crear contexto de metadatos");
+        LOG_ERROR("Failed to create metadata context.");
         config_destroy(&cfg);
         return 1;
     }
 
-    // Run the command-specific processing function.
     int result = run_func(&cfg, meta);
 
     if (result == 0) {
@@ -106,8 +104,6 @@ static int generic_cmd_handler(const char *cmd_mode, ArgParser *cmd_parser, Proc
 
     return result;
 }
-
-// --- Callbacks para los comandos ---
 
 int cmd_rgb(char *cmd_name, ArgParser *cmd_parser) {
     (void)cmd_name;
@@ -124,7 +120,7 @@ int cmd_gray(char *cmd_name, ArgParser *cmd_parser) {
     return generic_cmd_handler("gray", cmd_parser, run_processing);
 }
 
-// --- Helper: common option bindings ---
+/// Registers the CLI options shared by the gray, pseudocolor, and rgb commands.
 static void add_common_opts(ArgParser *cmd_parser) {
     ap_add_str_opt(cmd_parser, "out o", NULL);
     ap_add_flag(cmd_parser, "geotiff t");
@@ -145,7 +141,7 @@ static void add_common_opts(ArgParser *cmd_parser) {
 }
 
 int main(int argc, char *argv[]) {
-    // Verificar argumentos globales antes de parsear
+    // Pre-scan for global flags that must be resolved before logger_init() and ap_parse().
     bool verbose_mode = false;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--list-clips") == 0) {
@@ -168,7 +164,6 @@ int main(int argc, char *argv[]) {
     logger_init(verbose_mode ? LOG_DEBUG : LOG_INFO);
 #endif
 
-    // --- Comando 'rgb' ---
     ArgParser *rgb_cmd = ap_new_cmd(parser, "rgb");
     if (rgb_cmd) {
         ap_set_helptext(rgb_cmd, HPSATVIEWS_HELP_RGB);
@@ -185,7 +180,6 @@ int main(int argc, char *argv[]) {
         ap_set_cmd_callback(rgb_cmd, cmd_rgb);
     }
 
-    // --- Comando 'pseudocolor' ---
     ArgParser *pc_cmd = ap_new_cmd(parser, "pseudocolor pseudo");
     if (pc_cmd) {
         ap_set_helptext(pc_cmd, HPSATVIEWS_HELP_PSEUDOCOLOR);
@@ -195,7 +189,6 @@ int main(int argc, char *argv[]) {
         ap_set_cmd_callback(pc_cmd, cmd_pseudocolor);
     }
 
-    // --- Comando 'gray' ---
     ArgParser *sg_cmd = ap_new_cmd(parser, "gray");
     if (sg_cmd) {
         ap_set_helptext(sg_cmd, HPSATVIEWS_HELP_GRAY);
@@ -205,7 +198,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (!ap_parse(parser, argc, argv)) {
-        // ap_parse ya imprime errores, solo necesitamos salir.
+        // ap_parse() already prints its own error message on failure.
         ap_free(parser);
         return 1;
     }

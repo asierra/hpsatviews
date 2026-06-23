@@ -30,27 +30,27 @@ static int write_png_core(const char *filename, const ImageData *image, png_byte
                           const ColorArray *palette, const png_byte *transp) {
   FILE *fp = fopen(filename, "wb");
   if (!fp) {
-    LOG_ERROR("No se pudo abrir el archivo PNG para escritura: %s", filename);
+    LOG_ERROR("Could not open PNG file for writing: %s", filename);
     return 1;
   }
 
   png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
   if (!png) {
-    LOG_ERROR("png_create_write_struct falló.");
+    LOG_ERROR("png_create_write_struct failed.");
     fclose(fp);
     return 1;
   }
 
   png_infop info = png_create_info_struct(png);
   if (!info) {
-    LOG_ERROR("png_create_info_struct falló.");
+    LOG_ERROR("png_create_info_struct failed.");
     png_destroy_write_struct(&png, NULL);
     fclose(fp);
     return 1;
   }
 
   if (setjmp(png_jmpbuf(png))) {
-    LOG_ERROR("Error durante la inicialización de I/O de libpng.");
+    LOG_ERROR("Error during libpng I/O initialization.");
     png_destroy_write_struct(&png, &info);
     fclose(fp);
     return 1;
@@ -77,7 +77,7 @@ static int write_png_core(const char *filename, const ImageData *image, png_byte
   // Esto no copia los datos, solo crea punteros.
   png_bytep *row_pointers = (png_bytep*)malloc(sizeof(png_bytep) * image->height);
   if (!row_pointers) {
-    LOG_FATAL("Falla de memoria para los punteros de fila de PNG.");
+    LOG_FATAL("Memory allocation failed for PNG row pointers.");
     png_destroy_write_struct(&png, &info);
     fclose(fp);
     return 1;
@@ -96,17 +96,17 @@ static int write_png_core(const char *filename, const ImageData *image, png_byte
   png_destroy_write_struct(&png, &info);
   fclose(fp);
 
-  LOG_INFO("PNG guardado: %s (%ux%u, %u bpp)", filename, image->width, image->height, image->bpp);
+  LOG_INFO("PNG saved: %s (%ux%u, %u bpp)", filename, image->width, image->height, image->bpp);
   return 0;
 }
 
 int writer_save_png_palette(const char *filename, const ImageData *image, const ColorArray *palette) {
   if (image->bpp != 1 && image->bpp != 2) {
-    LOG_ERROR("writer_save_png_palette solo acepta bpp=1 o bpp=2 (recibido: %u)", image->bpp);
+    LOG_ERROR("writer_save_png_palette only accepts bpp=1 or bpp=2 (got: %u)", image->bpp);
     return 1;
   }
   if (!palette || palette->length == 0) {
-    LOG_ERROR("Se requiere una paleta válida para guardar una imagen con paleta.");
+    LOG_ERROR("A valid palette is required to save a paletted image.");
     return 1;
   }
 
@@ -123,7 +123,7 @@ int writer_save_png_palette(const char *filename, const ImageData *image, const 
   if (padded_size != palette->length) {
     padded_palette = color_array_create(padded_size);
     if (!padded_palette) {
-      LOG_FATAL("Falla de memoria al ajustar el tamaño de la paleta.");
+      LOG_FATAL("Memory allocation failed while resizing palette.");
       return 1;
     }
     memcpy(padded_palette->colors, palette->colors, sizeof(Color) * palette->length);
@@ -143,7 +143,7 @@ int writer_save_png_palette(const char *filename, const ImageData *image, const 
   if (image->bpp == 2) {
     transp = (png_byte*)calloc(palette->length, sizeof(png_byte));
     if (!transp) {
-      LOG_FATAL("Falla de memoria al crear buffer de transparencia.");
+      LOG_FATAL("Memory allocation failed for transparency buffer.");
       if (padded_palette) color_array_destroy(padded_palette);
       return 1;
     }
@@ -153,7 +153,7 @@ int writer_save_png_palette(const char *filename, const ImageData *image, const 
     // Build a bpp=1 index-only image.
     temp_image = image_create(image->width, image->height, 1);
     if (!temp_image.data) {
-      LOG_FATAL("Falla de memoria al crear imagen temporal para índices.");
+      LOG_FATAL("Memory allocation failed for temporary index image.");
       free(transp);
       if (padded_palette) color_array_destroy(padded_palette);
       return 1;
@@ -207,7 +207,7 @@ int writer_save_png(const char *filename, const ImageData *image) {
       color_type = PNG_COLOR_TYPE_RGB_ALPHA;
       break;
     default:
-      LOG_ERROR("BPP no soportado para escritura PNG: %u. Soportados: 1, 2, 3, 4.", image->bpp);
+      LOG_ERROR("Unsupported BPP for PNG writing: %u. Supported: 1, 2, 3, 4.", image->bpp);
       return 1;
   }
 

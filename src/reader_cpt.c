@@ -83,7 +83,7 @@ ColorArray* cpt_to_color_array(CPTData* cpt) {
     if (cpt->has_nan_color) color_array->colors[total_colors - 1] = cpt->nan_color;
     if (cpt->has_foreground) color_array->colors[total_colors - 2] = cpt->foreground;
 
-    LOG_DEBUG("colores paleta %d %d", total_colors, color_array->length);
+    LOG_DEBUG("palette colors %d %d", total_colors, color_array->length);
     return color_array;
 }
 
@@ -150,7 +150,7 @@ CPTData* read_cpt_file(const char* filename) {
     }
 
     if (!file) {
-        LOG_ERROR("No se pudo abrir el archivo CPT: %s", filename);
+        LOG_ERROR("Could not open CPT file: %s", filename);
         return NULL;
     }
     
@@ -242,7 +242,7 @@ void free_cpt_data(CPTData* cpt) {
 // Log CPT metadata and color table to the debug output.
 void print_cpt_info(const CPTData* cpt) {
         LOG_INFO("CPT: %s", cpt->name);
-        LOG_INFO("Entradas de color: %d", cpt->entry_count);
+        LOG_INFO("Color entries: %d", cpt->entry_count);
 
         if (cpt->has_foreground) {
          LOG_INFO("Foreground: %u/%u/%u", 
@@ -265,7 +265,7 @@ void print_cpt_info(const CPTData* cpt) {
              cpt->nan_color.b);
         }
 
-        LOG_INFO("Tabla de colores:");
+        LOG_INFO("Color table:");
         for (unsigned int i = 0; i < cpt->entry_count; i += 2) {
          LOG_INFO("%.6g -> %.6g: RGB(%u,%u,%u) -> RGB(%u,%u,%u)",
              cpt->entries[i].value, 

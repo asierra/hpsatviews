@@ -20,13 +20,13 @@ ChannelSet* channelset_create(const char **channel_names, int count) {
     
     ChannelSet *set = malloc(sizeof(ChannelSet));
     if (!set) {
-        LOG_ERROR("Falla al asignar memoria para ChannelSet");
+        LOG_ERROR("Failed to allocate memory for ChannelSet.");
         return NULL;
     }
     
     set->channels = calloc(count, sizeof(ChannelInfo));
     if (!set->channels) {
-        LOG_ERROR("Falla al asignar memoria para array de canales");
+        LOG_ERROR("Failed to allocate memory for channel array.");
         free(set);
         return NULL;
     }
@@ -88,14 +88,14 @@ int find_id_from_name(const char *filename, char *id_out, size_t id_size) {
     // GOES format: OR_ABI-L2-CMIPC-M6C13_G19_s20253231800172_...
     const char *s_pos = strstr(filename, "_s");
     if (!s_pos) {
-        LOG_DEBUG("No se encontró patrón '_s' en: %s", filename);
+        LOG_DEBUG("Pattern '_s' not found in: %s", filename);
         return -1;
     }
     
     // Extract 11 characters of the start timestamp after '_s'.
     // Example: "s20253231800"
     if (strlen(s_pos) < 12) {
-        LOG_DEBUG("Nombre muy corto después de '_s': %s", s_pos);
+        LOG_DEBUG("Name too short after '_s': %s", s_pos);
         return -1;
     }
     
@@ -107,13 +107,13 @@ int find_id_from_name(const char *filename, char *id_out, size_t id_size) {
 
 int find_channel_filenames(const char *directory, ChannelSet *set, bool is_l2_product) {
     if (!directory || !set || set->id_signature[0] == '\0') {
-        LOG_ERROR("Parámetros inválidos para find_channel_filenames");
+        LOG_ERROR("Invalid parameters for find_channel_filenames.");
         return -1;
     }
     
     DIR *dir = opendir(directory);
     if (!dir) {
-        LOG_ERROR("No se pudo abrir el directorio: %s", directory);
+        LOG_ERROR("Could not open directory: %s", directory);
         return -1;
     }
     
@@ -150,7 +150,7 @@ int find_channel_filenames(const char *directory, ChannelSet *set, bool is_l2_pr
                 size_t path_len = strlen(directory) + strlen(entry->d_name) + 2;
                 char *full_path = malloc(path_len);
                 if (!full_path) {
-                    LOG_ERROR("Falla al asignar memoria para ruta");
+                    LOG_ERROR("Failed to allocate memory for path.");
                     closedir(dir);
                     return -1;
                 }
@@ -166,7 +166,7 @@ int find_channel_filenames(const char *directory, ChannelSet *set, bool is_l2_pr
                 
                 set->channels[i].filename = full_path;
                 //found_count++;
-                LOG_DEBUG("Encontrado %s: %s", set->channels[i].name, full_path);
+                LOG_DEBUG("Found %s: %s", set->channels[i].name, full_path);
                 break;
             }
         }
@@ -176,10 +176,10 @@ int find_channel_filenames(const char *directory, ChannelSet *set, bool is_l2_pr
     
     // Verificar que todos los canales fueron encontrados
     if (found_count != set->count) {
-        LOG_WARN("Solo se encontraron %d de %d canales requeridos", found_count, set->count);
+        LOG_WARN("Only found %d of %d required channels", found_count, set->count);
         for (int i = 0; i < set->count; i++) {
             if (!set->channels[i].filename) {
-                LOG_WARN("  Falta canal: %s", set->channels[i].name);
+                LOG_WARN("  Missing channel: %s", set->channels[i].name);
             }
         }
         return -1;

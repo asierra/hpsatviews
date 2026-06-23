@@ -17,7 +17,7 @@
 ImageData reader_load_webp(const char *filename) {
     FILE *fp = fopen(filename, "rb");
     if (!fp) {
-        LOG_ERROR("No se pudo abrir el archivo WebP: %s", filename);
+        LOG_ERROR("Could not open WebP file: %s", filename);
         return image_create(0, 0, 0);
     }
 
@@ -27,14 +27,14 @@ ImageData reader_load_webp(const char *filename) {
     fseek(fp, 0, SEEK_SET);
 
     if (file_size == 0) {
-        LOG_ERROR("Archivo WebP vacío: %s", filename);
+        LOG_ERROR("Empty WebP file: %s", filename);
         fclose(fp);
         return image_create(0, 0, 0);
     }
 
     uint8_t *file_data = (uint8_t *)malloc(file_size);
     if (!file_data) {
-        LOG_FATAL("Falla de memoria al leer WebP comprimido.");
+        LOG_FATAL("Memory allocation failed while reading compressed WebP.");
         fclose(fp);
         return image_create(0, 0, 0);
     }
@@ -43,7 +43,7 @@ ImageData reader_load_webp(const char *filename) {
     fclose(fp);
 
     if (bytes_read != file_size) {
-        LOG_ERROR("Error de lectura: %s", filename);
+        LOG_ERROR("Read error: %s", filename);
         free(file_data);
         return image_create(0, 0, 0);
     }
@@ -51,7 +51,7 @@ ImageData reader_load_webp(const char *filename) {
     // 2. Obtener dimensiones
     int width = 0, height = 0;
     if (!WebPGetInfo(file_data, file_size, &width, &height)) {
-        LOG_ERROR("WebP inválido: %s", filename);
+        LOG_ERROR("Invalid WebP: %s", filename);
         free(file_data);
         return image_create(0, 0, 0);
     }
@@ -61,7 +61,7 @@ ImageData reader_load_webp(const char *filename) {
     ImageData image = image_create(width, height, bpp);
 
     if (image.data == NULL) {
-        LOG_FATAL("Falla de memoria para buffer de imagen (%dx%d RGB).", width, height);
+        LOG_FATAL("Memory allocation failed for image buffer (%dx%d RGB).", width, height);
         free(file_data);
         return image;
     }
@@ -78,12 +78,12 @@ ImageData reader_load_webp(const char *filename) {
     free(file_data); // Liberamos el comprimido
 
     if (result == NULL) {
-        LOG_ERROR("Error al decodificar WebP RGB: %s", filename);
+        LOG_ERROR("Error decoding WebP RGB: %s", filename);
         image_destroy(&image);
         return image_create(0, 0, 0);
     }
 
-    LOG_INFO("WebP cargado (RGB): %s (%ux%u, 3 bpp)", filename, width, height);
+    LOG_INFO("WebP loaded (RGB): %s (%ux%u, 3 bpp)", filename, width, height);
 
     return image;
 }

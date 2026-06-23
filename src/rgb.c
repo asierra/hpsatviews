@@ -67,7 +67,7 @@ void rgb_context_destroy(RgbContext *ctx) {
 // --- PHASE 2: COMPOSERS (STRATEGY PATTERN) ---
 
 static bool compose_truecolor(RgbContext *ctx) {
-    // 1. Setup y Copia
+    // 1. Setup and copy.
     DataF *ch_blue = &ctx->channels[1].fdata; // C01
     DataF *ch_red = &ctx->channels[2].fdata;  // C02
     DataF *ch_nir = &ctx->channels[3].fdata;  // C03
@@ -103,20 +103,18 @@ static bool compose_truecolor(RgbContext *ctx) {
             apply_solar_zenith_correction(&ctx->comp_r, &nav.sza);
             apply_solar_zenith_correction(ch_nir, &nav.sza);
             if (ctx->opts.rayleigh_analytic) {
-                LOG_INFO("Aplicando Rayleigh analítico...");
                 analytic_rayleigh_correction(&ctx->comp_b, &nav, 0.47);
                 analytic_rayleigh_correction(&ctx->comp_r, &nav, 0.64);
             } else {
-                LOG_INFO("Aplicando Rayleigh LUT...");
                 luts_rayleigh_correction(&ctx->comp_b, &nav, 1, &ctx->comp_r);
                 luts_rayleigh_correction(&ctx->comp_r, &nav, 2, NULL);
             }
             rayleigh_free_navigation(&nav);
         } else {
-            LOG_WARN("Falló carga de navegación, saltando Rayleigh.");
+            LOG_WARN("Failed to load navigation, skipping Rayleigh.");
         }
     }
-    // 3. Generar Verde
+    // 3. Generate the green channel.
     ctx->comp_g = create_truecolor_synthetic_green(&ctx->comp_b, &ctx->comp_r, ch_nir);
     if (!ctx->comp_g.data_in)
         return false;
@@ -124,7 +122,6 @@ static bool compose_truecolor(RgbContext *ctx) {
 
     // 3b. Ratio Sharpening
     if (ctx->opts.use_sharpen) {
-        LOG_DEBUG("Aplicando ratio sharpening...");
         DataF ratio_map = dataf_ratio_sharpen_map(&ctx->comp_r);
         if (ratio_map.data_in) {
             DataF new_g = dataf_op_dataf(&ctx->comp_g, &ratio_map, OP_MUL);
@@ -138,7 +135,6 @@ static bool compose_truecolor(RgbContext *ctx) {
     }
 
     if (ctx->opts.use_piecewise_stretch) {
-        LOG_DEBUG("Aplicando piecewise stretch...");
         apply_piecewise_stretch(&ctx->comp_r);
         apply_piecewise_stretch(&ctx->comp_g);
         apply_piecewise_stretch(&ctx->comp_b);
@@ -158,7 +154,7 @@ static bool compose_truecolor(RgbContext *ctx) {
 }
 
 static bool compose_night(RgbContext *ctx) {
-    // Cargar imagen de fondo (luces de ciudad) si se solicita
+    // Load city-lights background image if requested.
     ImageData fondo_img = {0};
     const ImageData *fondo_ptr = NULL;
     if (ctx->opts.use_citylights) {
@@ -172,23 +168,23 @@ static bool compose_night(RgbContext *ctx) {
         } else if (width == 8987) {
             bg_path = "/usr/local/share/lanot/images/land_lights_2016_lalo.webp";
         } else {
-            LOG_WARN("Resolución (%d) no coincide con fondos disponibles. Se omiten luces.", width);
+            LOG_WARN("Resolution (%d) does not match available backgrounds; skipping lights.", width);
         }
 
         if (bg_path) {
-            LOG_INFO("Cargando imagen de fondo: %s", bg_path);
+            LOG_INFO("Loading background image: %s", bg_path);
             fondo_img = reader_load_webp(bg_path);
             if (fondo_img.data != NULL) {
                 fondo_ptr = &fondo_img;
             } else {
-                LOG_WARN("No se pudo cargar la imagen de fondo de luces de ciudad.");
+                LOG_WARN("Could not load the city-lights background image.");
             }
         }
     } else {
-        LOG_INFO("Luces de ciudad desactivadas. Use -l o --citylights para activarlas.");
+        LOG_INFO("City lights disabled. Use -l or --citylights to enable them.");
     }
     ctx->final_image = create_nocturnal_pseudocolor(&ctx->channels[13].fdata, fondo_ptr);
-    image_destroy(&fondo_img); // Liberar la imagen de fondo si fue cargada*/
+    image_destroy(&fondo_img);
     return true;
 }
 
@@ -245,13 +241,12 @@ static bool compose_so2(RgbContext *ctx) {
 }
 
 static bool compose_daynite(RgbContext *ctx) {
-    // Genera imagen diurna
     ctx->opts.apply_rayleigh = true;
     ctx->opts.use_piecewise_stretch = true;
     if (!compose_truecolor(ctx)) {
         return false;
     }
-    // Forzamos el uso de citylights para la nocturna.
+    // Force citylights for the night composite.
     ctx->opts.use_citylights = true;
     if (!compose_night(ctx)) {
         return false;
@@ -262,28 +257,28 @@ static bool compose_daynite(RgbContext *ctx) {
 }
 
 static bool compose_custom(RgbContext *ctx) {
-    LOG_INFO("Armando RGB custom con expresión: %s", ctx->opts.expr);
+    LOG_INFO("Building custom RGB with expression: %s", ctx->opts.expr);
     LinearCombo combo[3];
     memset(combo, 0, sizeof(combo));
     float ranges[3][2] = {{0, 255}, {0, 255}, {0, 255}}; // [min, max]
 
-    // 1. Parsear expresiones (R;G;B)
-    // Usamos una copia de la cadena porque strtok modifica el original
+    // 1. Parse expressions (R;G;B).
+    // Use a copy of the string because strtok modifies the original.
     char *expr_copy = strdup(ctx->opts.expr);
     if (!expr_copy) {
-        LOG_ERROR("Falla de memoria al duplicar expresión.");
+        LOG_ERROR("Memory allocation failed while duplicating expression.");
         return false;
     }
     char *token = strtok(expr_copy, ";");
     bool parse_error = false;
     for (int i = 0; i < 3; i++) {
         if (token == NULL) {
-            LOG_ERROR("Error, deben ser 3 expresiones divididas por ';'.");
+            LOG_ERROR("Error: there must be 3 expressions separated by ';'.");
             parse_error = true;
             break;
         }
         if (parse_expr_string(token, &combo[i]) != 0) {
-            LOG_ERROR("Error parseando expresión componente %d", i);
+            LOG_ERROR("Error parsing component expression %d", i);
             parse_error = true;
         }
         token = strtok(NULL, ";");
@@ -292,36 +287,36 @@ static bool compose_custom(RgbContext *ctx) {
     if (parse_error)
         return false;
 
-    // 2. Parsear rangos minmax (min,max; min,max; min,max) si los hay
+    // 2. Parse minmax ranges (min,max; min,max; min,max) if provided.
     if (ctx->opts.minmax) {
         char *minmax_copy = strdup(ctx->opts.minmax);
         if (!minmax_copy) {
-            LOG_ERROR("Falla de memoria al duplicar minmax.");
+            LOG_ERROR("Memory allocation failed while duplicating minmax.");
             return false;
         }
         char *m_token = strtok(minmax_copy, ";");
         for (int i = 0; i < 3 && m_token != NULL; i++) {
             if (sscanf(m_token, "%f,%f", &ranges[i][0], &ranges[i][1]) != 2) {
-                LOG_WARN("No se pudieron leer los rangos para el componente %d: %s", i, m_token);
+                LOG_WARN("Could not read ranges for component %d: %s", i, m_token);
             }
             m_token = strtok(NULL, ";");
         }
         free(minmax_copy);
     }
-    LOG_DEBUG("Rangos custom RGB: %s: %f,%f  %f,%f %f,%f", ctx->opts.minmax, ranges[0][0],
+    LOG_DEBUG("Custom RGB ranges: %s: %f,%f  %f,%f %f,%f", ctx->opts.minmax, ranges[0][0],
               ranges[0][1], ranges[1][0], ranges[1][1], ranges[2][0], ranges[2][1]);
 
-    // 3. Evaluar las combinaciones lineales
+    // 3. Evaluate the linear combinations.
     ctx->comp_r = evaluate_linear_combo(&combo[0], ctx->channels);
     ctx->comp_g = evaluate_linear_combo(&combo[1], ctx->channels);
     ctx->comp_b = evaluate_linear_combo(&combo[2], ctx->channels);
 
     if (!ctx->comp_r.data_in || !ctx->comp_g.data_in || !ctx->comp_b.data_in) {
-        LOG_ERROR("Falla al evaluar las fórmulas matemáticas del modo custom.");
+        LOG_ERROR("Failed to evaluate custom mode math formulas.");
         return false;
     }
 
-    // 4. Asignar rangos
+    // 4. Assign ranges.
     ctx->min_r = ranges[0][0];
     ctx->max_r = ranges[0][1];
     ctx->min_g = ranges[1][0];
@@ -349,7 +344,7 @@ static const RgbStrategy STRATEGIES[] = {
     {"so2", {"C09", "C10", "C11", "C13", NULL}, compose_so2, "SO2 Detection RGB", false},
     {"daynite", {"C01", "C02", "C03", "C13", NULL}, compose_daynite, "Day/Night Composite", true},
     {"custom", {NULL}, compose_custom, "Custom mode", false},
-    {NULL, {NULL}, NULL, NULL, false} // Centinela
+    {NULL, {NULL}, NULL, NULL, false} // Sentinel.
 };
 
 static const RgbStrategy *get_strategy_for_mode(const char *mode) {
@@ -363,10 +358,10 @@ static const RgbStrategy *get_strategy_for_mode(const char *mode) {
     return NULL;
 }
 
-// --- FASE 3: PIPELINE PRINCIPAL (THE RUNNER) ---
+// --- PHASE 3: MAIN PIPELINE (THE RUNNER) ---
 
 static bool load_channels(RgbContext *ctx, const char **req_channels) {
-    // 1. Crear ChannelSet
+    // 1. Create the ChannelSet.
     int count = 0;
     while (req_channels[count] != NULL)
         count++;
@@ -376,7 +371,7 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
         return false;
     }
 
-    // 2. Extraer ID signature del input_file
+    // 2. Extract the ID signature from input_file.
     char *input_dup_id = strdup(ctx->opts.input_file);
     if (!input_dup_id) {
         snprintf(ctx->error_msg, sizeof(ctx->error_msg),
@@ -395,7 +390,7 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
                              sizeof(ctx->channel_set->scan_mode));
     free(input_dup_id);
 
-    // 3. Buscar archivos de canales
+    // 3. Locate channel files.
     char *input_dup_dir = strdup(ctx->opts.input_file);
     if (!input_dup_dir) {
         snprintf(ctx->error_msg, sizeof(ctx->error_msg),
@@ -411,8 +406,7 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
     }
     free(input_dup_dir);
 
-    // 4. Cargar canales y validar
-    LOG_INFO("Cargando canales requeridos...");
+    // 4. Load channels and validate.
     for (int i = 0; i < ctx->channel_set->count; i++) {
         if (!ctx->channel_set->channels[i].filename) {
             snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falta archivo para canal %s",
@@ -421,14 +415,13 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
         }
         int cn = atoi(ctx->channel_set->channels[i].name + 1); // "C01" -> 1
         if (cn > 0 && cn <= 16) {
-            LOG_DEBUG("Cargando canal C%02d desde %s", cn, ctx->channel_set->channels[i].filename);
+            LOG_DEBUG("Loading channel C%02d from %s", cn, ctx->channel_set->channels[i].filename);
             if (load_nc_sf(ctx->channel_set->channels[i].filename, &ctx->channels[cn]) != 0) {
                 snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falla al cargar NetCDF: %s",
                          ctx->channel_set->channels[i].filename);
                 return false;
             }
 
-            // Identificar canal de referencia
             if (ctx->opts.use_full_res) {
                 // Select highest resolution (smallest km value) for --full-res.
                 if (ctx->ref_channel_idx == 0 ||
@@ -447,8 +440,7 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
         }
     }
 
-    // Log de canales cargados para debug
-    LOG_DEBUG("Canales cargados:");
+    LOG_DEBUG("Channels loaded:");
     for (int i = 0; i < ctx->channel_set->count; i++) {
         int cn = atoi(ctx->channel_set->channels[i].name + 1);
         if (ctx->channels[cn].fdata.data_in) {
@@ -456,7 +448,7 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
         }
     }
 
-    LOG_INFO("Canal de referencia: C%02d (%.1fkm)", ctx->ref_channel_idx,
+    LOG_INFO("Reference channel: C%02d (%.1fkm)", ctx->ref_channel_idx,
              ctx->channels[ctx->ref_channel_idx].native_resolution_km);
 
     // Resample channels to match reference resolution
@@ -490,7 +482,7 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
             } else {
                 snprintf(ctx->error_msg, sizeof(ctx->error_msg),
                          "Falla al remuestrear el canal C%02d", cn);
-                for (int j = 0; j < i; j++) { // Limpiar los ya remuestreados en esta vuelta
+                for (int j = 0; j < i; j++) { // Clean up channels already resampled in this pass.
                     dataf_destroy(
                         &ctx->channels[atoi(ctx->channel_set->channels[j].name + 1)].fdata);
                 }
@@ -519,7 +511,7 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
     if (compute_navigation_nc(ref_filename, &ctx->nav_lat, &ctx->nav_lon) == 0) {
         ctx->has_navigation = true;
     } else {
-        LOG_WARN("No se pudieron cargar los datos de navegación.");
+        LOG_WARN("Could not load navigation data.");
         ctx->has_navigation = false;
     }
 
@@ -540,7 +532,7 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
         if (nav_width != ref_width) {
             if (nav_width > ref_width) {
                 int factor = nav_width / ref_width;
-                LOG_DEBUG("Remuestreando navegación (downsample factor %d)", factor);
+                LOG_DEBUG("Resampling navigation (downsample factor %d)", factor);
                 DataF nav_lat_resampled = downsample_boxfilter(ctx->nav_lat, factor);
                 DataF nav_lon_resampled = downsample_boxfilter(ctx->nav_lon, factor);
 
@@ -550,12 +542,12 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
                     ctx->nav_lat = nav_lat_resampled;
                     ctx->nav_lon = nav_lon_resampled;
                 } else {
-                    LOG_ERROR("Falla al remuestrear la navegación");
+                    LOG_ERROR("Failed to resample navigation.");
                     return false;
                 }
             } else {
                 int factor = ref_width / nav_width;
-                LOG_DEBUG("Remuestreando navegación (upsample factor %d)", factor);
+                LOG_DEBUG("Resampling navigation (upsample factor %d)", factor);
                 DataF nav_lat_resampled = upsample_bilinear(ctx->nav_lat, factor);
                 DataF nav_lon_resampled = upsample_bilinear(ctx->nav_lon, factor);
 
@@ -565,7 +557,7 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
                     ctx->nav_lat = nav_lat_resampled;
                     ctx->nav_lon = nav_lon_resampled;
                 } else {
-                    LOG_ERROR("Falla al remuestrear la navegación");
+                    LOG_ERROR("Failed to resample navigation.");
                     return false;
                 }
             }
@@ -597,16 +589,15 @@ static bool apply_enhancements(RgbContext *ctx) {
         image_destroy(&ctx->alpha_mask);
         image_destroy(&mask);
     }
-    // 1. Gamma solo se aplica a DataF
+    // 1. Gamma was already applied to the DataF channels earlier (see run_rgb).
 
-    // 2. Histogram/CLAHE (no para daynite)
+    // 2. Histogram/CLAHE (skipped for daynite).
     if (strcmp(ctx->opts.mode, "daynite") != 0) {
         if (ctx->opts.apply_histogram) {
-            LOG_INFO("Aplicando ecualización de histograma.");
             image_apply_histogram(ctx->final_image);
         }
         if (ctx->opts.apply_clahe) {
-            LOG_INFO("Aplicando CLAHE (tiles=%dx%d, clip=%.1f)", ctx->opts.clahe_tiles_x,
+            LOG_INFO("Applying CLAHE (tiles=%dx%d, clip=%.1f)", ctx->opts.clahe_tiles_x,
                      ctx->opts.clahe_tiles_y, ctx->opts.clahe_clip_limit);
             image_apply_clahe(ctx->final_image, ctx->opts.clahe_tiles_x, ctx->opts.clahe_tiles_y,
                               ctx->opts.clahe_clip_limit);
@@ -635,10 +626,10 @@ static bool apply_scaling(RgbContext *ctx) {
     if (ctx->opts.scale != 1) {
         ImageData scaled_img = {0};
         if (ctx->opts.scale < 0) {
-            LOG_INFO("Reduciendo imagen por factor %d", -ctx->opts.scale);
+            LOG_INFO("Reducing image by factor %d", -ctx->opts.scale);
             scaled_img = image_downsample_boxfilter(&ctx->final_image, -ctx->opts.scale);
         } else { // scale > 1
-            LOG_INFO("Ampliando imagen por factor %d", ctx->opts.scale);
+            LOG_INFO("Enlarging image by factor %d", ctx->opts.scale);
             scaled_img = image_upsample_bilinear(&ctx->final_image, ctx->opts.scale);
         }
 
@@ -646,7 +637,7 @@ static bool apply_scaling(RgbContext *ctx) {
             image_destroy(&ctx->final_image);
             ctx->final_image = scaled_img;
         } else {
-            LOG_ERROR("Falla al escalar imagen");
+            LOG_ERROR("Failed to scale image.");
             return false;
         }
     }
@@ -659,12 +650,11 @@ static bool write_output(RgbContext *ctx, const char *product_label) {
                                                      strstr(ctx->opts.output_filename, ".tiff")));
 
     if (is_geotiff) {
-        LOG_DEBUG("Formato de salida: GeoTIFF");
-        DataNC meta_out = ctx->channels[ctx->ref_channel_idx]; // Preserva sat_id, sector_id,
-                                                               // band_id, timestamp, etc.
+        DataNC meta_out =
+            ctx->channels[ctx->ref_channel_idx]; // Preserves sat_id, sector_id, band_id, timestamp, etc.
         if (ctx->opts.do_reprojection) {
             meta_out.proj_code = PROJ_LATLON;
-            meta_out.proj_info.valid = false; // No aplica para lat/lon
+            meta_out.proj_info.valid = false; // Not applicable for lat/lon.
             meta_out.geotransform[0] = ctx->final_lon_min;
             meta_out.geotransform[1] =
                 (ctx->final_lon_max - ctx->final_lon_min) / (double)ctx->final_image.width;
@@ -674,10 +664,10 @@ static bool write_output(RgbContext *ctx, const char *product_label) {
             meta_out.geotransform[5] =
                 (ctx->final_lat_min - ctx->final_lat_max) / (double)ctx->final_image.height;
         } else {
-            // Metadatos nativos (geoestacionarios)
+            // Native (geostationary) metadata.
             meta_out = ctx->channels[ctx->ref_channel_idx];
 
-            // 1. Aplicar offset de recorte al origen (en radianes originales)
+            // 1. Apply the crop offset to the origin (in original radians).
             meta_out.geotransform[0] += ctx->crop_x_offset * meta_out.geotransform[1];
             meta_out.geotransform[3] += ctx->crop_y_offset * meta_out.geotransform[5];
 
@@ -693,7 +683,7 @@ static bool write_output(RgbContext *ctx, const char *product_label) {
                 }
             }
         }
-        // Pasamos 0,0 como offset porque ya lo integramos en meta_out.geotransform
+        // Pass 0,0 as the offset: it's already folded into meta_out.geotransform.
         write_geotiff_rgb(ctx->opts.output_filename, &ctx->final_image, &meta_out, 0, 0,
                           product_label);
     } else {
@@ -706,13 +696,12 @@ static bool write_output(RgbContext *ctx, const char *product_label) {
 // UNIFIED INTERFACE (dependency injection via ProcessConfig)
 // =============================================================================
 
-// Adapts ProcessConfig to RgbContext, bridging the stable public API and the
-// internal RgbContext implementation.
+/// Adapts ProcessConfig to RgbContext, bridging the stable public API and the internal implementation.
 static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
     rgb_context_init(ctx);
 
     ctx->opts.input_file = cfg->input_file;
-    // Normalizar 'default' a 'daynite' para comparaciones de string posteriores
+    // Normalize 'default' to 'daynite' for later string comparisons.
     if (cfg->strategy && strcmp(cfg->strategy, "default") == 0) {
         ctx->opts.mode = "daynite";
     } else {
@@ -723,7 +712,6 @@ static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
     ctx->opts.gamma[2] = cfg->gamma[2];
     ctx->opts.scale = cfg->scale;
 
-    // Opciones booleanas
     ctx->opts.do_reprojection = cfg->do_reprojection;
     ctx->opts.save_both = cfg->save_both;
     ctx->opts.apply_histogram = cfg->apply_histogram;
@@ -764,7 +752,7 @@ static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
         ctx->opts.output_generated = false;
     }
 
-    // Detectar producto L2
+    // Detect L2 product.
     const char *basename_input = strrchr(cfg->input_file, '/');
     basename_input = basename_input ? basename_input + 1 : cfg->input_file;
     ctx->opts.is_l2_product = (strstr(basename_input, "CMIP") != NULL);
@@ -772,11 +760,11 @@ static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
 
 int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     if (!cfg || !meta) {
-        LOG_ERROR("run_rgb: parámetros NULL");
+        LOG_ERROR("run_rgb: NULL parameters");
         return 1;
     }
 
-    LOG_INFO("Procesando RGB: %s", cfg->input_file);
+    LOG_INFO("Processing RGB: %s", cfg->input_file);
 
     RgbContext ctx;
     config_to_rgb_context(cfg, &ctx);
@@ -818,10 +806,9 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         metadata_add(meta, "clahe_limit", ctx.opts.clahe_clip_limit);
     }
 
-    // Obtener estrategia
     const RgbStrategy *strategy = get_strategy_for_mode(ctx.opts.mode);
     if (!strategy) {
-        LOG_ERROR("Modo '%s' no reconocido.", ctx.opts.mode);
+        LOG_ERROR("Mode '%s' not recognized.", ctx.opts.mode);
 
         char available[512] = {0};
         for (int i = 0; STRATEGIES[i].mode_name != NULL; i++) {
@@ -829,12 +816,11 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
                 strcat(available, ", ");
             strcat(available, STRATEGIES[i].mode_name);
         }
-        LOG_INFO("Modos disponibles: %s", available);
+        LOG_INFO("Available modes: %s", available);
         goto cleanup;
     }
-    LOG_INFO("Modo seleccionado: %s - %s", strategy->mode_name, strategy->description);
+    LOG_INFO("Selected mode: %s - %s", strategy->mode_name, strategy->description);
 
-    // Determinar nombre descriptivo del producto
     const char *product = cfg->product_long ? cfg->product_long : strategy->description;
     metadata_set_product(meta, product);
 
@@ -842,31 +828,30 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     if (strcmp(ctx.opts.mode, "night") == 0) {
         if (ctx.opts.apply_rayleigh || ctx.opts.rayleigh_analytic) {
             LOG_WARN(
-                "La corrección Rayleigh se ignora en modo 'night' (solo afecta canales visibles).");
+                "Rayleigh correction is ignored in 'night' mode (only affects visible channels).");
         }
         if (ctx.opts.use_piecewise_stretch) {
-            LOG_WARN("El estiramiento de contraste (stretch) se ignora en modo 'night'.");
+            LOG_WARN("Contrast stretch is ignored in 'night' mode.");
         }
     }
 
     const char **req_channels = NULL;
     if (strcmp(ctx.opts.mode, "custom") == 0) {
         if (!ctx.opts.expr) {
-            LOG_ERROR("El modo 'custom' requiere especificar --expr");
+            LOG_ERROR("'custom' mode requires specifying --expr");
             goto cleanup;
         }
         int count = get_unique_channels_rgb(ctx.opts.expr, &custom_channels);
         if (count == 0 || !custom_channels) {
-            LOG_ERROR("No se detectaron bandas válidas en: %s", ctx.opts.expr);
+            LOG_ERROR("No valid bands detected in: %s", ctx.opts.expr);
             goto cleanup;
         }
-        LOG_INFO("Modo Custom: Se requieren %d bandas", count);
+        LOG_INFO("Custom mode: %d bands required", count);
         req_channels = (const char **)custom_channels;
     } else {
         req_channels = (const char **)strategy->req_channels;
     }
 
-    // Cargar canales
     if (!load_channels(&ctx, req_channels)) {
         LOG_ERROR("%s", ctx.error_msg);
         goto cleanup;
@@ -875,7 +860,6 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     // Extract satellite/band/timestamp/geometry metadata from reference channel.
     metadata_from_nc(meta, &ctx.channels[ctx.ref_channel_idx]);
 
-    // Procesar geoespacial
     if (!process_geospatial(&ctx, strategy)) {
         LOG_ERROR("%s", ctx.error_msg);
         goto cleanup;
@@ -884,21 +868,21 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     // RGB composite.
     LOG_INFO("Generating '%s' composite...", strategy->mode_name);
     if (!strategy->composer_func(&ctx)) {
-        LOG_ERROR("Falla al generar compuesto RGB");
+        LOG_ERROR("Failed to generate RGB composite.");
         goto cleanup;
     }
 
-    // Preprocesar DataF
+    // Preprocess the DataF channels (apply per-channel gamma).
     if (ctx.comp_r.data_in && ctx.comp_g.data_in && ctx.comp_b.data_in) {
         bool any_gamma = fabsf(ctx.opts.gamma[0] - 1.0f) > 1e-6f ||
                          fabsf(ctx.opts.gamma[1] - 1.0f) > 1e-6f ||
                          fabsf(ctx.opts.gamma[2] - 1.0f) > 1e-6f;
         if (any_gamma) {
-            LOG_INFO("Aplicando Gamma R=%.2f G=%.2f B=%.2f", ctx.opts.gamma[0], ctx.opts.gamma[1],
+            LOG_INFO("Applying gamma R=%.2f G=%.2f B=%.2f", ctx.opts.gamma[0], ctx.opts.gamma[1],
                      ctx.opts.gamma[2]);
-            // Solo actualizar el rango a [0,1] en canales donde gamma != 1.0;
-            // de lo contrario dataf_apply_gamma no modifica los datos y el rango
-            // del --minmax (ya en ctx.min_*/max_*) debe conservarse para el render.
+            // Only update the range to [0,1] for channels where gamma != 1.0; otherwise
+            // dataf_apply_gamma leaves the data unchanged, so the --minmax range
+            // (already in ctx.min_*/max_*) must be kept for rendering.
             if (fabsf(ctx.opts.gamma[0] - 1.0f) > 1e-6f) {
                 dataf_apply_gamma(&ctx.comp_r, ctx.opts.gamma[0], ctx.min_r, ctx.max_r);
                 ctx.min_r = 0.0f;
@@ -917,27 +901,27 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
             ctx.opts.gamma[0] = ctx.opts.gamma[1] = ctx.opts.gamma[2] = 1.0f;
         }
 
-        // Renderizar a imagen
+        // Render to image.
         ctx.final_image =
             create_multiband_rgb(&ctx.comp_r, &ctx.comp_g, &ctx.comp_b, ctx.min_r, ctx.max_r,
                                  ctx.min_g, ctx.max_g, ctx.min_b, ctx.max_b);
     }
 
     if (ctx.final_image.data == NULL) {
-        LOG_ERROR("Falla al generar imagen RGB");
+        LOG_ERROR("Failed to generate RGB image.");
         goto cleanup;
     }
 
     // Post-processing (blending, CLAHE, alpha) — before reprojection.
     if (!apply_enhancements(&ctx)) {
-        LOG_ERROR("Falla en post-procesamiento (enhancements)");
+        LOG_ERROR("Failure in post-processing (enhancements).");
         goto cleanup;
     }
 
-    // -B: escalar y guardar fixed-grid antes de reproyectar
+    // -B: scale and save the fixed-grid output before reprojecting.
     if (ctx.opts.save_both) {
         if (!apply_scaling(&ctx)) {
-            LOG_ERROR("Falla en escalado (fixed-grid)");
+            LOG_ERROR("Failure in scaling (fixed-grid).");
             goto cleanup;
         }
         if (ctx.opts.output_filename == NULL) {
@@ -945,15 +929,15 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
             ctx.opts.output_filename = metadata_build_filename(meta, ext_fg);
             ctx.opts.output_generated = true;
             if (ctx.opts.output_filename == NULL) {
-                LOG_ERROR("Falla al generar nombre de archivo fixed-grid");
+                LOG_ERROR("Failed to generate fixed-grid filename.");
                 goto cleanup;
             }
         }
-        LOG_INFO("Guardando fixed-grid: %s", ctx.opts.output_filename);
+        LOG_INFO("Saving fixed-grid: %s", ctx.opts.output_filename);
         // Temporarily disable reprojection flag so write_output uses the native projection.
         ctx.opts.do_reprojection = false;
         if (!write_output(&ctx, product)) {
-            LOG_ERROR("Falla al guardar fixed-grid");
+            LOG_ERROR("Failed to save fixed-grid.");
             goto cleanup;
         }
         ctx.opts.do_reprojection = true;
@@ -965,23 +949,21 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         ctx.opts.output_filename = geo_filename;
         ctx.opts.output_generated = true;
         if (ctx.opts.output_filename == NULL) {
-            LOG_ERROR("Falla al generar nombre de archivo reproyectado");
+            LOG_ERROR("Failed to generate reprojected filename.");
             goto cleanup;
         }
-        LOG_INFO("Guardando reproyectado: %s", ctx.opts.output_filename);
+        LOG_INFO("Saving reprojected: %s", ctx.opts.output_filename);
     }
 
     // Reprojection.
     if (ctx.opts.do_reprojection) {
         if (!ctx.has_navigation) {
-            LOG_ERROR("Navegación requerida para reproyección");
+            LOG_ERROR("Navigation required for reprojection.");
             goto cleanup;
         }
 
-        LOG_INFO("Iniciando reproyección...");
-        // Áreas fuera del disco visible deben quedar como NonData (alpha=0),
-        // no como dato real, igual que ya se hace para los píxeles NonData
-        // interiores en apply_enhancements().
+        // Areas outside the visible disk must read as NonData (alpha=0), not real data —
+        // the same convention already used for interior NonData pixels in apply_enhancements().
         unsigned char nodata_pattern[4] = {0};
         const unsigned char *nodata_pixel = ctx.opts.use_alpha ? nodata_pattern : NULL;
         ImageData reprojected = reproject_image_analytical(
@@ -991,7 +973,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
             ctx.opts.has_clip ? ctx.opts.clip_coords : NULL, nodata_pixel);
 
         if (reprojected.data == NULL) {
-            LOG_ERROR("Falla durante reproyección");
+            LOG_ERROR("Failure during reprojection.");
             goto cleanup;
         }
 
@@ -1018,7 +1000,6 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
                                            ctx.opts.clip_coords[1], ctx.opts.clip_coords[2],
                                            ctx.opts.clip_coords[3], &ix, &iy, &iw, &ih);
 
-            // Aplicar el recorte a la imagen generada
             ImageData cropped = image_crop(&ctx.final_image, ix, iy, iw, ih);
             image_destroy(&ctx.final_image);
             ctx.final_image = cropped;
@@ -1072,29 +1053,27 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
 
     // Final scaling — after reprojection (for save_both, already applied before reprojection).
     if (!ctx.opts.save_both && !apply_scaling(&ctx)) {
-        LOG_ERROR("Falla en escalado final");
+        LOG_ERROR("Failure in final scaling.");
         goto cleanup;
     }
 
-    // Generar nombre de salida si no fue especificado
+    // Generate output filename if not specified.
     if (ctx.opts.output_filename == NULL) {
         const char *ext = ctx.opts.force_geotiff ? ".tif" : ".png";
         ctx.opts.output_filename = metadata_build_filename(meta, ext);
         ctx.opts.output_generated = true;
 
         if (ctx.opts.output_filename == NULL) {
-            LOG_ERROR("Falla al generar nombre de archivo de salida");
+            LOG_ERROR("Failed to generate output filename.");
             goto cleanup;
         }
     }
 
-    // Escritura
     if (!write_output(&ctx, product)) {
-        LOG_ERROR("Falla al guardar imagen");
+        LOG_ERROR("Failed to save image.");
         goto cleanup;
     }
 
-    // Actualizar metadatos finales
     metadata_add(meta, "output_file", ctx.opts.output_filename);
     metadata_add(meta, "output_width", (int)ctx.final_image.width);
     metadata_add(meta, "output_height", (int)ctx.final_image.height);

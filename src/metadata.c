@@ -110,7 +110,7 @@ void metadata_from_nc(MetadataContext *ctx, const DataNC *nc) {
 
     // 2. Copy satellite name.
 	ctx->satellite = get_sat_name(nc->sat_id);
-	LOG_DEBUG("Satélite ID %d nombre %s", nc->sat_id, ctx->satellite);
+	LOG_DEBUG("Satellite ID %d name %s", nc->sat_id, ctx->satellite);
 
     // 3. Sector
     if (nc->sector_id >= SECTOR_UNKNOWN && nc->sector_id <= SECTOR_M2) {
