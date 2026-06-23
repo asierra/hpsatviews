@@ -397,10 +397,11 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
     // alfa por píxel (ver tRNS de PNG y GCI_PaletteIndex de GDAL), así que ese
     // modo sigue señalando NonData con el color 'N' del .cpt.
     cfg->use_alpha = (is_rgb || is_gray) && ap_found(parser, "alpha");
+    // Full resolution mode for low-res L2 products: common to gray/pseudocolor
+    // (multi-channel --expr) and rgb (channel resampling reference).
+    cfg->use_full_res = ap_found(parser, "full-res");
     if (is_rgb) {
         cfg->use_citylights = ap_found(parser, "citylights");
-        // Full resolution mode for low-res L2 products.
-        cfg->use_full_res = ap_found(parser, "full-res");
         // Cloud temperature threshold for day/night classification (0 = disabled).
         if (ap_found(parser, "cloud-temp")) {
             const char *ct_str = ap_get_str_value(parser, "cloud-temp");

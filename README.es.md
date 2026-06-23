@@ -207,6 +207,12 @@ Genera una vista en escala de grises del canal C13.
   --clahe-params "16,16,5.0"
   ```
  
+* `-f, --full-res`
+  Usa el canal de mayor resolución como referencia en lugar del de menor
+  resolución (por omisión), al combinar canales de distinta resolución
+  nativa — en cualquier modo `rgb`, o con `--expr` multicanal en
+  `gray`/`pseudocolor`. Más detalle espacial, más lento, salida más grande.
+
 * `-g, --gamma <valor>`
   Aplica corrección gamma (por omisión `1.0` y no se aplica).
   En modo RGB acepta 3 valores separados por `;` para aplicar un gamma distinto

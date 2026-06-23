@@ -88,17 +88,30 @@ Las siguientes opciones están disponibles para todos los comandos.
 .TP
 .BI "-o, --out " archivo
 Nombre del archivo de salida. Si se omite, se genera un nombre
-determinista automáticamente a partir de los metadatos   de la escena
-y las operaciones aplicadas.
-Se soportan marcadores como
-{YYYY}, {YY}, {MM}, {DD}, {hh}, {mm}, {ss}, {JJJ}, {TS}, {CH}, {SAT}, {SECTOR}.
+determinista automáticamente a partir de los metadatos de la escena
+y las operaciones aplicadas, siguiendo el patrón
+.BR hpsv_{SAT}[_{SECTOR}]_{TS}_{CH}[_{OPS}].{EXT} .
+Los mismos marcadores son aceptados por
+.BR -o :
+{SAT}, {SECTOR}, {TS}, {CH}, {YYYY}, {YY}, {MM}, {DD}, {hh}, {mm}, {ss}, {JJJ},
+{OPS}, {PROD}.
 .br
-{SECTOR} se expande al sector de escaneo derivado del nombre del archivo:
+.BR {SAT} " satélite (G16, G19)."
+.br
+.BR {SECTOR} " sector de escaneo: "
 .BR fd ,
 .BR conus ,
 .BR m1
 o
 .BR m2 .
+.br
+.BR {TS} " instante, " YYYYJJJhhmm .
+.br
+.BR {CH} " canal o banda (C01, C02, etc.)."
+.br
+.BR {OPS} " operaciones realizadas (-h, --clahe, -s, -G)."
+.br
+.BR {PROD} " nombre corto del modo (ej. truecolor, ash); reemplazado por -N/--name."
 
 .TP
 .B "-t, --geotiff"
@@ -110,22 +123,25 @@ Recorte geográfico. Puede ser una clave predefinida o coordenadas explícitas
 entre comillas (lon_min lat_max lon_max lat_min).
 
 .TP
-.BI "-g, --gamma " valor
-Aplica corrección gamma (defecto: 1.0, deshabilitada).
+.B "-G, --geographics"
+Reproyecta la salida a coordenadas geográficas (WGS84).
 
 .TP
-.B "-h, --histo"
-Aplica ecualización global de histograma.
+.B "-B, --both"
+Guarda el producto en proyección nativa y también el reproyectado a
+geográficas en una sola ejecución. El archivo reproyectado lleva el sufijo
+.BR _geo .
 
 .TP
-.B "--clahe"
-Aplica ecualización adaptativa con control de contraste (CLAHE)
-con parámetros por defecto.
-
-.TP
-.BI "--clahe-params " params
-Aplica CLAHE con los siguientes parámetros entre comillas
-tiles_x,tiles_y,clip_limit.
+.B "-f, --full-res"
+Usa la resolución nativa del canal más fino como referencia al combinar
+canales de distinta resolución nativa: en cualquier modo
+.B rgb ,
+o con
+.B --expr
+multicanal en
+.B gray / pseudocolor
+(ver ÁLGEBRA DE BANDAS más abajo).
 
 .TP
 .BI "-s, --scale " factor
@@ -136,12 +152,36 @@ Factor de escala espacial. Valores >1 amplían; valores negativos reducen.
 Añade un canal alfa para transparencia en regiones NoData.
 
 .TP
-.B "-r, --geographics"
-Reproyecta la salida a coordenadas geográficas (WGS84).
+.BI "-g, --gamma " valor
+Aplica corrección gamma (defecto: 1.0, deshabilitada). En modo
+.B rgb
+acepta 3 valores separados por punto y coma
+.IR v1 ; v2 ; v3
+(canales R, G y B).
+
+.TP
+.B "-h, --histo"
+Aplica ecualización global de histograma. Si satura el contraste, usar
+.B --clahe
+en su lugar.
+
+.TP
+.B "--clahe"
+Aplica ecualización adaptativa con control de contraste (CLAHE)
+con parámetros por defecto (8,8,4.0).
+
+.TP
+.BI "--clahe-params " params
+Aplica CLAHE con parámetros explícitos:
+.IR tiles_x , tiles_y , clip_limit .
+
+.TP
+.B "-j, --json"
+Guarda los metadatos en un archivo JSON sidecar junto a la imagen.
 
 .TP
 .B "-v, --verbose"
-Activa el modo verboso.
+Activa mensajes de diagnóstico detallados (nivel DEBUG).
 
 .SH OPCIONES ESPECÍFICAS POR COMANDO
 .SS gray
@@ -161,48 +201,117 @@ Invierte el mapeo de valores.
 .SS rgb
 .TP
 .BI "-m, --mode " modo
-Modo de composición. Modos soportados incluyen:
-daynite (defecto), truecolor, night, ash, airmass, so2, custom.
+Modo de composición. Modos soportados:
+daynite (defecto), truecolor, night, airmass, ash, severestorm, so2, custom.
 
 .TP
 .B "--rayleigh"
-Aplica corrección atmosférica de Rayleigh
-(solo para composiciones visibles).
+Aplica corrección atmosférica de Rayleigh basada en LUTs
+(solo truecolor/daynite).
+
+.TP
+.B "--ray-analytic"
+Usa el modelo analítico de corrección Rayleigh en lugar de las LUTs.
+
+.TP
+.B "--stretch"
+Realce de contraste lineal por tramos (shadow boost).
+
+.TP
+.B "--sharpen"
+Nitidez por ratio (truecolor/daynite).
 
 .TP
 .B "-f, --full-res"
-Usa el canal de mayor resolución como referencia, en lugar de la menor (defecto).
+Usa la resolución nativa del canal más fino como referencia.
+
+.TP
+.BI "-T, --cloud-temp " kelvin
+Clasifica como noche los píxeles más fríos que esta temperatura de brillo
+(Kelvin), independientemente de la geometría solar (solo modo daynite).
+.B 0
+desactiva la opción (defecto); valor típico:
+.BR 230 .
+
+.TP
+.B "-l, --citylights"
+Usa una imagen de fondo de luces de ciudad para la composición night/daynite.
+
+.TP
+.BI "-N, --name " etiqueta
+Nombre descriptivo del producto, escrito en los metadatos JSON y GeoTIFF
+como
+.IR product .
+También disponible como
+.B {PROD}
+en los patrones de
+.BR -o .
+Acepta
+.RI corto : "Descripción larga"
+para fijarlos de forma independiente (ej.
+.RI ndvi : "Índice de Vegetación (C05-C04/C05+C04)" ).
+Útil junto con
+.B --mode custom
+para dar a la composición un nombre significativo.
+
+El modo
+.B custom
+utiliza álgebra de bandas para cada canal: requiere
+.B --expr
+(ver ÁLGEBRA DE BANDAS abajo), con las expresiones de R, G y B separadas
+por punto y coma.
 
 .SH ÁLGEBRA DE BANDAS
 HPSATVIEWS soporta combinaciones lineales de bandas en tiempo de ejecución
 mediante expresiones algebraicas simples.
 
-Las expresiones pueden incluir coeficientes, sumas y restas.
-Obligatorio para el comando RGB modo custom, en el que las expresiones para R, G y B se separan con punto y coma.
+.TP
+.BI "-e, --expr " expr
+Suma y resta de términos
+.RI a * CH1 + b * CH2 ... .
+Soporta +, \-, constantes numéricas y bandas (C01\-C16).
+
+.TP
+.BI "--minmax " min , max
+Rango opcional para ajustar el contraste (estiramiento lineal).
+
+Para
+.B gray
+y
+.B pseudocolor
+se usa una sola expresión:
 
 .EX
---expr "2.0*C13-4.0*C14; C13-C11; 1.5*C13"
+--expr "2.0*C13-C15-200"
 .EE
 
-Opcionalmente se pueden indicar los máximos y mínimos correspondientes.
+Para el modo
+.B rgb
+.BR custom ,
+se requieren tres expresiones (R;G;B) separadas por punto y coma,
+opcionalmente acompañadas de tres rangos min,max separados por punto y coma:
 
 .EX
---minmax "-5,5;-3,3;200,300"
+--expr "2.0*C13-4.0*C14; C13-C11; 1.5*C13" --minmax "-5,5;-3,3;200,300"
 .EE
 
 .SH NOMBRADO DE SALIDA
 Si no se especifica un nombre de salida, HPSATVIEWS genera uno determinista
 basado en el instante de la escena, el satélite, el modo de procesamiento
-y las operaciones aplicadas.
+y las operaciones aplicadas, siguiendo el mismo patrón descrito en
+.B -o
+más arriba:
 
-Formato:
 .EX
-hpsv_<SAT>[_<SECTOR>]_<YYYYJJJ>_<hhmm>_<MODO>[_<OPS>].<ext>
+hpsv_{SAT}[_{SECTOR}]_{TS}_{CH}[_{OPS}].{EXT}
 .EE
 
-Ejemplo:
+Ejemplo, usando un patrón explícito con
+.BR -o :
+
 .EX
-hpsv_G16_2025122_183000_truecolor_clahe.png
+hpsv pseudocolor archivo.nc -o "{SAT}_{CLIP}.png" -c mexico
+-> G16_mexico.png
 .EE
 
 .SH GEOMETRÍA Y GEOLOCALIZACIÓN

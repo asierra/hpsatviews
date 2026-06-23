@@ -208,6 +208,12 @@ Generates a grayscale view of channel C13.
   --clahe-params "16,16,5.0"
   ```
 
+* `-f, --full-res`
+  Uses the highest-resolution channel as reference instead of the lowest
+  one (default) when combining channels of different native resolution —
+  in any `rgb` mode, or with multi-channel `--expr` in `gray`/`pseudocolor`.
+  More spatial detail, slower, larger output.
+
 * `-g, --gamma <value>`
   Applies gamma correction (default `1.0`, i.e. not applied).
   In RGB mode, accepts 3 values separated by `;` to apply a different

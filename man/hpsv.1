@@ -84,16 +84,29 @@ The following options are available for all commands.
 .TP
 .BI "-o, --out " file
 Output filename. If omitted, a deterministic name is generated automatically
-from scene metadata and applied operations.
-Supports template markers such as
-{YYYY}, {YY}, {MM}, {DD}, {hh}, {mm}, {ss}, {JJJ}, {TS}, {CH}, {SAT}, {SECTOR}.
+from scene metadata and applied operations, following the pattern
+.BR hpsv_{SAT}[_{SECTOR}]_{TS}_{CH}[_{OPS}].{EXT} .
+The same template markers are accepted by
+.BR -o :
+{SAT}, {SECTOR}, {TS}, {CH}, {YYYY}, {YY}, {MM}, {DD}, {hh}, {mm}, {ss}, {JJJ},
+{OPS}, {PROD}.
 .br
-{SECTOR} expands to the scan sector derived from the filename:
+.BR {SAT} " satellite (G16, G19)."
+.br
+.BR {SECTOR} " scan sector: "
 .BR fd ,
 .BR conus ,
 .BR m1 ,
 or
 .BR m2 .
+.br
+.BR {TS} " instant, " YYYYJJJhhmm .
+.br
+.BR {CH} " channel or band (C01, C02, etc.)."
+.br
+.BR {OPS} " operations performed (-h, --clahe, -s, -G)."
+.br
+.BR {PROD} " short mode name (e.g. truecolor, ash); overridden by -N/--name."
 
 .TP
 .B "-t, --geotiff"
@@ -105,21 +118,26 @@ Geographic clipping. May be a predefined key or explicit coordinates
 (lon_min lat_max lon_max lat_min).
 
 .TP
-.BI "-g, --gamma " value
-Apply gamma correction (default: 1.0, disabled).
+.B "-G, --geographics"
+Reproject output to geographic coordinates (WGS84).
 
 .TP
-.B "-h, --histo"
-Apply global histogram equalization.
+.B "-B, --both"
+Save both the native (fixed-grid) and the reprojected output in a single
+run. The reprojected file name gets a
+.B _geo
+suffix.
 
 .TP
-.B "--clahe"
-Apply Contrast Limited Adaptive Histogram Equalization (CLAHE)
-with default parameters.
-
-.TP
-.BI "--clahe-params " params
-Specify CLAHE parameters as tiles_x,tiles_y,clip_limit.
+.B "-f, --full-res"
+Use the native resolution of the finest channel as the reference grid
+when combining channels of different native resolution: in any
+.B rgb
+mode, or with multi-channel
+.B --expr
+in
+.B gray / pseudocolor
+(see BAND ALGEBRA below).
 
 .TP
 .BI "-s, --scale " factor
@@ -130,12 +148,36 @@ Spatial scaling factor (integer). Values >1 upscale; negative values downscale.
 Add an alpha channel for transparency in NoData regions.
 
 .TP
-.B "-r, --geographics"
-Reproject output to geographic coordinates (WGS84).
+.BI "-g, --gamma " value
+Apply gamma correction (default: 1.0, disabled). In
+.B rgb
+mode accepts 3 semicolon-separated values
+.IR v1 ; v2 ; v3
+for the R, G, and B channels.
+
+.TP
+.B "-h, --histo"
+Apply global histogram equalization. If contrast becomes oversaturated, use
+.B --clahe
+instead.
+
+.TP
+.B "--clahe"
+Apply Contrast Limited Adaptive Histogram Equalization (CLAHE)
+with default parameters (8,8,4.0).
+
+.TP
+.BI "--clahe-params " params
+Apply CLAHE with explicit parameters:
+.IR tiles_x , tiles_y , clip_limit .
+
+.TP
+.B "-j, --json"
+Save metadata to a JSON sidecar file alongside the image.
 
 .TP
 .B "-v, --verbose"
-Enable verbose logging.
+Enable verbose (DEBUG-level) logging.
 
 .SH COMMAND-SPECIFIC OPTIONS
 .SS gray
@@ -155,40 +197,116 @@ Invert value mapping.
 .SS rgb
 .TP
 .BI "-m, --mode " mode
-Composite mode. Supported values include:
-daynite (default), truecolor, night, ash, airmass, so2.
+Composite mode. Supported values:
+daynite (default), truecolor, night, airmass, ash, severestorm, so2, custom.
 
 .TP
 .B "--rayleigh"
-Apply Rayleigh atmospheric correction (visible composites only).
+Apply Rayleigh atmospheric correction, LUT-based (truecolor/daynite only).
+
+.TP
+.B "--ray-analytic"
+Use the analytic Rayleigh correction model instead of LUTs.
+
+.TP
+.B "--stretch"
+Piecewise linear contrast stretch (shadow boost).
+
+.TP
+.B "--sharpen"
+Ratio sharpening (truecolor/daynite).
 
 .TP
 .B "-f, --full-res"
-Use the highest-resolution channel as reference.
+Use the native resolution of the finest channel as reference.
+
+.TP
+.BI "-T, --cloud-temp " kelvin
+Classify pixels colder than this brightness temperature (Kelvin) as night,
+regardless of solar geometry (daynite mode only).
+.B 0
+disables it (default); typical value:
+.BR 230 .
+
+.TP
+.B "-l, --citylights"
+Use a city-lights background image for the night/daynite composite.
+
+.TP
+.BI "-N, --name " label
+Descriptive product name, written to the JSON and GeoTIFF metadata as
+.IR product .
+Also available as
+.B {PROD}
+in
+.B -o
+patterns. Accepts
+.RI short : "Long description"
+to set both independently (e.g.
+.RI ndvi : "Vegetation Index (C05-C04/C05+C04)" ).
+Useful with
+.B --mode custom
+to give the composite a meaningful name.
+
+.B custom
+mode uses band algebra for each channel: it requires
+.B --expr
+(see BAND ALGEBRA below), with the R, G, and B expressions separated by
+semicolons.
 
 .SH BAND ALGEBRA
 HPSATVIEWS supports on-the-fly linear combinations of channels using
 simple algebraic expressions.
 
-Expressions may include coefficients, addition, and subtraction.
-For RGB mode, expressions for R, G, and B are separated by semicolons.
+.TP
+.BI "-e, --expr " expr
+Sum and difference of terms
+.RI a * CH1 + b * CH2 ... .
+Supports +, \-, numeric constants, and bands (C01\-C16).
+
+.TP
+.BI "--minmax " min , max
+Optional range to adjust contrast (linear stretch).
+
+For
+.B gray
+and
+.B pseudocolor
+a single expression is used:
 
 .EX
---expr "C13-C14; C13-C11; C13"
+--expr "2.0*C13-C15-200"
+.EE
+
+For
+.B rgb
+mode
+.BR custom ,
+three expressions (R;G;B) are required, separated by semicolons, optionally
+paired with three comma-separated min,max ranges:
+
+.EX
+--expr "C13-C14; C13-C11; C13" --minmax "-5,5;-3,3;200,300"
 .EE
 
 .SH OUTPUT NAMING
 If no output filename is specified, HPSATVIEWS generates a deterministic
-name based on the scene instant, satellite, processing mode, and operations.
+name based on the scene instant, satellite, processing mode, and operations,
+following the same pattern described under
+.B -o
+above:
 
-Format:
 .EX
-hpsv_<SAT>[_<SECTOR>]_<YYYYJJJ>_<hhmm>_<MODE>[_<OPS>].<ext>
+hpsv_{SAT}[_{SECTOR}]_{TS}_{CH}[_{OPS}].{EXT}
 .EE
 
-Example:
+Example, using an explicit
+.B -o
+pattern:
+
 .EX
-hpsv_G16_2025122_183000_truecolor_clahe.png
+hpsv pseudocolor file.nc -o "{SAT}_{CLIP}.png" -c mexico
+-> G16_mexico.png
 .EE
 
 .SH GEOMETRY AND GEOLOCATION
