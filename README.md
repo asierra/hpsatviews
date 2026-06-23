@@ -2,361 +2,383 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![C11](https://img.shields.io/badge/C-C11-blue.svg)](https://en.wikipedia.org/wiki/C11)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](#building)
+[![CI](https://github.com/asierra/hpsatviews/actions/workflows/ci.yml/badge.svg)](https://github.com/asierra/hpsatviews/actions/workflows/ci.yml)
 
-**HPSATVIEWS - Visualización de datos satelitales de alto rendimiento**
+Languages: **English** | [Español](README.es.md)
 
-## 1. Introducción
+**HPSATVIEWS - High-performance visualization of satellite data**
 
-### 1.1 Resumen
+## 1. Introduction
 
-**HPSATVIEWS** es un sistema de generación de **vistas 
-y productos visuales** de alto rendimiento a partir de datos satelitales 
-ambientales. Permite generar vistas en escala de grises, pseudocolor y 
-compuestos RGB en tiempos del orden de segundos, manteniendo rigor geométrico 
-y reproducibilidad. Está optimizado para satélites geoestacionarios de la 
-familia **GOES-R**. 
+### 1.1 Summary
 
-### 1.2 Filosofía de diseño
+**HPSATVIEWS** is a high-performance system for generating **views and
+visual products** from environmental satellite data. It generates
+grayscale, pseudocolor, and RGB composite views in a matter of seconds,
+while preserving geometric rigor and reproducibility. It is optimized for
+geostationary satellites of the **GOES-R** family.
 
-Está diseñado exclusivamente para operar en el dominio de las 
-**vistas** y **productos visuales**. No sustituye plataformas de análisis 
-físico ni herramientas GIS generalistas. Su objetivo es ofrecer un flujo 
-de trabajo simple, muy rápido y conceptualmente claro para la interpretación 
-visual de escenas satelitales.
+### 1.2 Design philosophy
 
----
-
-## 2. Conceptos fundamentales
-
-Conceptos y términos usados en el contexto de este proyecto.
-
-### Imagen
-
-Representación numérica de una escena física continua, organizada 
-como una colección de bandas que registran la distribución espacial y espectral 
-de magnitudes físicas —como radiancia, temperatura o reflectancia— mediante 
-elementos lógicos discretos. [Lira, 2010]
-
-### Vista (view)
-
-Representación derivada de una imagen, normalizada y cuantizada para 
-su interpretación por el sistema visual humano.
-
-### Producto
-
-Vista asociada a un concepto reconocible por la comunidad de ciencias 
-ambientales (por ejemplo: *true color*, *air mass*, *ash*).
-
-### Instante (timestamp)
-
-Se denomina **instante** al momento temporal asociado a una escena satelital, 
-definido por la hora efectiva de observación del sensor y representado mediante 
-un conjunto discreto de componentes temporales (año, día juliano, hora, 
-minuto, segundo).
+It is designed exclusively to operate in the domain of **views** and
+**visual products**. It does not replace physical analysis platforms or
+general-purpose GIS tools. Its goal is to offer a simple, very fast, and
+conceptually clear workflow for the visual interpretation of satellite
+scenes.
 
 ---
 
-## 3. Instalación
+## 2. Core concepts
 
-### 3.1 Obtener el código
+Concepts and terms used in the context of this project.
+
+### Image
+
+A numerical representation of a continuous physical scene, organized as a
+collection of bands that record the spatial and spectral distribution of
+physical quantities — such as radiance, temperature, or reflectance — via
+discrete logical elements. [Lira, 2010]
+
+### View
+
+A representation derived from an image, normalized and quantized for
+interpretation by the human visual system.
+
+### Product
+
+A view associated with a concept recognizable by the environmental
+sciences community (for example: *true color*, *air mass*, *ash*).
+
+### Instant (timestamp)
+
+The **instant** is the temporal moment associated with a satellite scene,
+defined by the sensor's effective observation time and represented by a
+discrete set of temporal components (year, Julian day, hour, minute,
+second).
+
+---
+
+## 3. Installation
+
+### 3.1 Get the code
 
 ```bash
 git clone https://github.com/asierra/hpsatviews.git
 cd hpsatviews
 ```
 
-### 3.2 Dependencias
+### 3.2 Dependencies
 
-* Compilador C compatible con C11 (gcc recomendado, con soporte OpenMP)
-* Bibliotecas:
-  - **libnetcdf-dev** - Lectura de archivos NetCDF GOES L1b/L2
-  - **libpng-dev** - Generación de imágenes PNG
-  - **libgdal-dev** - Generación de imágenes COG (Cloud Optimized GeoTIFF)
-  - **libm** - Funciones matemáticas
-  - **OpenMP** - Paralelismo
+* C11-compatible C compiler (gcc recommended, with OpenMP support)
+* Libraries:
+  - **libnetcdf-dev** - Reading GOES L1b/L2 NetCDF files
+  - **libpng-dev** - PNG image generation
+  - **libgdal-dev** - COG (Cloud Optimized GeoTIFF) image generation
+  - **libwebp-dev** - Reading the background image (night lights) in `night`/`daynite` modes
+  - **libm** - Math functions
+  - **OpenMP** - Parallelism
 
-En Debian/Ubuntu:
+On Debian/Ubuntu:
 
 ```bash
-sudo apt install build-essential libnetcdf-dev libpng-dev libgdal-dev
+sudo apt install build-essential libnetcdf-dev libpng-dev libgdal-dev libwebp-dev
 ```
 
-### 3.3 Compilar e instalar
+### 3.3 Build and install
 
 ```bash
-# Build de producción (HPC: -O3 -march=native)
+# Production build (HPC: -O3 -march=native)
 make
 
-# Build de depuración (binario bin/hpsv_debug)
+# Debug build (binary: bin/hpsv_debug)
 make DEBUG=1
 
-# Build con textos de ayuda en español
+# Build with Spanish help text
 make HPSV_LANG=es
 
-# Instalación a nivel de sistema (binario + página de manual)
+# System-wide install (binary + man page)
 sudo make install
 ```
 
-### 3.4 Verificar
+### 3.4 Verify
 
 ```bash
 hpsv --version
 hpsv --help
 ```
 
----
+### 3.5 Tests
 
-## 4. Uso básico
-
-*High Performance Satellite Views* se utiliza desde la línea de comandos con una sintaxis simple:
+The project includes an end-to-end regression test suite that runs `hpsv`
+against real sample data and compares the result to reference outputs
+(PNG/GeoTIFF) using a tolerant pixel diff.
 
 ```bash
-hpsv <comando> <archivo_ancla> [opciones]
+# Download sample data (GOES-16, no credentials required)
+reproduction/download_sample.sh
+
+# Run the full suite (builds the project if needed)
+tests/run_all_tests.sh
 ```
 
-El **archivo ancla** en formato NetCDF permite identificar la escena, su instante y su ruta. El sistema infiere automáticamente los archivos de las bandas necesarias.
+This same suite runs automatically on every push/pull request to `main`
+via GitHub Actions (see the CI badge at the top of this document).
 
-### Ejemplo
+---
+
+## 4. Basic usage
+
+*High Performance Satellite Views* is used from the command line with a
+simple syntax:
+
+```bash
+hpsv <command> <anchor_file> [options]
+```
+
+The **anchor file** in NetCDF format identifies the scene, its instant,
+and its path. The system automatically infers the files for the required
+bands.
+
+### Example
 
 ```bash
 hpsv gray OR_ABI-L1b-RadF-M6C13_G16.nc
 ```
 
-Genera una vista en escala de grises del canal C13.
+Generates a grayscale view of channel C13.
 
 ---
 
-## 5. Uso avanzado
+## 5. Advanced usage
 
-### 5.1 Comandos disponibles
+### 5.1 Available commands
 
-* `gray` – Vista en escala de grises de un canal individual o una combinación lineal de canales.
-* `pseudocolor` – Vista con mapa de colores de un canal individual o una combinación lineal de canales.
-* `rgb` – Composición RGB a partir de tres combinaciones lineales de múltiples canales.
+* `gray` – Grayscale view of a single channel or a linear combination of channels.
+* `pseudocolor` – View with a color map applied to a single channel or a linear combination of channels.
+* `rgb` – RGB composite from three linear combinations of multiple channels.
 
-### 5.2 Opciones globales
+### 5.2 Global options
 
 * `--help`
 
-  Muestra la ayuda general. En la siguiente sección damos más detalles.
+  Shows general help. The next section gives more detail.
 
-* `--list-clips` – Lista recortes geográficos predefinidos en un 
-  archivo CSV con las columnas *clave, nombre, ul_x, ul_y, lr_x, lr_y*. 
-  Ejemplo:
-```csv    
+* `--list-clips` – Lists predefined geographic clips from a CSV file with
+  columns *key, name, ul_x, ul_y, lr_x, lr_y*. Example:
+```csv
   mexico,Mexico,-121.3325136900594,32.9450945620932,-83.9198061602870,9.8346808199271
   caribe,Caribe,-93.0476928458730,28.0613844882756,-56.01289145276628,5.12538896303195
 ```
 
-### 5.3 Opciones comunes
+### 5.3 Common options
 
 * `-a, --alpha`
-  Añade un canal alfa para transparencia en regiones sin datos o fuera de un umbral específico.
+  Adds an alpha channel for transparency in no-data regions or outside a specific threshold.
 
-* `-c, --clip <valor>`
-  Recorta la imagen. El valor puede ser:
+* `-c, --clip <value>`
+  Crops the image. The value can be:
 
-  * una clave predefinida (por ejemplo, `mexico`), o
-  * coordenadas explícitas, en grados decimales, longitud oeste negativa, entre comillas o separadas por comas:
+  * a predefined key (e.g., `mexico`), or
+  * explicit coordinates, in decimal degrees, negative west longitude, quoted or comma-separated:
     `"lon_min lat_max lon_max lat_min"`
 
-  Ejemplos:
+  Examples:
   ```bash
-  # Usar un recorte predefinido con clave
-  hpsv gray -c mexico -o recorte.png archivo.nc
-  
-  # Con comas (sin comillas ni espacios)
-  hpsv rgb -m ash -c -107.23,22.72,-93.84,14.94 -o recorte.png archivo.nc
+  # Use a predefined clip key
+  hpsv gray -c mexico -o clip.png file.nc
 
-  # Con espacios (CON comillas)
-  hpsv rgb -m ash -c "-107.23 22.72 -93.84 14.94" -o recorte.png archivo.nc
+  # With commas (no quotes or spaces)
+  hpsv rgb -m ash -c -107.23,22.72,-93.84,14.94 -o clip.png file.nc
+
+  # With spaces (quotes REQUIRED)
+  hpsv rgb -m ash -c "-107.23 22.72 -93.84 14.94" -o clip.png file.nc
   ```
 
 * `--clahe`
-  Aplica ecualización adaptativa de histograma (CLAHE) con parámetros predefinidos (`8,8,4.0`).
+  Applies Contrast Limited Adaptive Histogram Equalization (CLAHE) with predefined parameters (`8,8,4.0`).
 
 * `--clahe-params <params>`
-  Misma opción CLAHE pero permite especificar parámetros en el formato:
+  Same CLAHE option but lets you specify parameters in the format:
   `tiles_x,tiles_y,clip_limit`
 
-  Ejemplo:
+  Example:
 
   ```bash
   --clahe-params "16,16,5.0"
   ```
- 
-* `-g, --gamma <valor>`
-  Aplica corrección gamma (por omisión `1.0` y no se aplica).
-  En modo RGB acepta 3 valores separados por `;` para aplicar un gamma distinto
-  a cada canal (R;G;B):
+
+* `-g, --gamma <value>`
+  Applies gamma correction (default `1.0`, i.e. not applied).
+  In RGB mode, accepts 3 values separated by `;` to apply a different
+  gamma to each channel (R;G;B):
   ```
-  hpsv rgb -g "1.8;1.5;1.2" archivo.nc
+  hpsv rgb -g "1.8;1.5;1.2" file.nc
   ```
-  Con un solo valor se aplica igual a los 3 canales.
+  With a single value, the same gamma is applied to all 3 channels.
 
 
 * `-h, --histo`
-  Aplica ecualización de histograma global. Si genera zonas saturadas de contraste, usar mejor CLAHE.
-  
+  Applies global histogram equalization. If it produces saturated/blown-out contrast zones, use CLAHE instead.
 
-* `-o, --out <archivo>`
-  Archivo de salida. Si no se especifica, el nombre se genera automáticamente.
-  Soporta patrones con marcadores entre llaves:
 
-  * `{YYYY}` año
-  * `{YY}` año (2 dígitos)
-  * `{MM}` mes
-  * `{DD}` día
-  * `{hh}` hora
-  * `{mm}` minuto
-  * `{ss}` segundo
-  * `{JJJ}` día juliano
-  * `{TS}` Instante (timestamp) YYYYJJJhhmm
-  * `{CH}` canal o banda (C01, C02, etc.)
-  * `{SAT}` satélite (por ejemplo: `G16`, `G19`)
-  * `{SECTOR}` sector de escaneo: `fd`, `conus`, `m1` o `m2`
-  * `{PROD}` nombre corto del modo (ej. `truecolor`, `ash`); reemplazado por `--name` si se usa
+* `-o, --out <file>`
+  Output file. If not specified, the name is generated automatically.
+  Supports patterns with brace-delimited tokens:
 
-  Ejemplo:
+  * `{YYYY}` year
+  * `{YY}` year (2 digits)
+  * `{MM}` month
+  * `{DD}` day
+  * `{hh}` hour
+  * `{mm}` minute
+  * `{ss}` second
+  * `{JJJ}` Julian day
+  * `{TS}` Instant (timestamp) YYYYJJJhhmm
+  * `{CH}` channel or band (C01, C02, etc.)
+  * `{SAT}` satellite (e.g.: `G16`, `G19`)
+  * `{SECTOR}` scan sector: `fd`, `conus`, `m1`, or `m2`
+  * `{PROD}` mode's short name (e.g. `truecolor`, `ash`); overridden by `--name` if used
+
+  Example:
 
   ```bash
   hpsv gray -o "ir_{SAT}_{SECTOR}_{CH}_{YYYY}{MM}{DD}.png" \\
         OR_ABI-L1b-RadC-M6C13_G19_s20253551801183.nc
   # → ir_G19_conus_C13_20251221.png
-  ``` 
+  ```
 
 * `-G, --geographics`
-  Reproyecta la salida a coordenadas geográficas (latitud/longitud) equirrectangulares.
+  Reprojects the output to geographic (latitude/longitude) equirectangular coordinates.
 
 * `-s, --scale <factor>`
-  Factor entero de escala espacial. Valores mayores que 1 amplían la 
-  imagen; valores menores que 1 la reducen (por omisión `1` y no se 
-  aplica). Un valor -2 implica una escala de 0.5. Obligatorio **usar 
-  solo enteros**.
+  Integer spatial scale factor. Values greater than 1 enlarge the image;
+  values less than 1 shrink it (default `1`, i.e. not applied). A value of
+  -2 implies a scale of 0.5. **Must use integers only**.
 
 * `-t, --geotiff`
-  Genera la salida en formato **Cloud Optimized GeoTIFF (COG)** 
-  georreferenciado, con tiling interno, overviews y metadatos de 
-  proyección completos. Compatible con QGIS, GDAL, ArcGIS, y servicios 
-  cloud como STAC, Titiler y cualquier cliente HTTP con range requests.
+  Generates the output as a georeferenced **Cloud Optimized GeoTIFF
+  (COG)**, with internal tiling, overviews, and full projection metadata.
+  Compatible with QGIS, GDAL, ArcGIS, and cloud services such as STAC,
+  Titiler, and any HTTP client supporting range requests.
 
-  Ejemplos:
+  Examples:
   ```bash
-	# Opción explícita
-	hpsv gray -t archivo.nc
+	# Explicit option
+	hpsv gray -t file.nc
 
-	# Detección automática por extensión
-	hpsv gray -o salida.tif archivo.nc
+	# Automatic detection by extension
+	hpsv gray -o output.tif file.nc
   ```
 
 * `-v, --verbose`
-  Activa el modo verboso, mostrando información detallada del procesamiento.
+  Enables verbose mode, showing detailed processing information.
 
-### 5.4 Opciones comando *gray*
+### 5.4 *gray* command options
 
-Genera una vista en escala de grises.
+Generates a grayscale view.
 
 * `-i, --invert`
-  Invierte los valores (blanco a negro).
+  Inverts the values (white to black).
 
 * `--minmax "<min>,<max>"`
-  Fija el rango físico de valores que se mapean al rango 0–255, sin importar
-  el mínimo/máximo real de los datos. Útil para comparar imágenes a distintas
-  horas o escenas con distinto rango dinámico.
+  Fixes the physical value range mapped to 0–255, regardless of the
+  data's actual min/max. Useful for comparing images from different times
+  or scenes with different dynamic ranges.
 
-  Ejemplo: imágenes IR nocturnas comparables entre sí fijando temperatura
-  en Kelvin:
+  Example: comparable nighttime IR images by fixing the temperature
+  range in Kelvin:
   ```bash
-  hpsv gray -i -s -4 archivo_G19_C13.nc -o ir_0600.png --minmax "193.15,313.15"
-  hpsv gray -i -s -4 archivo_G19_C13_1200.nc -o ir_1200.png --minmax "193.15,313.15"
+  hpsv gray -i -s -4 file_G19_C13.nc -o ir_0600.png --minmax "193.15,313.15"
+  hpsv gray -i -s -4 file_G19_C13_1200.nc -o ir_1200.png --minmax "193.15,313.15"
   ```
-  Sin esta opción, cada imagen escala de forma independiente a su propio
-  mínimo y máximo, impidiendo comparaciones visuales directas.
+  Without this option, each image scales independently to its own min and
+  max, preventing direct visual comparisons.
 
-### 5.5 Opciones comando *pseudocolor*
+### 5.5 *pseudocolor* command options
 
-Asocia un mapa de color a una vista en grises.
+Maps a color palette onto a grayscale view.
 
-* `-p, --cpt <archivo>`     Aplica una paleta de colores (archivo .cpt) (omisión: arcoiris predefinido).
-* `-i, --invert`            Invierte los valores (mínimo a máximo).
-  
-  Ejemplo:
+* `-p, --cpt <file>`     Applies a color palette (.cpt file) (default: predefined rainbow palette).
+* `-i, --invert`         Inverts the values (min to max).
+
+  Example:
   ```bash
-  hpsv pseudocolor -p paleta.cpt archivo_GOES.nc
+  hpsv pseudocolor -p palette.cpt file_GOES.nc
   ```
 
-### 5.6 Opciones comando *rgb*
+### 5.6 *rgb* command options
 
-Genera un compuesto RGB a partir de combinaciones lineales de varias bandas.
+Generates an RGB composite from linear combinations of multiple bands.
 
-* `-m, --mode <modo>`       Modo de operación. Opciones disponibles: 
-							`daynite` (predeterminado), `truecolor`, `night`, `ash`, `airmass`, `severestorm`, `so2`, `custom`. 
+* `-m, --mode <mode>`       Operating mode. Available options:
+							`daynite` (default), `truecolor`, `night`, `ash`, `airmass`, `severestorm`, `so2`, `custom`.
 
-* `--rayleigh`              Aplica corrección atmosférica de Rayleigh (solo modos visibles diurnos).
-							Por defecto usa LUTs de pyspectral (más precisas).
+* `--rayleigh`              Applies Rayleigh atmospheric correction (daytime visible modes only).
+							Uses pyspectral LUTs by default (more accurate).
 
-* `--ray-analytic`          Usa corrección Rayleigh analítica en lugar de LUTs (más ligera, menos precisa).
+* `--ray-analytic`          Uses analytic Rayleigh correction instead of LUTs (lighter, less accurate).
 
-* `-f, --full-res`          Usa el canal de mayor resolución como referencia (más detalle, más lento).
-							Por omisión, se usa el de menor resolución (más rápido, vistas menos grandes).
+* `-f, --full-res`          Uses the highest-resolution channel as reference (more detail, slower).
+							By default, uses the lowest-resolution channel (faster, smaller output views).
 
-* `--stretch`               Aplica un estiramiento de contraste por tramos (*piecewise stretch*) similar al
-							usado por geo2grid/Beaufort. Mejora la diferenciación tonal en escenas con rango
-							dinámico comprimido (útil especialmente con `truecolor`).
+* `--stretch`               Applies a piecewise contrast stretch similar to the one used by
+							geo2grid/Beaufort. Improves tonal differentiation in scenes with
+							compressed dynamic range (especially useful with `truecolor`).
 
-* `--sharpen`               Aplica *ratio sharpening* para mejorar la nitidez espacial de las componentes
-							verde y azul. Calcula por cada píxel la razón entre su valor y la media de su
-							bloque 2×2 en el canal rojo (C02), y multiplica dicha razón en el verde y azul.
-							Equivalente al `SelfSharpenedRGB` de satpy/geo2grid.
-							El efecto es apreciable cuando se trabaja a resolución completa (`--full-res`)
-							o con recortes geográficos (`--clip`). En disco completo a resolución reducida
-							el beneficio es imperceptible.
+* `--sharpen`               Applies *ratio sharpening* to improve the spatial sharpness of the
+							green and blue components. For each pixel, computes the ratio between
+							its value and the mean of its 2×2 block in the red channel (C02), and
+							multiplies that ratio into the green and blue channels. Equivalent to
+							satpy/geo2grid's `SelfSharpenedRGB`. The effect is noticeable when
+							working at full resolution (`--full-res`) or with geographic clips
+							(`--clip`). On a full disk at reduced resolution the benefit is
+							imperceptible.
 
-* `-N, --name <etiqueta>`   Nombre descriptivo del producto. Se escribe en los metadatos JSON y GeoTIFF
-						como campo `product` al nivel raíz (junto a `satellite`, `sector`, `timestamp`).
-						También disponible como token `{PROD}` en los patrones de `-o`.
-						Si se omite, `{PROD}` usa el nombre corto del modo (ej. `truecolor`) y `product` en el JSON
-						usa la descripción del modo (ej. `"True Color RGB (natural)"`). Acepta el formato `corto:Descripción larga` para fijar ambos valores independientemente:
-						la parte antes de `:` va a `{PROD}` en el nombre de archivo, y la parte tras `:` al campo
-						`product` en el JSON/GeoTIFF. Si no hay `:`, el valor se usa para ambos.
+* `-N, --name <label>`      Descriptive product name. Written to the JSON and GeoTIFF metadata as
+						the root-level `product` field (alongside `satellite`, `sector`, `timestamp`).
+						Also available as the `{PROD}` token in `-o` patterns.
+						If omitted, `{PROD}` uses the mode's short name (e.g. `truecolor`) and
+						`product` in the JSON uses the mode's description (e.g.
+						`"True Color RGB (natural)"`). Accepts the format `short:Long description`
+						to set both values independently: the part before `:` goes to `{PROD}` in
+						the filename, and the part after `:` to the `product` field in the
+						JSON/GeoTIFF. If there's no `:`, the value is used for both.
 
-Especialmente útil con `--mode custom` para identificar la composición.
+Especially useful with `--mode custom` to identify the composition.
 
-  Ejemplos:
-						
-  ```bash						
-  # True color con corrección atmosférica de Rayleigh y CLAHE
-  hpsv rgb -m truecolor --rayleigh --clahe archivo.nc
+  Examples:
 
-  # True color con Rayleigh, estiramiento y ratio sharpening (mayor nitidez)
-  hpsv rgb -m truecolor --rayleigh --stretch --sharpen archivo.nc
+  ```bash
+  # True color with Rayleigh atmospheric correction and CLAHE
+  hpsv rgb -m truecolor --rayleigh --clahe file.nc
 
-  # Detección de ceniza volcánica
-  hpsv rgb -m ash -o ceniza.png archivo.nc
+  # True color with Rayleigh, stretch, and ratio sharpening (sharper detail)
+  hpsv rgb -m truecolor --rayleigh --stretch --sharpen file.nc
 
-  # Composición personalizada con nombre descriptivo en metadatos y nombre de archivo
+  # Volcanic ash detection
+  hpsv rgb -m ash -o ash.png file.nc
+
+  # Custom composition with a descriptive name in metadata and filename
   hpsv rgb -m custom --expr "C13-C14; C13; -1.0*C15+300" \
-        --name "ash:Ceniza volcánica" -o "{PROD}_{SAT}_{YYYY}{MM}{DD}.png" archivo.nc
+        --name "ash:Volcanic ash" -o "{PROD}_{SAT}_{YYYY}{MM}{DD}.png" file.nc
   # → ash_G16_20250101.png
   ```
-  
-El modo `daynite` hace una mezcla inteligente de los modos `truecolor` 
-y `night` con luces de ciudad de fondo, usando una máscara precisa con 
-base en la geometría solar, y aplica automáticamente corrección 
-Rayleigh y realce de contraste.
 
-Para modo `custom` ver **Álgebra de bandas**.
+The `daynite` mode intelligently blends the `truecolor` and `night` modes
+with background city lights, using a precise mask based on solar geometry,
+and automatically applies Rayleigh correction and contrast enhancement.
 
-### 5.7 Archivo JSON sidecar
+For `custom` mode see **Band algebra**.
 
-`hpsv` puede escribir un archivo JSON con metadatos del procesamiento junto a la imagen de salida, útil para trazabilidad y para integraciones como `mapdrawer`.
+### 5.7 JSON sidecar file
 
-**Convención de nombres y activación:**
-* El JSON sidecar es opcional: se genera solo si se pasa `-j`/`--json`.
-* Si la imagen es `salida.png`, el JSON será `salida.json`.
+`hpsv` can write a JSON file with processing metadata alongside the output image, useful for traceability and for integrations such as `mapdrawer`.
 
-**Contenido del JSON** (ejemplo real, `hpsv gray archivo_CMIP_C13.nc -j -G --clahe -g 1.3`):
+**Naming convention and activation:**
+* The JSON sidecar is opt-in: it is only generated when `-j`/`--json` is passed.
+* If the image is `output.png`, the JSON will be `output.json`.
+
+**JSON content** (real example, `hpsv gray file_CMIP_C13.nc -j -G --clahe -g 1.3`):
 
 ```json
 {
@@ -386,136 +408,143 @@ Para modo `custom` ver **Álgebra de bandas**.
     "gamma": 1.3,
     "clahe": true,
     "geographics": true,
-    "output_file": "salida.png",
+    "output_file": "output.png",
     "output_width": 5476,
     "output_height": 2334
   }
 }
 ```
 
-* `crs` refleja la proyección real de la salida: `EPSG:4326` si se reproyectó con `-G`/`--both`, `goes16`/`goes17`/`goes18`/`goes19` (o `geostationary`) en la rejilla nativa del satélite, o el valor por omisión `geographics` cuando no se calculó geometría (PNG plano sin `--clip`, GeoTIFF ni reproyección). `bounds`/`geometry.bbox` solo aparecen cuando sí se calculó geometría, y son redundantes entre sí (mismo recuadro en dos formas).
-* `product` solo aparece para productos L2 (CMIP, ACHA, ACHT, ACTP, CTP, LST, SST); los archivos L1b (radiancia) no lo incluyen porque no tienen una identidad de "producto" distinta del canal.
-* `enhancements` agrega una clave por cada opción de procesamiento efectivamente aplicada (entre otras: `gamma`, `clahe`, `histogram`, `invert`, `rayleigh`/`stretch` en modo `rgb`, `scale`, `palette`, `expression`, `geographics`), además de `output_file`/`output_width`/`output_height`. Las opciones no usadas simplemente no aparecen.
+* `crs` reflects the output's actual projection: `EPSG:4326` if reprojected with `-G`/`--both`, `goes16`/`goes17`/`goes18`/`goes19` (or `geostationary`) on the satellite's native grid, or the default value `geographics` when no geometry was computed (a plain PNG without `--clip`, neither GeoTIFF nor reprojection). `bounds`/`geometry.bbox` only appear when geometry was actually computed, and are redundant with each other (the same bounding box in two forms).
+* `product` only appears for L2 products (CMIP, ACHA, ACHT, ACTP, CTP, LST, SST); L1b (radiance) files don't include it because they have no "product" identity distinct from the channel.
+* `enhancements` adds one key per processing option that was actually applied (among others: `gamma`, `clahe`, `histogram`, `invert`, `rayleigh`/`stretch` in `rgb` mode, `scale`, `palette`, `expression`, `geographics`), plus `output_file`/`output_width`/`output_height`. Unused options simply don't appear.
+* **GeoTIFF (`-t`):** only a subset of these metadata fields is embedded as GDAL tags inside the file: `tool`, `satellite`, `sector`, `band`, `scan_time`, `product` (when applicable), and `colormap_min`/`colormap_max`/`colormap_size`/`colormap_units` in pseudocolor. `crs` and `bounds` aren't duplicated as text because the GeoTIFF already represents them natively (geotransform + WKT projection); `command`, `channels` (with min/max/quantity), and `enhancements` only exist in the JSON sidecar.
 
-**Casos de uso:**
-* **Reproducibilidad:** documentación exacta de los parámetros de realce aplicados (gamma, CLAHE, Rayleigh, etc.) y del producto/canal de origen.
-* **Integración:** automatización de flujos de visualización (ej. `mapdrawer`), que consume `crs`/`bounds`/`product` para ubicar y clasificar cada imagen.
-* **Trazabilidad:** identificar satélite, sector, canal(es), producto y proyección que generaron cada imagen.
+**Use cases:**
+* **Reproducibility:** exact documentation of the applied enhancement parameters (gamma, CLAHE, Rayleigh, etc.) and the source product/channel.
+* **Integration:** automation of visualization pipelines (e.g. `mapdrawer`), which consumes `crs`/`bounds`/`product` to locate and classify each image.
+* **Traceability:** identifying the satellite, sector, channel(s), product, and projection that generated each image.
 
-### 5.8 Convenciones de salida
+### 5.8 Output conventions
 
-Si no se especifica la opción `-o` o `--out`, se genera un nombre determinista basado en los metadatos del archivo "ancla", las bandas y las operaciones aplicadas:
+If `-o`/`--out` is not specified, a deterministic name is generated based on the "anchor" file's metadata, the bands, and the applied operations:
 
-**Formato:** `hpsv_<SAT>[_<SECTOR>]_<YYYYJJJ>_<hhmm>_<COMMAND>_<CH>[_<OPS>].<ext>`
+**Format:** `hpsv_<SAT>[_<SECTOR>]_<YYYYJJJ>_<hhmm>_<COMMAND>_<CH>[_<OPS>].<ext>`
 
-Ejemplo:
+Example:
   ```bash
   hpsv gray OR_ABI-L1b-RadC-M6C13_G16_s20242190300217.nc
   # → hpsv_G16_conus_2024219_0300_gray_C13.png
-  # → hpsv_G16_conus_2024219_0300_gray_C13.json (metadatos)
   ```
-  
-### 5.9 Álgebra de bandas y composiciones personalizadas
 
-`hpsv` permite definir combinaciones lineales de bandas al vuelo para generar composiciones RGB o imágenes monocanal complejas sin necesidad de generar archivos intermedios.
+### 5.9 Band algebra and custom compositions
 
-**Sintaxis Soportada:**
-* **Términos con coeficientes por banda:** (ej. `2.0*C13`).
-* **Operadores:** `+`, `-` entre los términos.
-* **Rangos:** Opcionalmente, mínimos y máximos separados por comas. Por omisión se calculan.
-* **Separadores:** Usa punto y coma `;` para separar las componentes R, G y B (solo con comando `rgb`).
+`hpsv` lets you define linear combinations of bands on the fly to generate RGB composites or complex single-channel images without generating intermediate files.
 
-#### Ejemplos de Uso
+**Supported syntax:**
+* **Terms with per-band coefficients:** (e.g. `2.0*C13`).
+* **Operators:** `+`, `-` between terms.
+* **Ranges:** optionally, min and max separated by commas. Computed automatically by default.
+* **Separators:** use a semicolon `;` to separate the R, G, and B components (only with the `rgb` command).
 
-**1. Álgebra Monocanal** en los comandos gray o pseudocolor.
+#### Usage examples
+
+**1. Single-channel algebra** in the gray or pseudocolor commands.
 
 ```bash
-hpsv gray archivo_ancla.nc \
+hpsv gray anchor_file.nc \
   --expr "C13-C15" \
   --minmax "0.0,100.0"
 ```
 
-**2. Composición RGB Personalizada** Define fórmulas independientes para los canales Rojo, Verde y Azul usando el modo `custom`. Nota el uso de comillas para proteger los espacios y el punto y coma.
+**2. Custom RGB composition.** Define independent formulas for the Red, Green, and Blue channels using `custom` mode. Note the use of quotes to protect spaces and semicolons.
 
 ```bash
-hpsv rgb archivo_ancla.nc \
+hpsv rgb anchor_file.nc \
   --mode custom \
   --expr "C13-C14; C13-C11; C13" \
   --minmax "-2,2; -4,2; 240,300" \
-  --out "ceniza_volcanica.png"
+  --out "volcanic_ash.png"
 ```
 
 ---
 
-## 6. Detalles técnicos
+## 6. Technical details
 
-### 6.1 Geometría y geolocalización
+### 6.1 Geometry and geolocation
 
-La generación de vistas se apoya en formulaciones geométricas rigurosas. El sistema implementa reproyección directa desde proyección geoestacionaria a malla lat/lon uniforme (WGS84), con manejo de huecos e inferencia automática de dominios fuera del disco visible. El recorte geográfico se optimiza cuando es posible, realizándolo antes de la reproyección.
+View generation relies on rigorous geometric formulations. The system implements direct reprojection from geostationary projection to a uniform lat/lon grid (WGS84), with gap handling and automatic inference of domains outside the visible disk. Geographic clipping is optimized when possible, performed before reprojection.
 
-### 6.2 Corrección atmosférica (Rayleigh)
+### 6.2 Atmospheric correction (Rayleigh)
 
-HPSATVIEWS incorpora corrección de dispersión de Rayleigh para canales
-visibles, mejorando la fidelidad visual de escenas diurnas al remover la
-contribución de dispersión molecular de la atmósfera.
+HPSATVIEWS incorporates Rayleigh scattering correction for visible
+channels, improving the visual fidelity of daytime scenes by removing the
+atmosphere's molecular scattering contribution.
 
-**Implementación LUT (predeterminada, `--rayleigh`).** Utiliza tablas de
-búsqueda (*look-up tables*) pre-calculadas a partir de pyspectral
-(Scheirer et al., 2018), indexadas por tres variables: secante del ángulo
-zenital solar, secante del ángulo zenital del satélite y diferencia de
-ángulos azimutales. Las LUTs se embeben en el binario en tiempo de
-compilación para evitar dependencias externas. La convención de azimuth
-sigue a pyspectral: la LUT se indexa con `180° − Δφ`, donde Δφ es la
-diferencia de azimut sol–satélite.
+**LUT implementation (default, `--rayleigh`).** Uses pre-computed
+look-up tables derived from pyspectral (Scheirer et al., 2018), indexed by
+three variables: secant of the solar zenith angle, secant of the
+satellite zenith angle, and the azimuthal angle difference. The LUTs are
+embedded into the binary at compile time to avoid external dependencies.
+The azimuth convention follows pyspectral: the LUT is indexed with
+`180° − Δφ`, where Δφ is the sun–satellite azimuth difference.
 
-**Implementación analítica (`--ray-analytic`).** Alternativa más ligera
-que calcula la corrección en tiempo real con el modelo de Bucholtz (1995)
-y la función de fase de Rayleigh de Hansen & Travis (1974). Útil cuando
-no se requiere la máxima precisión o se busca reducir el tamaño del
-binario.
+**Analytic implementation (`--ray-analytic`).** A lighter alternative
+that computes the correction in real time using the Bucholtz (1995) model
+and the Hansen & Travis (1974) Rayleigh phase function. Useful when
+maximum accuracy isn't required or when reducing binary size is a
+priority.
 
-**Relajación en zonas nubosas.** Ambas implementaciones incorporan
-relajación de la corrección donde la reflectancia del canal rojo
-(C02, 0.64 µm) supera 0.20, siguiendo el criterio de pyspectral.
-La corrección se reduce linealmente hasta anularse cuando la
-reflectancia alcanza 1.0, evitando sobre-corrección en nubes y
-superficies altamente reflectivas.
+**Cloud-zone relaxation.** Both implementations incorporate relaxation of
+the correction where the red channel's reflectance (C02, 0.64 µm) exceeds
+0.20, following pyspectral's criterion. The correction fades out
+linearly as reflectance reaches 1.0, avoiding over-correction over clouds
+and highly reflective surfaces.
 
 ### 6.3 CLAHE
 
-El sistema incluye ecualización adaptativa de histograma con control de contraste local (CLAHE) para mejorar la interpretabilidad visual en escenas con variaciones espaciales pronunciadas de contraste.
+The system includes Contrast Limited Adaptive Histogram Equalization (CLAHE) to improve visual interpretability in scenes with pronounced spatial contrast variations.
 
-### 6.4 Composición True Color
+### 6.4 True Color composition
 
-El modo `truecolor` genera una imagen de color natural a partir de tres
-canales ABI: C01 (0.47 µm, azul), C02 (0.64 µm, rojo) y C03
-(0.865 µm, infrarrojo cercano). Dado que ABI no posee un canal verde
-nativo, se sintetiza mediante la combinación lineal:
+The `truecolor` mode generates a natural-color image from three ABI
+channels: C01 (0.47 µm, blue), C02 (0.64 µm, red), and C03 (0.865 µm,
+near-infrared). Since ABI has no native green channel, one is synthesized
+via the linear combination:
 
 $$G = 0.465 \cdot B + 0.465 \cdot R + 0.07 \cdot NIR$$
 
-Estos coeficientes reproducen los utilizados por geo2grid/satpy (Bah
-et al., 2018) y proporcionan un verde perceptualmente equilibrado.
+These coefficients reproduce those used by geo2grid/satpy (Bah et al.,
+2018) and provide a perceptually balanced green.
 
-**Piecewise stretch (`--stretch`).** La reflectancia corregida se mapea
-a niveles digitales mediante un estiramiento por tramos que expande
-selectivamente los tonos oscuros y comprime los claros, mejorando la
-diferenciación tonal en escenas con rango dinámico comprimido. La curva
-es equivalente a la utilizada por geo2grid.
+**Piecewise stretch (`--stretch`).** The corrected reflectance is mapped
+to digital levels via a piecewise stretch that selectively expands dark
+tones and compresses bright ones, improving tonal differentiation in
+scenes with compressed dynamic range. The curve is equivalent to the one
+used by geo2grid.
 
-### 6.5 Rendimiento
+### 6.5 Performance
 
-Implementado en C11 (ISO/IEC 9899:2011) con paralelización mediante OpenMP, HPSATVIEWS prioriza el alto rendimiento, el uso eficiente de memoria y la escalabilidad en sistemas multi-núcleo.
-
----
-
-## 7. Estado del proyecto
-
-HPSATVIEWS se encuentra en desarrollo activo, funcional estable y ampliación progresiva de capacidades y documentación.
+Implemented in C11 (ISO/IEC 9899:2011) with OpenMP parallelization, HPSATVIEWS prioritizes high performance, efficient memory use, and scalability on multi-core systems.
 
 ---
 
-## 8. Referencias
+## 7. Project status
+
+HPSATVIEWS is under active development, functionally stable, with progressive expansion of capabilities and documentation.
+
+**Future work:** exploring fine-grained GPU parallelism (CUDA/OpenCL) is
+under consideration for the most computationally expensive stages
+(Rayleigh correction, reprojection), as a complement to the current
+OpenMP-based parallelism.
+
+Want to contribute, report a problem, or get support? See
+[CONTRIBUTING.md](CONTRIBUTING.md). This project follows the
+[Code of Conduct](CODE_OF_CONDUCT.md) based on the Contributor Covenant.
+
+---
+
+## 8. References
 - Bah, K., Schmit, T. J., Gerth, J., Cronce, M., otkin, J., & Li, J. (2018).
   GOES-16 Advanced Baseline Imager (ABI) True Color Imagery for Legacy and 
   Non-Traditional Applications. NOAA/CIMSS.
@@ -545,7 +574,7 @@ HPSATVIEWS se encuentra en desarrollo activo, funcional estable y ampliación pr
   Academic Press.
   
 
-## 9. Autor y licencia
+## 9. Author and license
 
 ```
 Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
@@ -557,8 +586,8 @@ the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 ```
 
-Consulta el archivo [LICENSE](LICENSE) para más detalles.
+See the [LICENSE](LICENSE) file for details.
 
 ---
 
-*HPSATVIEWS - Visualización de datos satelitales de alto rendimiento*
+*HPSATVIEWS - High-performance visualization of satellite data*
