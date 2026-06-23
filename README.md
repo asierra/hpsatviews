@@ -176,6 +176,12 @@ Generates a grayscale view of channel C13.
 * `-a, --alpha`
   Adds an alpha channel for transparency in no-data regions or outside a specific threshold.
 
+* `-B, --both`
+  Saves both the native fixed-grid output and the reprojected (geographic)
+  output in a single run — implies `-G`, no need to pass it separately.
+  The reprojected file gets a `_geo` suffix inserted before the extension
+  (e.g. `out.png` → `out_geo.png`).
+
 * `-c, --clip <value>`
   Crops the image. The value can be:
 
@@ -340,6 +346,17 @@ Generates an RGB composite from linear combinations of multiple bands.
 							working at full resolution (`--full-res`) or with geographic clips
 							(`--clip`). On a full disk at reduced resolution the benefit is
 							imperceptible.
+
+* `-T, --cloud-temp <K>`    Classifies pixels colder than this brightness temperature (Kelvin) as
+							night, regardless of solar geometry (`daynite` mode only). Useful for
+							catching high cold clouds that the day/night terminator mask alone
+							would still classify as daytime. `0` disables it (default); typical
+							value: `230`.
+
+* `-l, --citylights`        Uses a city-lights background behind the night side of the composite,
+							in standalone `night` mode (default without the flag: plain backdrop).
+							In `daynite` mode this is always on regardless of the flag — the night
+							side of the day/night blend always shows city lights.
 
 * `-N, --name <label>`      Descriptive product name. Written to the JSON and GeoTIFF metadata as
 						the root-level `product` field (alongside `satellite`, `sector`, `timestamp`).
