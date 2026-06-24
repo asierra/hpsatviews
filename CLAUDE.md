@@ -73,7 +73,7 @@ Anchor file (`OR_ABI-L1b-RadF-M6C13_G16_s20253231800172...nc`) identifies the sc
 
 ### RGB Mode System
 
-Modes defined in `src/rgb.c` switch: `truecolor`, `night`, `ash`, `airmass`, `daynite`, `severestorm`, `so2`, `custom`. Each specifies channel combinations and per-channel linear algebra. `daynite` auto-blends day/night using solar geometry from `src/daynight_mask.c`.
+Modes defined in `src/rgb.c` switch: `truecolor`, `night`, `ash`, `airmass`, `daynite`, `severestorm`, `so2`, `custom`. Each specifies channel combinations and per-channel linear algebra. `daynite` auto-blends day/night using solar geometry from `src/daynight_mask.c`. `night` (and the night side of `daynite`) renders C13 brightness temperature via `create_nocturnal_pseudocolor()` (`src/nocturnal_pseudocolor.c`), optionally composited over a city-lights background read by `src/reader_webp.c`.
 
 True color synthesizes a green channel not present in ABI: `G = 0.465*B + 0.465*R + 0.07*NIR`.
 
@@ -84,6 +84,15 @@ Two implementations in `src/rayleigh.c`:
 - **Analytic** (`--ray-analytic`): Bucholtz (1995) model + Hansen & Travis (1974) phase function. Lighter, less accurate.
 
 Both apply cloud relaxation: correction fades to zero when C02 reflectance exceeds 0.20 (linear rolloff to 1.0).
+
+### Band Algebra (`--expr`)
+
+`src/parse_expr.c` parses linear-combination expressions like `"C13-C14"` or `"2.0*C13-1.0*C15+300"` into a `LinearCombo` (`include/parse_expr.h`): up to 10 `{band_id, coeff}` terms plus a constant bias. This is cross-cutting, not RGB-only:
+
+- `gray`/`pseudocolor` take one expression via `--expr`, consumed in `src/processing.c`.
+- `rgb --mode custom --expr "R;G;B"` splits on `;` into three independent combos, consumed by `compose_custom()` in `src/rgb.c`.
+
+`config_from_argparser()` sets `cfg->is_custom_mode`/`cfg->custom_expr` whenever `--expr` is present (`src/config.c`); `get_unique_channels_rgb()` derives which sibling channel files need loading before evaluation.
 
 ## Conventions
 
@@ -106,7 +115,6 @@ Both apply cloud relaxation: correction fades to zero when C02 reflectance excee
 
 - Inspect NetCDF file structure: `ncdump -h file.nc`
 - Inspect GeoTIFF GDAL metadata without GDAL CLI tools: `strings file.tif | grep -A0 'Item name'`
-- Active TODO: `docs/TODO.txt`
 
 ## Gotchas
 
@@ -116,3 +124,5 @@ Both apply cloud relaxation: correction fades to zero when C02 reflectance excee
 - **Command exit codes**: `args.c`'s `ap_parse()` invokes the active subcommand's callback and stores its return value in `parser->cmd_callback_exit_code`, retrievable via `ap_get_cmd_exit_code()` — but `ap_parse()` itself only returns a `bool` for *argument-parsing* success. `main()` must explicitly call `ap_get_cmd_exit_code()` after `ap_parse()` and return that; returning a hardcoded `0` (the bug prior to this fix) makes every runtime failure (bad file, bad palette, OOM, etc.) silently report success to the shell. Any code path in `run_processing()`/`run_rgb()` that adds a new `goto cleanup` must leave `status` at its non-zero initial value (`1`) on failure — don't reset it to 0 except on the success fallthrough.
 - **Help text is compile-time selected**: `HPSV_LANG=es` defines `-DHPSV_LANG_ES`, switching `include/help_en.h` ↔ `include/help_es.h`. Keep both in sync when changing CLI help.
 - `.github/copilot-instructions.md` predates some flags (e.g. it lists a `-r` reproject flag and an always-on JSON) — prefer this file and the code when they disagree.
+- **Predefined clip CSV path is hardcoded twice, and the override comment is wrong**: both `RUTA_CLIPS` in `src/main.c` (used by `--list-clips`) and a separate literal in `config_parse_clip()` in `src/config.c` (used by `-c <key>`) point at `/usr/local/share/lanot/docs/recortes_coordenadas.csv` (a LANOT/UNAM deployment path). `src/main.c`'s comment claims it's "overridable via a build-time -D macro", but the `#define` has no `#ifndef` guard, so a command-line `-DRUTA_CLIPS=...` just triggers a harmless-looking redefinition warning and is silently discarded (verified by compiling a minimal repro) — the hardcoded path always wins. Changing the clips location means editing both call sites; there's no actual build-time override today.
+- **`docs/hpsatviews.schema.json` has drifted from the real JSON sidecar**: it requires `timestamp_iso` and lists `command` enum `["rgb", "gray", "pseudocolor", "composite"]`, but `src/metadata.c` writes the key as `timestamp` (matches the README §5.7 example) and there is no `composite` subcommand (only `gray`/`pseudocolor`/`rgb`). Don't trust the schema file over an actual sample sidecar or `src/metadata.c` when reasoning about JSON output shape.
