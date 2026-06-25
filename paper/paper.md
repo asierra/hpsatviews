@@ -139,6 +139,8 @@ as a fast component for similar operational infrastructure elsewhere.
 
 # Figures
 
+![Geometric processing workflow in `hpsatviews`: (Left) A true color RGB composite generated in the native geostationary projection of the GOES-R Advanced Baseline Imager; (Center) The same full disk computationally reprojected into a uniform geographic latitude/longitude grid (WGS84); (Right) Arbitrary regional crops extracted from the reprojected domain, demonstrating the tool's ability to generate localized, operationally relevant views (e.g., over Mexico and the Gulf of Mexico) from a single execution pipeline.](fig1.jpg)
+
 ![Grayscale view of a single ABI channel (`hpsv gray`).](gray_example.png){ width=32% }
 ![Pseudocolor view with the default rainbow palette (`hpsv pseudocolor`).](pseudocolor_example.png){ width=32% }
 ![True color RGB composite (`hpsv rgb -m truecolor`).](truecolor_example.png){ width=32% }
@@ -151,12 +153,12 @@ regression-test suite.
 
 # AI usage disclosure
 
-El diseño original se hizo sin ninguna ayuda de IA pero tares
+The initial design and overall philosophy of this project were entirely human. As the project evolved, however, large-scale refactoring, the diagnosis of elusive bugs, and the implementation of intricate algorithms benefited substantially from AI assistance — primarily Gemini Pro (versions 2.4 to 3.1) and Claude Sonnet (versions 4.5 to 4.6). Claude Sonnet was also used to draft portions of this paper, including this disclosure. In all cases, the human author reviewed, edited, and validated every AI-assisted output and retained sole responsibility for all core design decisions.
 
 # Acknowledgements
 
 This work was developed at the Laboratorio Nacional de Observación de la
-Tierra (LANOT), Universidad Nacional Autónoma de México (UNAM). No external
-grant funding is associated with this release.
+Tierra (LANOT), Universidad Nacional Autónoma de México (UNAM), with support
+from Laboratorio Nacional SECIHTI 2025-2027, grant ApoyoLN-2025-C-102.
 
 # References
