@@ -1,19 +1,14 @@
 #!/bin/bash
 set -e
 
-1.daynite: Huracán Otis (Rápida Intensificación), 20232972130, 
-2. Ash RGB: Erupción del Popocatépetl (Alerta Amarilla Fase 3), 20240582056,
-3. Day/Night Blend (El terminador sobre el territorio nacional)
-mejlor gris con realce
-4. Pseudocolor L2 (CTP): "Norte" severo en el Golfo de México, 20240481800,
-5. Air Mass RGB: Corriente en Chorro (Jet Stream) Invernál
-Fecha: 23 de diciembre de 2022 (Tormenta invernal Elliott) o mediados de enero de 2024.
-
-Hora sugerida: 12:00 UTC (madrugada).
-
-6. Infrarrojo Severo o Fire Temperature (Convección o Incendios)
+1.daynite: Huracán Otis (Rápida Intensificación), 20232980100, mexico
+2. Ash RGB: Erupción del Popocatépetl (Alerta Amarilla Fase 3), 20240582056, ejevolcanico
+3. c02 con clahe, 20242201320, ejevolcanico
+4. Pseudocolor L2 (CTP): "Norte" severo en el Golfo de México, 20240481800, a5
+5. Air Mass RGB: Corriente en Chorro (Jet Stream) Invernál, 20223560000, a2
+Fecha: 23 de diciembre de 2022 (Tormenta invernal Elliott)
+6. Infrarrojo Severo o Fire Temperature (Convección o Incendios), 20261632200, a4
 Fechas sugeridas: Entre el 10 y el 12 de junio de 2026 (durante su pico de actividad en el Pacífico).
-
 Hora óptima: Entre las 21:30 y las 23:00 UTC.
 
 
