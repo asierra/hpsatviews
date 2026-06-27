@@ -1,0 +1,42 @@
+@startuml
+skinparam DefaultFontSize 13
+skinparam ActivityPadding 8
+skinparam ArrowColor #444
+skinparam ActivityBorderColor #444
+skinparam ActivityBackgroundColor #F8F8F8
+skinparam BackgroundColor white
+
+start
+
+:NetCDF anchor file;
+
+switch (Command)
+case (  gray / pseudocolor  )
+  :Load single channel\n(or band expression);
+case (  rgb  )
+  :Load ABI channel set;
+  :Compose RGB\n//truecolor · night · ash · …//;
+endswitch
+
+if (Rayleigh correction?) then (yes)
+  :Apply Rayleigh\ncorrection (LUT);
+endif
+
+if (CLAHE?) then (yes)
+  :Enhance contrast\n(CLAHE);
+endif
+
+:Normalize to 8-bit;
+
+if (Reproject?  //-G//) then (yes)
+  :Fixed grid →\nLat/Lon equirectangular;
+endif
+
+:Write PNG or GeoTIFF;
+
+if (JSON sidecar?  //-j//) then (yes)
+  :Write metadata JSON;
+endif
+
+stop
+@enduml
