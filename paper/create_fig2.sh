@@ -1,122 +1,78 @@
 #!/bin/bash
 set -e
 
-1.daynite: Huracán Otis (Rápida Intensificación), 20232980100, mexico
-2. Ash RGB: Erupción del Popocatépetl (Alerta Amarilla Fase 3), 20240582056, ejevolcanico
-3. c02 con clahe, 20242201320, ejevolcanico
-4. Pseudocolor L2 (CTP): "Norte" severo en el Golfo de México, 20240481800, a5
-5. Air Mass RGB: Corriente en Chorro (Jet Stream) Invernál, 20223560000, a2
-Fecha: 23 de diciembre de 2022 (Tormenta invernal Elliott)
-6. Infrarrojo Severo o Fire Temperature (Convección o Incendios), 20261632200, a4
-Fechas sugeridas: Entre el 10 y el 12 de junio de 2026 (durante su pico de actividad en el Pacífico).
-Hora óptima: Entre las 21:30 y las 23:00 UTC.
+#1.daynite: Huracán Otis (Rápida Intensificación), 20232980100, mexico
+#2. Ash RGB: Erupción del Popocatépetl (Alerta Amarilla Fase 3), 20240582056, ejevolcanico
+#3. c02 con clahe, 20242201320, ejevolcanico
+#4. Pseudocolor L2 (CTP): "Norte" severo en el Golfo de México, 20240481800, a5
+#5. Air Mass RGB: Corriente en Chorro (Jet Stream) Invernál, 20223560000, a2
+#Fecha: 23 de diciembre de 2022 (Tormenta invernal Elliott)
+#6. Infrarrojo Severo o Fire Temperature (Convección o Incendios), 20261632200, a4
+#Fechas sugeridas: Entre el 10 y el 12 de junio de 2026 (durante su pico de actividad en el Pacífico).
+#Hora óptima: Entre las 21:30 y las 23:00 UTC.
 
-
-# Función para localizar un archivo ancla exacto de GOES (NetCDF)
-# Uso: find_goes_scene <TIMESTAMP> <DIRECTORIO_BASE> <PATRON>
-# Ejemplo: find_goes_scene "20232972130" "/depot/goes-east/l1b/abi/fd" "C01"
-find_goes_scene() {
-    local TIMESTAMP=$1
-    local BASE_DIR=$2
-    local PATTERN=${3:-""} # Patrón arbitrario (ej. "C01", "CTP", "C13")
-
-    if [ -z "$TIMESTAMP" ] || [ "${#TIMESTAMP}" -ne 11 ]; then
-        echo "Error: El timestamp '$TIMESTAMP' es inválido. Debe ser YYYYDDDHHMM." >&2
-        return 1
-    fi
-
-    # Extraer año y día juliano para armar el árbol de directorios
-    local YYYY=${TIMESTAMP:0:4}
-    local DDD=${TIMESTAMP:4:3}
-    local TARGET_DIR="${BASE_DIR}/${YYYY}/${DDD}"
-
-    if [ ! -d "$TARGET_DIR" ]; then
-        echo "Error: El directorio no existe -> $TARGET_DIR" >&2
-        return 1
-    fi
-
-    # Buscar el primer archivo que contenga el patrón y el inicio de escaneo (_s)
-    local SEARCH_STR="*${PATTERN}*_s${TIMESTAMP}*.nc"
-    local MATCH
-    MATCH=$(find "$TARGET_DIR" -maxdepth 1 -name "$SEARCH_STR" -print -quit)
-
-    if [ -z "$MATCH" ]; then
-        echo "Error: No se encontró archivo ancla con el patrón '$PATTERN' para s${TIMESTAMP} en $TARGET_DIR" >&2
-        return 1
-    fi
-
-    # Devolver la ruta absoluta lista para hpsv
-    echo "$MATCH"
-}
-
-
-# 2. Setup Data Depot and Outputs
-DATA_DEPOT="/depot/goes-east/l1b/abi/fd/2026/173"
-# Directorios base en tu clúster
-L1B_DEPOT="/depot/goes-east/l1b/abi/fd"
-L2_CTP_DEPOT="/depot/goes-east/l2/ctp/conus" # Ajusta según tu árbol real de L2
 
 # 3. Process the 6 illustrative cases
 # 1. True Color (Huracán Otis - Rápida Intensificación)
+
 echo "[2/5] Generating (a) True Color (Hurricane / centromex)..."
-ANCHORF=$(find_goes_scene "20232972130" "$L1B_DEPOT")
-bin/hpsv rgb \
-    --mode truecolor \
-    --rayleigh \
-    --extent $EXT_CENTROMEX \
-    --out $OUT_DIR/panel_a_truecolor.png \
-    "$REF_L1B"
+ANCHORF=/opt/data/2023298/OR_ABI-L1b-RadF-M6C01_G16_s20232980100207_e20232980109515_c20232980109545.nc
+hpsv rgb -G \
+    --out a_otis.tif \
+    "$ANCHORF"
+mapdrawer a_otis.tif --clip mexico -o a_otis.jpg --outsize 512
 
 echo "[3/5] Generating (b) Ash RGB (Volcano / ash)..."
-bin/hpsv rgb \
-    --mode ash \
-    --extent $EXT_ASH \
-    --out $OUT_DIR/panel_b_ash.png \
-    "$REF_L1B"
+ANCHORF=/opt/data/l2-2024058/OR_ABI-L2-CMIPC-M6C01_G16_s20240582056174_e20240582058547_c20240582059013.nc
+hpsv rgb \
+    --mode ash -G \
+    --out b_ash.tif \
+    "$ANCHORF"
+mapdrawer b_ash.tif --clip ejevolcanico -o b_ash.jpg --outsize 512
 
-echo "[4/5] Generating (c) Day/Night Blend (Terminator / mexico)..."
-bin/hpsv rgb \
-    --mode daynite \
-    --extent $EXT_MEXICO \
-    --out $OUT_DIR/panel_c_daynite.png \
-    "$REF_L1B"
+echo "[4/5] Generating (c) C02 CLAHE ..."
+ANCHORF=/opt/data/2024220/OR_ABI-L1b-RadF-M6C02_G16_s20242201320205_e20242201329513_c20242201329544.nc
+hpsv gray --clahe -G \
+    --out c_clahe.tif \
+    "$ANCHORF"
+mapdrawer c_clahe.tif --clip a3 -o c_clahe.jpg --outsize 512
 
 echo "[5/5] Generating (d) Pseudocolor L2 (CTP / SEMAR A5)..."
-if [ -n "$REF_CTP" ]; then
-    bin/hpsv pseudocolor \
-        --palette rainbow \
-        --extent $EXT_A5 \
-        --out $OUT_DIR/panel_d_ctp.png \
-        "$REF_CTP"
-else
-    echo "  -> Skipping CTP: Anchor file not found."
-fi
+ANCHORF=/opt/data/l2-2024048/OR_ABI-L2-CTPF-M6_G16_s20240481800208_e20240481809516_c20240481813147.nc
+hpsv pseudocolor -G \
+        -p cld_top_press.cpt \
+        --out d_ctp.tif \
+		"$ANCHORF"
+mapdrawer d_ctp.tif --clip a5 -o d_ctp.jpg --outsize 512
 
 echo "[6/5] Generating (e) Air Mass RGB (Jet Stream / SEMAR A2)..."
-bin/hpsv rgb \
-    --mode airmass \
-    --extent $EXT_A2 \
-    --out $OUT_DIR/panel_e_airmass.png \
-    "$REF_L1B"
+ANCHORF=/opt/data/2022356/OR_ABI-L1b-RadF-M6C08_G16_s20223560000208_e20223560009516_c20223560009575.nc
+hpsv rgb \
+    --mode airmass -G \
+    --out e_airmass.tif \
+    "$ANCHORF"
+mapdrawer e_airmass.tif --clip a2 -o e_airmass.jpg --outsize 512
 
 echo "[7/5] Generating (f) Severe Storms RGB (Tropical Storm / SEMAR A4)..."
-bin/hpsv rgb \
-    --mode severestorm \
-    --extent $EXT_A4 \
-    --out $OUT_DIR/panel_f_severestorm.png \
-    "$REF_L1B"
+ANCHORF=/opt/data/2026163/OR_ABI-L1b-RadF-M6C01_G19_s20261632200220_e20261632209528_c20261632209582.nc
+hpsv rgb \
+    --mode severestorm -G \
+    --out f_severestorm.tif \
+    "$ANCHORF"
+mapdrawer f_severestorm.tif --clip a4 -o f_severestorm.jpg --outsize 512
+
 
 # --- Montage Assembly ---
 echo ""
 echo "Assembly: Creating the final 2x3 composite panel..."
 if command -v montage &> /dev/null; then
     montage \
-      -label "(a)" $OUT_DIR/panel_a_truecolor.png \
-      -label "(b)" $OUT_DIR/panel_b_ash.png \
-      -label "(c)" $OUT_DIR/panel_c_daynite.png \
-      -label "(d)" $OUT_DIR/panel_d_ctp.png \
-      -label "(e)" $OUT_DIR/panel_e_airmass.png \
-      -label "(f)" $OUT_DIR/panel_f_severestorm.png \
+      -label "(a)" a_otis.jpg \
+      -label "(b)" b_ash.jpg \
+      -label "(c)" c_clahe.jpg \
+      -label "(d)" d_ctp.jpg \
+      -label "(e)" e_airmass.jpg \
+      -label "(f)" f_severestorm.jpg \
       -tile 2x3 \
       -geometry +15+15 \
       -font "Courier-Bold" \
@@ -124,10 +80,10 @@ if command -v montage &> /dev/null; then
       -background white \
       -fill black \
       $OUT_DIR/hpsv_panel.png
-    echo "Success: hpsv_panel.png created in $OUT_DIR/"
+    echo "Success: hpsv_panel.png created"
 else
     echo "Warning: 'montage' (ImageMagick) not found. Skipping panel assembly."
 fi
 
 echo ""
-echo "Done. Results in $OUT_DIR/"
+echo "Done."

@@ -1,11 +1,12 @@
 #!/bin/bash
 
 # This full disk data is not in the sample-data, you have to get it by yourself
-hpsv rgb -B -o fd.tif {PATH_TO_ANCHOR_FILE}
+PATH_TO_ANCHOR_FILE=/data/input/abi/l1b/fd/OR_ABI-L1b-RadF-M6C01_G19_s20261721800229_e20261721809537_c20261721809579.nc
+hpsv rgb -B -o fd.tif "$PATH_TO_ANCHOR_FILE"
 
-mapdrawer fd_geo.tif --clip atlantic -o aa.jpg --outsize 512
+mapdrawer fd_geo.tif --clip atlantic -o atlantic.jpg --outsize 512
 
-mapdrawer fd_geo.tif --clip a5 -o a5.jpg --outsize 512
+mapdrawer fd_geo.tif --clip a5 -o a5.jpg --outsize 512x320
 
 magick atlantic.jpg \( a5.jpg -background black -splice 0x2+0+0 \) -append cuts.jpg
 
