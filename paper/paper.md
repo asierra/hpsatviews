@@ -91,12 +91,10 @@ dependency beyond the C libraries it links against.
 `hpsatviews` is written in strict modern C (C11 with POSIX extensions,
 built with `-Wall -Wextra`) and relies on OpenMP parallelization and a small
 set of efficient design patterns rather than abstraction layers. The
-processing pipeline is linear and explicit: parse CLI arguments into an
+processing pipeline is linear and explicit (see \autoref{fig:workflow}): parse CLI arguments into an
 immutable `ProcessConfig`; load the anchor NetCDF file and infer/load
-sibling channels by substituting the channel token in the filename; apply
-corrections (Rayleigh, gamma, CLAHE); normalize to 8-bit; optionally
-reproject from the satellite's fixed grid to a geographic lat/lon grid; and
-write PNG or GeoTIFF, plus an optional JSON metadata sidecar. RGB products
+sibling channels based on the requested command mode (single-channel or RGB composite); sequentially apply optional corrections (Rayleigh atmospheric scattering and CLAHE contrast enhancement); normalize to 8-bit; optionally
+reproject from the satellite's fixed grid to a geographic lat/lon grid; write the final image as PNG or GeoTIFF (where essential metadata is automatically embedded within the GeoTIFF tags for seamless extraction by downstream cataloging tools like MapDrawer) and, conditionally, write a JSON metadata sidecar. RGB products
 are implemented as a mode table mapping each named product (`truecolor`,
 `ash`, `airmass`, `daynite`, `severestorm`, `so2`, ...) to a per-channel
 linear combination, plus a `custom` mode that accepts arbitrary band-algebra
@@ -117,9 +115,12 @@ for Python, `pyspectral`, or external data files at run time; likewise,
 OpenMP loop parallelism trades multi-node or GPU scalability for simplicity
 on the single multi-core machines typical of an image-ingestion pipeline.
 
+![Core processing workflow of `hpsatviews`. The execution path diverges based on the requested command mode, followed by sequential, optional stages for Rayleigh atmospheric correction, CLAHE contrast enhancement, and geographic reprojection before writing the final image output and an optional JSON metadata sidecar.\label{fig:workflow}](processing_workflow.png){ width="55%" }
+
+
 # Research impact statement
 
-`hpsatviews`' output products are already in operational use: generated
+`hpsatviews`' output products are already in operational use (see \autoref{fig:radiometric} for examples of application-specific composites): generated
 composites are distributed via FTP and web channels to Mexican government
 agencies responsible for hazard monitoring and early warning, including
 CENAPRED (disaster prevention) and SEMAR (the navy), for whom the latency
@@ -128,30 +129,33 @@ incidental. It reached its first public release (v1.0.0) in June 2026,
 archived on Zenodo under a persistent DOI, and is also a component of a
 larger imagery pipeline at LANOT/UNAM: its optional JSON/GeoTIFF metadata
 sidecar is designed for, and consumed by, a companion automation tool
-(`mapdrawer`) that catalogues and serves generated images using the
-embedded coordinate-reference-system, bounding-box, and product fields. As
-a first public release under its current name, it does not yet have
+[`mapdrawer`](https://github.com/asierra/LANOT_tools), that catalogues and serves generated images using the
+embedded coordinate-reference-system, bounding-box, and product fields. 
+
+
+![Composite panel of `hpsatviews` radiometric outputs generated from GOES ABI data: (a) Night composite with meteorological colormap; (b) Volcanic-ash RGB composite isolating SO2 and ash plumes; (c) Air mass RGB composite illustrating synoptic-scale dynamics; (d) Pseudocolor enhancement of a Level-2 Cloud Top Pressure product; (e) Grayscale view of the high-resolution visible channel with Contrast Limited Adaptive Histogram Equalization (CLAHE) applied to enhance local cloud textures; (f) Severe Storms RGB composite highlighting deep convection.\label{fig:radiometric}](radiometric.jpg)
+
+
+As a first public release under its current name, it does not yet have
 independent external citations in the literature; its demonstrated
 near-term significance is this existing operational role in Mexican
 disaster-prevention and maritime early-warning distribution, plus its
 general fitness — given its narrow scope and minimal dependency footprint —
-as a fast component for similar operational infrastructure elsewhere.
-
-# Figures
-
-![Geometric processing workflow in `hpsatviews`: (Left) A true color RGB composite generated in the native geostationary projection of the GOES-R Advanced Baseline Imager, showcasing atmospheric Rayleigh correction; (Center) The same full disk computationally reprojected into a uniform geographic latitude/longitude grid (WGS84); (Right) Arbitrary regional crops extracted from the reprojected domain, demonstrating the tool's ability to generate localized, operationally relevant views (e.g., North Atlantic and the Gulf of Mexico) from a single execution pipeline.](fig1.jpg)
-
-![Composite panel of `hpsatviews` radiometric outputs generated from GOES ABI data: (a) Night composite with meteorological colormap; (b) Volcanic-ash RGB composite isolating SO2 and ash plumes; (c) Air mass RGB composite illustrating synoptic-scale dynamics; (d) Pseudocolor enhancement of a Level-2 Cloud Top Pressure product; (e) Grayscale view of the high-resolution visible channel with Contrast Limited Adaptive Histogram Equalization (CLAHE) applied to enhance local cloud textures; (f) Severe Storms RGB composite highlighting deep convection.](fig2.jpg)
+as a fast component for similar operational infrastructure elsewhere, as it is capable of generating localized, operationally relevant views (e.g., North Atlantic and the Gulf of Mexico) from a single execution pipeline (see \autoref{fig:reprojection}).
 
 
+![Geometric processing workflow in `hpsatviews`: (Left) A true color RGB composite generated in the native geostationary projection of the GOES-R Advanced Baseline Imager, showcasing atmospheric Rayleigh correction; (Center) The same full disk computationally reprojected into a uniform geographic latitude/longitude grid (WGS84); (Right) Arbitrary regional crops extracted from the reprojected domain, demonstrating the tool's ability to generate localized, operationally relevant views (e.g., North Atlantic and the Gulf of Mexico) from a single execution pipeline.\label{fig:reprojection}](reprojection.jpg)
 
-All five images are generated by the commands and modes named in their
-captions, from the GOES-16 ABI sample scene shipped with the project's
-regression-test suite.
+Future development for `hpsatviews` will focus on expanding support to additional 
+satellite platforms beyond the GOES-R series. Additionally, 
+exploring fine-grained GPU parallelism is under consideration 
+for the most computationally intensive stages—specifically Rayleigh atmospheric 
+correction and geometric reprojection—to complement and extend the current 
+OpenMP-based multi-core parallelization substrate.
 
 # AI usage disclosure
 
-The initial design and overall philosophy of this project were entirely human. As the project evolved, however, large-scale refactoring, the diagnosis of elusive bugs, and the implementation of intricate algorithms benefited substantially from AI assistance — primarily Gemini Pro (versions 2.4 to 3.1) and Claude Sonnet (versions 4.5 to 4.6). Claude Sonnet was also used to draft portions of this paper, including this disclosure. In all cases, the human author reviewed, edited, and validated every AI-assisted output and retained sole responsibility for all core design decisions.
+The initial design and overall philosophy of this project are entirely human. As the project evolved, however, large-scale refactoring, the diagnosis of elusive bugs, and the implementation of intricate algorithms benefited substantially from AI assistance — primarily Gemini Pro (versions 2.4 to 3.1) and Claude Sonnet (versions 4.5 to 4.6). AI was also used to draft portions of this paper. In all cases, the human author reviewed, edited, and validated every AI-assisted output and retained sole responsibility for all core design decisions.
 
 # Acknowledgements
 
