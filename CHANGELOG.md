@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.0.1] - 2026-06-30
 
+Bug-fix release. DOI: [10.5281/zenodo.21092353](https://doi.org/10.5281/zenodo.21092353).
+
 ### Fixed
 - `--full-res`/`-f` was only registered and honored for the `rgb` subcommand;
   `gray`/`pseudocolor` with a multi-channel `--expr` silently ignored it.

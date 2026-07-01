@@ -23,8 +23,8 @@ repository-code: "https://github.com/asierra/hpsatviews"
 url: "https://github.com/asierra/hpsatviews"
 identifiers:
   - type: doi
-    value: "10.5281/zenodo.20817974"
-    description: "Archived snapshot of version 1.0.0 on Zenodo"
+    value: "10.5281/zenodo.21092353"
+    description: "Archived snapshot of version 1.0.1 on Zenodo"
 keywords:
   - satellite imagery
   - GOES-R
