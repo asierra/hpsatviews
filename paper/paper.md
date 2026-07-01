@@ -48,7 +48,7 @@ de Prevención de Desastres) and SEMAR (Secretaría de Marina) — for which a
 short, predictable turnaround from satellite overpass to delivered image is
 a hard operational requirement, not a convenience. The established tools
 for generating these products, `satpy` (Pytroll) and `geo2grid`/`Polar2Grid`
-(SSEC/CIMSS), are Python libraries built for the breadth of operations a
+(SSEC/CIMSS) [@Geo2Grid2026], are Python libraries built for the breadth of operations a
 satellite-data researcher might need: dozens of instrument readers,
 resampling backends, and an interactive analysis workflow, at the cost of a
 heavier runtime stack. `hpsatviews` targets the narrower, latency-sensitive
@@ -64,7 +64,7 @@ flexibility.
 
 # State of the field
 
-By its own design philosophy, `hpsatviews` does not aim to replace
+By design, `hpsatviews` does not aim to replace
 general-purpose GIS platforms such as QGIS/GDAL or full satellite-data
 analysis libraries such as `satpy`; it is scoped exclusively to the domain
 of generating standard *views* for human interpretation, as fast as
@@ -77,8 +77,8 @@ ratio-sharpening ("SelfSharpenedRGB"-equivalent) reproduce `geo2grid`'s; and
 its default Rayleigh-correction lookup tables are generated from
 `pyspectral` [@Scheirer2018; @PySpectralLUT2018]. What `hpsatviews` changes
 is the implementation substrate: a self-contained C11/OpenMP binary instead
-of an `xarray`/`dask`-based Python stack, trading `satpy`'s breadth (dozens
-of sensors, a general analysis API) for a single family of satellites and a
+of an `xarray`/`dask`-based Python stack, trading `satpy`'s breadth (a broad
+instrument catalogue, a general analysis API) for a single family of satellites and a
 single use case. Desktop tools such as QGIS or McIDAS-V cover overlapping
 visualization ground but are interactive applications, not headless
 pipeline components. To the author's knowledge, no other actively
@@ -93,12 +93,11 @@ built with `-Wall -Wextra`) and relies on OpenMP parallelization and a small
 set of efficient design patterns rather than abstraction layers. The
 processing pipeline is linear and explicit (see \autoref{fig:workflow}): parse CLI arguments into an
 immutable `ProcessConfig`; load the anchor NetCDF file and infer/load
-sibling channels based on the requested command mode (single-channel or RGB composite); sequentially apply optional corrections (Rayleigh atmospheric scattering and CLAHE contrast enhancement); normalize to 8-bit; optionally
-reproject from the satellite's fixed grid to a geographic lat/lon grid; write the final image as PNG or GeoTIFF (where essential metadata is automatically embedded within the GeoTIFF tags for seamless extraction by downstream cataloging tools like MapDrawer) and, conditionally, write a JSON metadata sidecar. RGB products
+sibling channels based on the requested command mode (single-channel or RGB composite); sequentially apply optional corrections (Rayleigh atmospheric scattering and CLAHE contrast enhancement); normalize to 8-bit; optionally reproject from the satellite's fixed grid to a geographic lat/lon grid; write the final image as PNG or GeoTIFF (where essential metadata is automatically embedded within the GeoTIFF tags for seamless extraction by downstream cataloging tools) and, conditionally, write a JSON metadata sidecar. RGB products
 are implemented as a mode table mapping each named product (`truecolor`,
 `ash`, `airmass`, `daynite`, `severestorm`, `so2`, ...) to a per-channel
 linear combination, plus a `custom` mode that accepts arbitrary band-algebra
-expressions (e.g. `"C13-C14"`) so users are not limited to the built-in
+expressions (e.g. `"2*C13-C14"`) so users are not limited to the built-in
 catalogue. Two Rayleigh-correction implementations are offered: a default
 table lookup derived from `pyspectral` [@Scheirer2018; @PySpectralLUT2018]
 and embedded directly in the binary to avoid any runtime data dependency,
@@ -112,46 +111,45 @@ trade-off throughout is startup latency and dependency footprint versus
 runtime flexibility: embedding the Rayleigh LUTs at compile time means a
 rebuild is required to change atmospheric models, but it removes any need
 for Python, `pyspectral`, or external data files at run time; likewise,
-OpenMP loop parallelism trades multi-node or GPU scalability for simplicity
+OpenMP loop parallelism trades multi-node scalability for simplicity
 on the single multi-core machines typical of an image-ingestion pipeline.
 
-![Core processing workflow of `hpsatviews`. The execution path diverges based on the requested command mode, followed by sequential, optional stages for Rayleigh atmospheric correction, CLAHE contrast enhancement, and geographic reprojection before writing the final image output and an optional JSON metadata sidecar.\label{fig:workflow}](processing_workflow.png){ width="55%" }
+![Core processing workflow of `hpsatviews`. The execution path diverges based on the requested command, followed by sequential, optional stages for Rayleigh atmospheric correction, CLAHE contrast enhancement, and geographic reprojection before writing the final image output and an optional JSON metadata sidecar.\label{fig:workflow}](processing_workflow.png){ width="55%" }
 
 
 # Research impact statement
 
-`hpsatviews`' output products are already in operational use (see \autoref{fig:radiometric} for examples of application-specific composites): generated
-composites are distributed via FTP and web channels to Mexican government
-agencies responsible for hazard monitoring and early warning, including
-CENAPRED (disaster prevention) and SEMAR (the navy), for whom the latency
-reduction described above is operationally load-bearing rather than
-incidental. It reached its first public release (v1.0.0) in June 2026,
-archived on Zenodo under a persistent DOI, and is also a component of a
-larger imagery pipeline at LANOT/UNAM: its optional JSON/GeoTIFF metadata
+This operational deployment to CENAPRED and SEMAR, introduced above, is not
+incidental: it depends on the low-latency, dependency-light design described
+in the preceding sections. A single pipeline execution can produce both the
+native full-disk view and a geographically reprojected grid from which
+operationally relevant regional crops are cut, as illustrated in
+\autoref{fig:reprojection}.
+
+
+![Geometric processing workflow in `hpsatviews`: (Left) A true color RGB composite generated in the native geostationary projection of the GOES-R Advanced Baseline Imager, showcasing atmospheric Rayleigh correction; (Center) The same full disk computationally reprojected into a uniform geographic latitude/longitude grid (WGS84); (Right) Arbitrary regional crops extracted from the reprojected domain, demonstrating the tool's ability to generate localized, operationally relevant views (e.g., North Atlantic and the Gulf of Mexico) from a single execution pipeline.\label{fig:reprojection}](reprojection.jpg)
+
+
+It reached its first public release (v1.0.0) in June 2026, archived on Zenodo under a persistent DOI, and is also a component of a larger imagery pipeline at LANOT/UNAM: its optional JSON/GeoTIFF metadata
 sidecar is designed for, and consumed by, a companion automation tool
 [`mapdrawer`](https://github.com/asierra/LANOT_tools), that catalogues and serves generated images using the
 embedded coordinate-reference-system, bounding-box, and product fields. 
-
-
-![Composite panel of `hpsatviews` radiometric outputs generated from GOES ABI data: (a) Night composite with meteorological colormap; (b) Volcanic-ash RGB composite isolating SO2 and ash plumes; (c) Air mass RGB composite illustrating synoptic-scale dynamics; (d) Pseudocolor enhancement of a Level-2 Cloud Top Pressure product; (e) Grayscale view of the high-resolution visible channel with Contrast Limited Adaptive Histogram Equalization (CLAHE) applied to enhance local cloud textures; (f) Severe Storms RGB composite highlighting deep convection.\label{fig:radiometric}](radiometric.jpg)
-
-
 As a first public release under its current name, it does not yet have
 independent external citations in the literature; its demonstrated
 near-term significance is this existing operational role in Mexican
 disaster-prevention and maritime early-warning distribution, plus its
 general fitness — given its narrow scope and minimal dependency footprint —
-as a fast component for similar operational infrastructure elsewhere, as it is capable of generating localized, operationally relevant views (e.g., North Atlantic and the Gulf of Mexico) from a single execution pipeline (see \autoref{fig:reprojection}).
+as a fast component for similar operational infrastructure elsewhere, as demonstrated by the representative sample of application-specific composites shown in \autoref{fig:radiometric} (among the many products it supports), in addition to the localized regional crops described above.
 
 
-![Geometric processing workflow in `hpsatviews`: (Left) A true color RGB composite generated in the native geostationary projection of the GOES-R Advanced Baseline Imager, showcasing atmospheric Rayleigh correction; (Center) The same full disk computationally reprojected into a uniform geographic latitude/longitude grid (WGS84); (Right) Arbitrary regional crops extracted from the reprojected domain, demonstrating the tool's ability to generate localized, operationally relevant views (e.g., North Atlantic and the Gulf of Mexico) from a single execution pipeline.\label{fig:reprojection}](reprojection.jpg)
+![Composite panel of `hpsatviews` radiometric outputs generated from GOES ABI data: (a) Night composite with meteorological colormap; (b) Volcanic-ash RGB composite isolating SO2 and ash plumes; (c) Air mass RGB composite illustrating synoptic-scale dynamics; (d) Pseudocolor enhancement of a Level-2 Cloud Top Pressure product; (e) Grayscale view of the high-resolution visible channel with Contrast Limited Adaptive Histogram Equalization (CLAHE) applied to enhance local cloud textures; (f) Severe Storms RGB composite highlighting deep convection.\label{fig:radiometric}](radiometric.jpg)
+
 
 Future development for `hpsatviews` will focus on expanding support to additional 
 satellite platforms beyond the GOES-R series. Additionally, 
 exploring fine-grained GPU parallelism is under consideration 
 for the most computationally intensive stages—specifically Rayleigh atmospheric 
-correction and geometric reprojection—to complement and extend the current 
-OpenMP-based multi-core parallelization substrate.
+correction and geometric reprojection.
 
 # AI usage disclosure
 
@@ -161,6 +159,6 @@ The initial design and overall philosophy of this project are entirely human. As
 
 This work was developed at the Laboratorio Nacional de Observación de la
 Tierra (LANOT), Universidad Nacional Autónoma de México (UNAM), with support
-from Laboratorio Nacional SECIHTI 2025-2027, grant ApoyoLN-2025-C-102.
+from Laboratorio Nacional SECIHTI 2025-2027, grant LN-2025-C-102.
 
 # References

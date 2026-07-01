@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-06-30
+
+### Fixed
+- `--full-res`/`-f` was only registered and honored for the `rgb` subcommand;
+  `gray`/`pseudocolor` with a multi-channel `--expr` silently ignored it.
+  The flag is now parsed once and applies to all three subcommands.
+
+### Changed
+- Translated remaining Spanish log messages and internal comments to English
+  across the codebase for consistency.
+
 ## [1.0.0] - 2026-06-23
 
 Initial public release. DOI: [10.5281/zenodo.20817974](https://doi.org/10.5281/zenodo.20817974).
@@ -33,5 +44,6 @@ Initial public release. DOI: [10.5281/zenodo.20817974](https://doi.org/10.5281/z
 - Bilingual (English/Spanish) CLI help, man pages, and documentation.
 - End-to-end regression test suite and GitHub Actions CI.
 
-[Unreleased]: https://github.com/asierra/hpsatviews/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/asierra/hpsatviews/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/asierra/hpsatviews/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/asierra/hpsatviews/releases/tag/v1.0.0
