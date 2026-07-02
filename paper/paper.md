@@ -114,7 +114,7 @@ for Python, `pyspectral`, or external data files at run time; likewise,
 OpenMP loop parallelism trades multi-node scalability for simplicity
 on the single multi-core machines typical of an image-ingestion pipeline.
 
-![Core processing workflow of `hpsatviews`. The execution path diverges based on the requested command, followed by sequential, optional stages for Rayleigh atmospheric correction, CLAHE contrast enhancement, and geographic reprojection before writing the final image output and an optional JSON metadata sidecar.\label{fig:workflow}](processing_workflow.png){ width="55%" }
+![Core processing workflow of `hpsatviews`. The execution path diverges based on the requested command, followed by sequential, optional stages for Rayleigh atmospheric correction, CLAHE contrast enhancement, and geographic reprojection before writing the final image output and an optional JSON metadata sidecar.\label{fig:workflow}](processing_workflow.svg){ width="55%" }
 
 
 # Research impact statement
