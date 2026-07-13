@@ -21,7 +21,9 @@ sudo make install
 make clean
 ```
 
-Dependencies: `libnetcdf-dev`, `libhdf5-dev`, `libdeflate-dev`, `libpng-dev`, `libgdal-dev`, `libwebp-dev`, OpenMP-capable gcc. (`libhdf5-dev`/`libdeflate-dev` back the parallel chunk reader in `src/reader_nc_chunk.c`.)
+Dependencies (Debian/Ubuntu): `libnetcdf-dev`, `libhdf5-dev`, `libdeflate-dev`, `libpng-dev`, `libgdal-dev`, `libwebp-dev`, OpenMP-capable gcc. (`libhdf5-dev`/`libdeflate-dev` back the parallel chunk reader in `src/reader_nc_chunk.c`.) On RHEL/Rocky/Fedora the packages are `netcdf-devel hdf5-devel libdeflate-devel libpng-devel gdal-devel libwebp-devel` (GDAL/netcdf via EPEL). The Makefile auto-detects the HDF5 C library name (`libhdf5_serial` on Debian vs `libhdf5` on RHEL); override with `make HDF5_LIB=hdf5` if detection is wrong.
+
+CUDA build: `make CUDA=1 CUDA_ARCH=sm_XX` where `sm_XX` matches the GPU — `sm_75` (Tesla T4), `sm_80` (A30/A100), `sm_86` (RTX 30xx/A10), `sm_89` (RTX 40xx), `sm_90` (H100), `sm_120` (RTX 50xx, the default; needs CUDA ≥ 12.8). Switching between plain `make` and `make CUDA=1` needs a `make clean` first (make doesn't rebuild C objects on a CFLAGS-only change). `reproduction/bench_server.sh <anchor.nc>` benchmarks CPU-build vs CUDA-build on a target server (the dev speedups don't transfer — re-measure per host).
 
 ## Tests
 

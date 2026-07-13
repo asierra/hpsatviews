@@ -25,9 +25,12 @@ HPSV_LANG ?= en
 CFLAGS_COMMON = -Wall -Wextra -std=c11 -fopenmp -D_POSIX_C_SOURCE=200809L \
                 -D_DEFAULT_SOURCE -MMD -MP $(shell gdal-config --cflags) \
                 $(shell nc-config --cflags)
-# libhdf5_serial + libdeflate: direct chunk reads decompressed in parallel
-# (src/reader_nc_chunk.c), bypassing HDF5's single-threaded filter pipeline.
-LDFLAGS = -lm -lnetcdf -lhdf5_serial -ldeflate -lpng -lwebp -fopenmp $(shell gdal-config --libs)
+# HDF5 + libdeflate back the parallel chunk reader (src/reader_nc_chunk.c),
+# bypassing HDF5's single-threaded filter pipeline. The HDF5 C library name
+# differs by distro: libhdf5_serial (Debian/Ubuntu) vs libhdf5 (RHEL/Rocky/
+# Fedora). Auto-detect via the installed .so; override with e.g. HDF5_LIB=hdf5.
+HDF5_LIB ?= $(if $(wildcard /usr/lib*/libhdf5_serial.so* /usr/lib/*/libhdf5_serial.so*),hdf5_serial,hdf5)
+LDFLAGS = -lm -lnetcdf -l$(HDF5_LIB) -ldeflate -lpng -lwebp -fopenmp $(shell gdal-config --libs)
 
 ifeq ($(CUDA),1)
     CFLAGS_COMMON += -DHPSV_CUDA -I$(CUDA_HOME)/include
