@@ -33,4 +33,22 @@ int compute_satellite_angles_nc(const char *filename, const DataF *navla, const 
 /// Computes the Relative Azimuth Angle (RAA) between sun and satellite.
 void compute_relative_azimuth(const DataF *saa, const DataF *vaa, DataF *raa);
 
+/// Time-only part of the solar geometry (independent of pixel lat/lon): solar
+/// declination (as sin/cos) and the base hour angle before adding longitude.
+/// Precomputing this once hoists ~20 trig ops out of the per-pixel loop — the
+/// basis for the device-resident solar-angle kernel (see src/cuda/nav_cuda.cu).
+typedef struct {
+    double sd;       ///< sin(solar declination)
+    double cd;       ///< cos(solar declination)
+    double ha_base;  ///< hour angle minus the pixel longitude term
+} SolarEphemeris;
+
+/// Reads the scan time from a GOES L1b/L2 file and returns the time-only solar
+/// ephemeris. Returns 0 on success.
+int reader_solar_ephemeris_from_file(const char *filename, SolarEphemeris *out);
+
+/// Reads the sub-satellite longitude (deg) and orbital altitude (km) from a
+/// GOES file's goes_imager_projection variable. Returns 0 on success.
+int reader_read_satellite_params(const char *filename, float *sat_lon, float *sat_height_km);
+
 #endif /* HPSATVIEWS_READER_NC_H_ */

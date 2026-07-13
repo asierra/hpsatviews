@@ -44,6 +44,11 @@ typedef struct {
  * la transferencia por separado (desglose para el análisis de rendimiento). */
 DataFDev dataf_dev_upload(const DataF *host);
 
+/* Reserva un buffer de device de width*height floats sin subir nada (para
+ * resultados computados en device, p.ej. verde sintético o ángulos de
+ * navegación). d_data == NULL si falla. */
+DataFDev dataf_dev_alloc(unsigned int width, unsigned int height);
+
 /* Libera el buffer de device y deja el struct en cero. Seguro con d_data==NULL. */
 void dataf_dev_destroy(DataFDev *dev);
 

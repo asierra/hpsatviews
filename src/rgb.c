@@ -181,20 +181,48 @@ static bool compose_truecolor_cuda(RgbContext *ctx) {
     if (b.d_data && r.d_data && nir.d_data) {
         // Rayleigh (LUT) chain, device-resident, on the channels already uploaded.
         // The analytic variant stays on CPU (excluded by the gate in run_rgb), so
-        // only apply_rayleigh reaches here. Order matches compose_truecolor():
-        // solar correction on all three, then LUT on blue (redband = red), then
-        // LUT on red. A nav-load failure skips Rayleigh and continues (as on CPU);
-        // a real CUDA error aborts so the caller retries the whole thing on CPU.
+        // only apply_rayleigh reaches here. The viewing geometry (sza/vza/raa) is
+        // also computed on the GPU from the lat/lon grids — the astronomy that
+        // used to be the ~8 s CPU bottleneck. Order matches compose_truecolor():
+        // solar correction on all three, LUT on blue (redband = red), LUT on red.
+        // Anything that prevents the device nav (resolution mismatch, read error,
+        // CUDA error) aborts to a full CPU compose so Rayleigh is never dropped.
         bool ray_ok = true;
         if (ctx->opts.apply_rayleigh) {
-            RayleighNav nav = {0};
-            if (load_rayleigh_nav(ctx, &nav, b.width, b.height)) {
-                DataFDev sza = dataf_dev_upload(&nav.sza);
-                DataFDev vza = dataf_dev_upload(&nav.vza);
-                DataFDev raa = dataf_dev_upload(&nav.raa);
+            // Device nav needs lat/lon already at the channel resolution (true
+            // after process_geospatial).
+            bool nav_res_ok = ctx->has_navigation && ctx->nav_lat.data_in &&
+                              ctx->nav_lat.width == b.width &&
+                              ctx->nav_lat.height == b.height;
+            const char *nav_file = NULL;
+            for (int i = 0; i < ctx->channel_set->count; i++) {
+                if (strcmp(ctx->channel_set->channels[i].name, "C01") == 0) {
+                    nav_file = ctx->channel_set->channels[i].filename;
+                    break;
+                }
+            }
+
+            SolarEphemeris eph;
+            float sat_lon = 0.0f, sat_h = 0.0f;
+            DataFDev navla = {0}, navlo = {0}, sza = {0}, vza = {0}, raa = {0};
+            bool nav_ready = false;
+            if (nav_res_ok && nav_file &&
+                reader_solar_ephemeris_from_file(nav_file, &eph) == 0 &&
+                reader_read_satellite_params(nav_file, &sat_lon, &sat_h) == 0) {
+                navla = dataf_dev_upload(&ctx->nav_lat);
+                navlo = dataf_dev_upload(&ctx->nav_lon);
+                if (navla.d_data && navlo.d_data)
+                    nav_ready = compute_rayleigh_nav_dev(&navla, &navlo, eph.sd, eph.cd,
+                                                         eph.ha_base, sat_lon, sat_h,
+                                                         &sza, &vza, &raa);
+            }
+            dataf_dev_destroy(&navla);
+            dataf_dev_destroy(&navlo);
+
+            if (nav_ready) {
                 RayleighLUTDev lut1 = rayleigh_lut_dev_load(1);
                 RayleighLUTDev lut2 = rayleigh_lut_dev_load(2);
-                if (sza.d_data && vza.d_data && raa.d_data && lut1.d_table && lut2.d_table) {
+                if (lut1.d_table && lut2.d_table) {
                     apply_solar_zenith_correction_dev(&b, &sza);
                     apply_solar_zenith_correction_dev(&r, &sza);
                     apply_solar_zenith_correction_dev(&nir, &sza);
@@ -208,9 +236,8 @@ static bool compose_truecolor_cuda(RgbContext *ctx) {
                 dataf_dev_destroy(&sza);
                 dataf_dev_destroy(&vza);
                 dataf_dev_destroy(&raa);
-                rayleigh_free_navigation(&nav);
             } else {
-                LOG_WARN("Failed to load navigation, skipping Rayleigh (CUDA).");
+                ray_ok = false; // nav unavailable on GPU -> full CPU fallback
             }
         }
 

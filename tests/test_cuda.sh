@@ -54,8 +54,9 @@ fi
 ../bin/hpsv rgb -v "$ANCHOR_C01" --mode truecolor --cuda -o tc_cuda.png
 ./compare_image.sh tc_cuda.png tc_cpu.png
 
-# True color + Rayleigh (LUT): cadena residente completa (solar zenith + LUT
-# trilineal + relajación por nubes en device). Ejercita rayleigh_lut_kernel.
+# True color + Rayleigh (LUT): cadena residente completa. Ejercita la navegación
+# en device (solar/satellite/relaz desde lat/lon), solar zenith, LUT trilineal y
+# relajación por nubes. Compara contra la ruta CPU (nav + Rayleigh en OpenMP).
 ../bin/hpsv rgb -v "$ANCHOR_C01" --mode truecolor --rayleigh -o tcray_cpu.png
 ../bin/hpsv rgb -v "$ANCHOR_C01" --mode truecolor --rayleigh --cuda -o tcray_cuda.png
 ./compare_image.sh tcray_cuda.png tcray_cpu.png

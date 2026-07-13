@@ -6,6 +6,7 @@
  * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #include "datanc.h"
+#include "reader_nc.h"
 #include "logger.h"
 #include <math.h>
 #include <netcdf.h>
@@ -560,23 +561,15 @@ int create_navigation_from_reprojected_bounds(DataF *navla, DataF *navlo, size_t
 }
 
 /// Computes solar zenith/azimuth angle for a given lat/lon and UTC time; uses the same algorithm as sun_zenith_angle in daynight_mask.c for consistency.
-static void compute_sun_geometry(float la, float lo, int year, int month, int day, int hour,
-                                 int min, int sec, double *zenith_out, double *azimuth_out) {
-    double t, te, wte, s1, c1, s2, c2, s3, c3, sp, cp, sd, cd, cH, se0, ep, De, lambda, epsi, sl,
-        cl, se, ce, L, nu, Dlam;
-    int yt, mt;
-    double RightAscension, Declination, HourAngle, Zenith, Azimuth;
-
-    double PI = M_PI;
-    double PI2 = 2 * M_PI;
-    double PIM = M_PI_2;
+/// Time-only part of the solar geometry (independent of pixel lat/lon). Hoisting
+/// this out of the per-pixel loop removes ~20 redundant trig ops per pixel and
+/// gives the device kernel (src/cuda/nav_cuda.cu) the scalars it needs.
+static SolarEphemeris solar_ephemeris(int year, int month, int day, int hour, int min, int sec) {
+    const double PI = M_PI;
+    const double PI2 = 2 * M_PI;
 
     double UT = hour + min / 60.0 + sec / 3600.0;
-    double Longitude = lo * PI / 180.0;
-    double Latitude = la * PI / 180.0;
-    double Pressure = 1;
-    double Temperature = 0;
-
+    int yt, mt;
     if (month <= 2) {
         mt = month + 12;
         yt = year - 1;
@@ -585,71 +578,94 @@ static void compute_sun_geometry(float la, float lo, int year, int month, int da
         yt = year;
     }
 
-    t = (double)((int)(365.25 * (double)(yt - 2000)) + (int)(30.6001 * (double)(mt + 1)) -
-                 (int)(0.01 * (double)(yt)) + day) +
-        0.0416667 * UT - 21958.0;
+    double t = (double)((int)(365.25 * (double)(yt - 2000)) + (int)(30.6001 * (double)(mt + 1)) -
+                        (int)(0.01 * (double)(yt)) + day) +
+               0.0416667 * UT - 21958.0;
     double Dt = 96.4 + 0.00158 * t;
-    te = t + 1.1574e-5 * Dt;
+    double te = t + 1.1574e-5 * Dt;
 
-    wte = 0.0172019715 * te;
+    double wte = 0.0172019715 * te;
+    double s1 = sin(wte);
+    double c1 = cos(wte);
+    double s2 = 2.0 * s1 * c1;
+    double c2 = (c1 + s1) * (c1 - s1);
+    double s3 = s2 * c1 + c2 * s1;
+    double c3 = c2 * c1 - s2 * s1;
 
-    s1 = sin(wte);
-    c1 = cos(wte);
-    s2 = 2.0 * s1 * c1;
-    c2 = (c1 + s1) * (c1 - s1);
-    s3 = s2 * c1 + c2 * s1;
-    c3 = c2 * c1 - s2 * s1;
+    double L = 1.7527901 + 1.7202792159e-2 * te + 3.33024e-2 * s1 - 2.0582e-3 * c1 + 3.512e-4 * s2 -
+               4.07e-5 * c2 + 5.2e-6 * s3 - 9e-7 * c3 - 8.23e-5 * s1 * sin(2.92e-5 * te) +
+               1.27e-5 * sin(1.49e-3 * te - 2.337) + 1.21e-5 * sin(4.31e-3 * te + 3.065) +
+               2.33e-5 * sin(1.076e-2 * te - 1.533) + 3.49e-5 * sin(1.575e-2 * te - 2.358) +
+               2.67e-5 * sin(2.152e-2 * te + 0.074) + 1.28e-5 * sin(3.152e-2 * te + 1.547) +
+               3.14e-5 * sin(2.1277e-1 * te - 0.488);
 
-    L = 1.7527901 + 1.7202792159e-2 * te + 3.33024e-2 * s1 - 2.0582e-3 * c1 + 3.512e-4 * s2 -
-        4.07e-5 * c2 + 5.2e-6 * s3 - 9e-7 * c3 - 8.23e-5 * s1 * sin(2.92e-5 * te) +
-        1.27e-5 * sin(1.49e-3 * te - 2.337) + 1.21e-5 * sin(4.31e-3 * te + 3.065) +
-        2.33e-5 * sin(1.076e-2 * te - 1.533) + 3.49e-5 * sin(1.575e-2 * te - 2.358) +
-        2.67e-5 * sin(2.152e-2 * te + 0.074) + 1.28e-5 * sin(3.152e-2 * te + 1.547) +
-        3.14e-5 * sin(2.1277e-1 * te - 0.488);
+    double nu = 9.282e-4 * te - 0.8;
+    double Dlam = 8.34e-5 * sin(nu);
+    double lambda = L + PI + Dlam;
+    double epsi = 4.089567e-1 - 6.19e-9 * te + 4.46e-5 * cos(nu);
 
-    nu = 9.282e-4 * te - 0.8;
-    Dlam = 8.34e-5 * sin(nu);
-    lambda = L + PI + Dlam;
+    double sl = sin(lambda);
+    double cl = cos(lambda);
+    double se = sin(epsi);
+    double ce = sqrt(1 - se * se);
 
-    epsi = 4.089567e-1 - 6.19e-9 * te + 4.46e-5 * cos(nu);
-
-    sl = sin(lambda);
-    cl = cos(lambda);
-    se = sin(epsi);
-    ce = sqrt(1 - se * se);
-
-    RightAscension = atan2(sl * ce, cl);
+    double RightAscension = atan2(sl * ce, cl);
     if (RightAscension < 0.0)
         RightAscension += PI2;
+    double Declination = asin(sl * se);
 
-    Declination = asin(sl * se);
+    SolarEphemeris e;
+    e.sd = sin(Declination);
+    e.cd = sqrt(1 - e.sd * e.sd);
+    e.ha_base = 1.7528311 + 6.300388099 * t - RightAscension + 0.92 * Dlam;
+    return e;
+}
 
-    HourAngle = 1.7528311 + 6.300388099 * t + Longitude - RightAscension + 0.92 * Dlam;
+/// Per-pixel solar zenith/azimuth from the precomputed ephemeris + pixel lat/lon.
+/// Identical math to the original monolithic version; the CUDA kernel mirrors
+/// this body exactly (src/cuda/nav_cuda.cu).
+static void sun_angles_from_ephemeris(float la, float lo, SolarEphemeris e,
+                                      double *zenith_out, double *azimuth_out) {
+    const double PI = M_PI;
+    const double PI2 = 2 * M_PI;
+    const double PIM = M_PI_2;
+    const double Pressure = 1;
+    const double Temperature = 0;
+
+    double Longitude = lo * PI / 180.0;
+    double Latitude = la * PI / 180.0;
+
+    double HourAngle = e.ha_base + Longitude;
     HourAngle = fmod(HourAngle + PI, PI2) - PI;
     if (HourAngle < -PI)
         HourAngle += PI2;
 
-    sp = sin(Latitude);
-    cp = sqrt((1 - sp * sp));
-    sd = sin(Declination);
-    cd = sqrt(1 - sd * sd);
+    double sp = sin(Latitude);
+    double cp = sqrt(1 - sp * sp);
     double sH = sin(HourAngle);
-    cH = cos(HourAngle);
-    se0 = sp * sd + cp * cd * cH;
-    ep = asin(se0) - 4.26e-5 * sqrt(1.0 - se0 * se0);
-    Azimuth = atan2(sH, cH * sp - sd * cp / cd);
+    double cH = cos(HourAngle);
+    double se0 = sp * e.sd + cp * e.cd * cH;
+    double ep = asin(se0) - 4.26e-5 * sqrt(1.0 - se0 * se0);
+    double Azimuth = atan2(sH, cH * sp - e.sd * cp / e.cd);
 
+    double De;
     if (ep > 0.0)
         De = (0.08422 * Pressure) / ((273.0 + Temperature) * tan(ep + 0.003138 / (ep + 0.08919)));
     else
         De = 0.0;
 
-    Zenith = PIM - ep - De;
+    double Zenith = PIM - ep - De;
 
     if (zenith_out)
         *zenith_out = Zenith * 180.0 / M_PI;
     if (azimuth_out)
         *azimuth_out = Azimuth * 180.0 / M_PI;
+}
+
+static void compute_sun_geometry(float la, float lo, int year, int month, int day, int hour,
+                                 int min, int sec, double *zenith_out, double *azimuth_out) {
+    SolarEphemeris e = solar_ephemeris(year, month, day, hour, min, sec);
+    sun_angles_from_ephemeris(la, lo, e, zenith_out, azimuth_out);
 }
 
 /// Computes satellite viewing zenith/azimuth angle for a pixel, from the geometry between the pixel and the geostationary sub-satellite position.
@@ -709,6 +725,43 @@ static void compute_satellite_view_angles(float pixel_lat, float pixel_lon, floa
         *vza_out = vza;
     if (vaa_out)
         *vaa_out = vaa;
+}
+
+int reader_solar_ephemeris_from_file(const char *filename, SolarEphemeris *out) {
+    if (!out) return ERRCODE;
+    int ncid, retval;
+    if ((retval = nc_open(filename, NC_NOWRITE, &ncid)))
+        ERR(retval);
+
+    int time_varid;
+    if ((retval = nc_inq_varid(ncid, "t", &time_varid)))
+        ERR(retval);
+    double tiempo;
+    if ((retval = nc_get_var_double(ncid, time_varid, &tiempo)))
+        ERR(retval);
+    if ((retval = nc_close(ncid)))
+        ERR(retval);
+
+    time_t dt = 946728000 + (long)tiempo; // J2000 epoch offset
+    struct tm ts = *gmtime(&dt);
+    *out = solar_ephemeris(ts.tm_year + 1900, ts.tm_mon + 1, ts.tm_mday, ts.tm_hour, ts.tm_min,
+                           ts.tm_sec);
+    return 0;
+}
+
+int reader_read_satellite_params(const char *filename, float *sat_lon, float *sat_height_km) {
+    int ncid, varid, retval;
+    if ((retval = nc_open(filename, NC_NOWRITE, &ncid)))
+        ERR(retval);
+    if ((retval = nc_inq_varid(ncid, "goes_imager_projection", &varid)))
+        ERR(retval);
+    if ((retval = nc_get_att_float(ncid, varid, "longitude_of_projection_origin", sat_lon)))
+        ERR(retval);
+    if ((retval = nc_get_att_float(ncid, varid, "perspective_point_height", sat_height_km)))
+        ERR(retval);
+    if ((retval = nc_close(ncid)))
+        ERR(retval);
+    return 0;
 }
 
 int compute_solar_angles_nc(const char *filename, const DataF *navla, const DataF *navlo,

@@ -118,23 +118,38 @@ y `src/cuda/rayleigh_cuda.cu`. Fallback a CPU con `LOG_WARN` para
 `--ray-analytic`, sharpen, stretch, modos no-truecolor y custom. Equivalencia
 0 px (CONUS: default, +gamma, +rayleigh).
 
+### Navegación (geometría de vista) residente (implementado 2026-07-13)
+
+La navegación para Rayleigh (sza/vza/raa) se computaba en CPU y era el ~8 s
+restante del wall-time. Portada a device (`src/cuda/nav_cuda.cu` +
+`include/cuda_nav.h`): kernels `solar_kernel` / `satellite_kernel` /
+`relaz_kernel` computan los ángulos desde las mallas lat/lon ya subidas.
+
+Optimización clave: casi toda la geometría solar de `compute_sun_geometry`
+(`src/reader_nc.c`) depende **solo del tiempo**, no del píxel. Se extrajo
+`solar_ephemeris()` (parte solo-tiempo → `SolarEphemeris`) y
+`sun_angles_from_ephemeris()` (parte por-píxel); el CPU queda idéntico (0 px
+diff verificado) y el kernel recibe la efeméride como 3 escalares, evitando ~20
+trig por píxel. Helpers de host `reader_solar_ephemeris_from_file` /
+`reader_read_satellite_params` exponen los parámetros. Guard: si lat/lon no está
+a la resolución del canal o falla algo, se cae a compose CPU completo (Rayleigh
+nunca se pierde). Todo en `double` para casar con CPU.
+
 **Benchmark full-disk truecolor `--rayleigh`** (ref C01, 10848²=118 MP,
 RTX 5060 Ti vs OpenMP 6 cores):
 
 | Sección | CPU | CUDA |
 |---|---|---|
-| Rayleigh LUT (por canal) | ~1.1 s (extrapolado de 0.124 s @ 13 MP) | 0.006 s |
-| Cadena de composición completa | ~3 s | ~0.86 s (incl. 6 uploads + compose D2H) |
-| **Wall-time end-to-end** | 41–42 s | 38–40 s |
+| Navegación (solar+sat+raa) | ~8 s | **0.325 s** |
+| Rayleigh LUT (por canal) | ~1.1 s | 0.006 s |
+| Composición completa | ~3 s | ~0.9 s |
+| **Wall-time end-to-end** | 41–42 s | **31 s** |
 
-La cadena de composición es ~3–4× más rápida y el kernel Rayleigh ~180×, pero
-el **wall-time mejora solo ~2.6 s** porque a nivel total el pipeline pasó a
-estar dominado por **I/O** (leer 3 NetCDF de full-disk + escribir PNG, ~30 s) y
-el **cómputo de navegación en CPU** (`compute_solar_angles_nc` /
-`compute_satellite_angles_nc`, ~8 s). El cuello de botella se movió de cómputo
-de composición a I/O + navegación → siguiente frontera de optimización (no más
-kernels de composición). La navegación (trig por píxel sobre lat/lon) es en sí
-un buen candidato a GPU si se quiere bajar ese wall-time.
+Con la navegación en GPU el wall-time baja **~10.5 s (~25%)**. El cómputo dejó de
+importar: los ~31 s restantes son **I/O puro** (leer 3 NetCDF de full-disk +
+escribir PNG). Siguiente frontera si se quiere más: I/O (lectura NetCDF paralela,
+escritura, o formato de salida), no más kernels. 0 px diff (CONUS) en toda la
+cadena truecolor+rayleigh+nav.
 
 ## Pendiente — checklist para la estación de trabajo (RTX 5060 Ti)
 

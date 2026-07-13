@@ -78,6 +78,23 @@ extern "C" DataFDev dataf_dev_upload(const DataF *host) {
   return dev;
 }
 
+/* ---- alloc (sin upload) --------------------------------------------------- */
+extern "C" DataFDev dataf_dev_alloc(unsigned int width, unsigned int height) {
+  DataFDev dev = {0, 0, 0, NULL, 0.0f, 0.0f};
+  size_t n = (size_t)width * height;
+  float *d = NULL;
+  cudaError_t e = cudaMalloc((void **)&d, n * sizeof(float));
+  if (e != cudaSuccess) {
+    LOG_ERROR("dataf_dev_alloc: %s", cudaGetErrorString(e));
+    return dev;
+  }
+  dev.width = width;
+  dev.height = height;
+  dev.size = n;
+  dev.d_data = d;
+  return dev;
+}
+
 /* ---- destroy -------------------------------------------------------------- */
 extern "C" void dataf_dev_destroy(DataFDev *dev) {
   if (!dev) return;
