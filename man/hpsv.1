@@ -176,8 +176,24 @@ Apply CLAHE with explicit parameters:
 Save metadata to a JSON sidecar file alongside the image.
 
 .TP
+.B --cog
+For GeoTIFF output, build a full Cloud Optimized GeoTIFF with an overview
+pyramid. The default is a fast, multi-threaded tiled GeoTIFF without overviews,
+which is preferable when the file is an intermediate that gets cropped or
+processed further (the overviews are the bulk of the write time and are not
+reused downstream).
+
+.TP
 .B "-v, --verbose"
 Enable verbose (DEBUG-level) logging.
+.\" @CUDA_BEGIN@
+.TP
+.B --cuda
+Use GPU (CUDA) kernels: true color (including Rayleigh), grayscale and
+pseudocolor. Unsupported modes and options fall back to the CPU. Available only
+in binaries built with
+.BR "make CUDA=1" .
+.\" @CUDA_END@
 
 .SH COMMAND-SPECIFIC OPTIONS
 .SS gray

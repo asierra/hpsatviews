@@ -140,7 +140,14 @@ install: all
 	@install -d $(PREFIX)/bin
 	@install -m 755 $(TARGET) $(PREFIX)/bin/hpsv
 	@install -d $(MANDIR)/man1
+# Keep the --cuda man section only when built with CUDA support; otherwise strip
+# the @CUDA_BEGIN@..@CUDA_END@ block so the installed page matches the binary.
+ifeq ($(CUDA),1)
 	@install -m 644 $(MANPAGE) $(MANDIR)/man1/hpsv.1
+else
+	@sed '/@CUDA_BEGIN@/,/@CUDA_END@/d' $(MANPAGE) > $(MANDIR)/man1/hpsv.1
+	@chmod 644 $(MANDIR)/man1/hpsv.1
+endif
 	@echo "Installation successful."
 
 uninstall:

@@ -181,11 +181,16 @@ static GDALDatasetH create_mem_dataset(int width,
 }
 
 /**
- * Copia el dataset MEM a un archivo COG (Cloud Optimized GeoTIFF).
- * El driver COG genera tiling y overviews automáticamente.
- * Cierra el dataset MEM al finalizar.
+ * Copia el dataset MEM a un GeoTIFF tileado (driver COG), comprimido ZSTD y
+ * multi-hilo. Cierra el dataset MEM al finalizar.
+ *
+ * @param cog  Si es true genera los overviews (Cloud Optimized GeoTIFF completo,
+ *             para cuando el GeoTIFF es el producto final). Si es false los omite:
+ *             la pirámide de overviews es ~90% del costo de escritura en una
+ *             escena de disco completo y es trabajo desperdiciado cuando el
+ *             GeoTIFF es intermedio y se recorta aguas abajo.
  */
-static int finalize_cog(GDALDatasetH mem_ds, const char* filename) {
+static int finalize_cog(GDALDatasetH mem_ds, const char* filename, bool cog) {
     GDALDriverH cog_driver = GDALGetDriverByName("COG");
     if (!cog_driver) {
         LOG_ERROR("COG driver not available in GDAL.");
@@ -197,16 +202,17 @@ static int finalize_cog(GDALDatasetH mem_ds, const char* filename) {
     opts = CSLSetNameValue(opts, "COMPRESS", "ZSTD");
     opts = CSLSetNameValue(opts, "PREDICTOR", "2");
     opts = CSLSetNameValue(opts, "LEVEL", "6");
-    opts = CSLSetNameValue(opts, "OVERVIEWS", "IGNORE_EXISTING");
+    opts = CSLSetNameValue(opts, "OVERVIEWS", cog ? "IGNORE_EXISTING" : "NONE");
+    opts = CSLSetNameValue(opts, "NUM_THREADS", "ALL_CPUS");
 
     double t0 = omp_get_wtime();
     GDALDatasetH cog_ds = GDALCreateCopy(cog_driver, filename, mem_ds, FALSE, opts, NULL, NULL);
-    LOG_TIMING(omp_get_wtime() - t0, "COG written: %s", filename);
+    LOG_TIMING(omp_get_wtime() - t0, "%s written: %s", cog ? "COG (overviews)" : "GeoTIFF", filename);
     CSLDestroy(opts);
     GDALClose(mem_ds);
 
     if (!cog_ds) {
-        LOG_ERROR("Could not create COG file: %s", filename);
+        LOG_ERROR("Could not create GeoTIFF file: %s", filename);
         return -1;
     }
 
@@ -221,7 +227,7 @@ static int finalize_cog(GDALDatasetH mem_ds, const char* filename) {
 // --- Public Function Implementations ---
 
 int write_geotiff_rgb(const char* filename, const ImageData* img, const DataNC* meta,
-                      int offset_x, int offset_y, const char* product) {
+                      int offset_x, int offset_y, const char* product, bool cog) {
     if (!img || (img->bpp != 3 && img->bpp != 4)) {
         LOG_ERROR("Invalid image for write_geotiff_rgb (bpp=3 or bpp=4 required).");
         return -1;
@@ -255,11 +261,11 @@ int write_geotiff_rgb(const char* filename, const ImageData* img, const DataNC* 
         GDALClose(ds);
         return -1;
     }
-    return finalize_cog(ds, filename);
+    return finalize_cog(ds, filename, cog);
 }
 
 int write_geotiff_gray(const char* filename, const ImageData* img, const DataNC* meta,
-                       int offset_x, int offset_y, const char* product) {
+                       int offset_x, int offset_y, const char* product, bool cog) {
     if (!img || (img->bpp != 1 && img->bpp != 2)) {
         LOG_ERROR("Invalid image for write_geotiff_gray (bpp=1 or bpp=2 required).");
         return -1;
@@ -309,12 +315,12 @@ int write_geotiff_gray(const char* filename, const ImageData* img, const DataNC*
         GDALClose(ds);
         return -1;
     }
-    return finalize_cog(ds, filename);
+    return finalize_cog(ds, filename, cog);
 }
 
 int write_geotiff_indexed(const char* filename, const ImageData* img, const ColorArray* palette,
                           const DataNC* meta, int offset_x, int offset_y,
-                          const ColormapMeta* cm, const char* product) {
+                          const ColormapMeta* cm, const char* product, bool cog) {
     if (!img || img->bpp != 1) {
         LOG_ERROR("Invalid image for write_geotiff_indexed (bpp=1 required).");
         return -1;
@@ -353,5 +359,5 @@ int write_geotiff_indexed(const char* filename, const ImageData* img, const Colo
         return -1;
     }
     set_colormap_metadata(ds, cm);
-    return finalize_cog(ds, filename);
+    return finalize_cog(ds, filename, cog);
 }

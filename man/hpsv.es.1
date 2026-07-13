@@ -180,8 +180,23 @@ Aplica CLAHE con parámetros explícitos:
 Guarda los metadatos en un archivo JSON sidecar junto a la imagen.
 
 .TP
+.B --cog
+Para salida GeoTIFF, genera un Cloud Optimized GeoTIFF completo con pirámide de
+overviews. Por defecto se escribe un GeoTIFF tileado, multi-hilo y sin overviews,
+preferible cuando el archivo es intermedio y se recorta o procesa después (los
+overviews son el grueso del tiempo de escritura y no se reutilizan aguas abajo).
+
+.TP
 .B "-v, --verbose"
 Activa mensajes de diagnóstico detallados (nivel DEBUG).
+.\" @CUDA_BEGIN@
+.TP
+.B --cuda
+Usa kernels GPU (CUDA): color verdadero (con Rayleigh), escala de grises y
+pseudocolor. Los modos y opciones no soportados se procesan en la CPU. Solo
+disponible en binarios compilados con
+.BR "make CUDA=1" .
+.\" @CUDA_END@
 
 .SH OPCIONES ESPECÍFICAS POR COMANDO
 .SS gray

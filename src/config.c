@@ -358,6 +358,7 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
     cfg->apply_histogram = ap_found(parser, "histo");
 
     // GPU acceleration (opt-in; requires a binary built with CUDA=1).
+    cfg->build_cog = ap_found(parser, "cog");
     cfg->use_cuda = ap_found(parser, "cuda");
 #ifdef HPSV_CUDA
     // rgb: only the default true-color path is GPU-accelerated so far; run_rgb()

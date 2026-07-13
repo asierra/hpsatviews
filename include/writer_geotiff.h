@@ -23,13 +23,19 @@ typedef struct {
     int         nodata_index;
 } ColormapMeta;
 
+/* `cog` selects the output flavour: false = fast tiled GeoTIFF without overviews
+ * (default; ideal for an intermediate that gets cropped downstream); true = full
+ * Cloud Optimized GeoTIFF with the overview pyramid (the GeoTIFF is the final
+ * product). Both are ZSTD-compressed and written multi-threaded. */
+
 /// Writes a 3-band RGB image to GeoTIFF.
 int write_geotiff_rgb(const char* filename,
                       const ImageData* img,
                       const DataNC* meta,
                       int offset_x,
                       int offset_y,
-                      const char* product);
+                      const char* product,
+                      bool cog);
 
 /// Writes a single-band grayscale image to GeoTIFF.
 int write_geotiff_gray(const char* filename,
@@ -37,7 +43,8 @@ int write_geotiff_gray(const char* filename,
                        const DataNC* meta,
                        int offset_x,
                        int offset_y,
-                       const char* product);
+                       const char* product,
+                       bool cog);
 
 /// Writes a palette-indexed image to GeoTIFF with embedded color table.
 int write_geotiff_indexed(const char* filename,
@@ -47,6 +54,7 @@ int write_geotiff_indexed(const char* filename,
                           int offset_x,
                           int offset_y,
                           const ColormapMeta* cm,
-                          const char* product);
+                          const char* product,
+                          bool cog);
 
 #endif /* HPSATVIEWS_WRITER_GEOTIFF_H_ */

@@ -45,6 +45,7 @@ typedef struct {
     bool use_citylights;
     bool use_alpha;
     bool force_geotiff;
+    bool build_cog;                ///< --cog: full COG with overviews (default: fast tiled GeoTIFF)
     bool use_full_res;
     float cloud_temp;              ///< Cloud IR threshold (K); 0=disabled
 

@@ -552,15 +552,72 @@ es equivalente a la utilizada por geo2grid.
 
 Implementado en C11 (ISO/IEC 9899:2011) con paralelización mediante OpenMP, HPSATVIEWS prioriza el alto rendimiento, el uso eficiente de memoria y la escalabilidad en sistemas multi-núcleo.
 
+El I/O está optimizado en todos los builds: las variables NetCDF se leen tomando
+los chunks HDF5 crudos y descomprimiéndolos en paralelo con libdeflate (en vez
+del pipeline de filtros de un solo hilo de HDF5), y la salida PNG usa una
+configuración de compresión/filtro rápida, afinada para imagen satelital de alta
+entropía. En una escena de disco completo esto reduce la descompresión de
+variables ~9× y la escritura del PNG ~5×. La salida GeoTIFF se escribe multi-hilo
+y, por defecto, como un archivo tileado **sin** la pirámide de overviews
+(Cloud-Optimized): esa pirámide es ~90% del costo de escritura del GeoTIFF y es
+trabajo desperdiciado cuando el archivo es intermedio y se recorta o reprocesa
+aguas abajo. Usa `--cog` para emitir un Cloud Optimized GeoTIFF completo cuando el
+GeoTIFF sea el producto final.
+
+### 6.6 Aceleración por GPU (CUDA)
+
+Un backend CUDA opcional descarga a una GPU NVIDIA las etapas por-píxel más
+pesadas. Es **opcional y no invasivo**: el build por defecto no necesita el
+toolkit de CUDA y la ruta OpenMP/CPU sigue siendo la implementación de
+referencia. Se compila con `make CUDA=1` y se selecciona en tiempo de ejecución
+con `--cuda`. La salida se valida idéntica a la de la CPU (bit a bit en los datos
+de ejemplo; dentro de la tolerancia de las pruebas para redondeo a nivel FMA).
+
+El diseño residente en device sube cada canal una sola vez y encadena toda la
+composición en la GPU —verde sintético, corrección Rayleigh por LUT (con la
+geometría de vista calculada en el device), gamma y la composición RGB— de modo
+que el costo de transferencia se paga una vez y no por operación. Los modos y
+opciones sin kernel GPU (`--ray-analytic`, `--sharpen`, `--stretch`, modos
+distintos a color verdadero) recaen de forma transparente en la CPU.
+
+Benchmarks: GOES-19 disco completo L1b, resolución de trabajo 10848×10848
+(118 MP), NVIDIA RTX 5060 Ti vs. OpenMP en 6 núcleos de CPU, misma versión del
+código (ambos incluyen las optimizaciones de I/O de §6.5).
+
+**Tiempo total (wall time)** (salida GeoTIFF tileado por defecto)
+
+| Producto (disco completo) | Build CPU | Build CUDA | Aceleración |
+|---|---:|---:|:--:|
+| `truecolor --rayleigh` | ~19 s | ~9.2 s | **~2×** |
+| `truecolor` (sin Rayleigh) | ~9 s | ~9 s | ~1× |
+
+El beneficio se concentra en las rutas con cómputo pesado. Sin Rayleigh no se
+calcula geometría de vista y la composición es trivial, así que el pipeline queda
+limitado por I/O y la GPU casi no cambia el tiempo total: lo que resta es leer,
+remuestrear y codificar, no aritmética.
+
+**Aceleración por etapa** (el cómputo que reemplaza la GPU, disco completo)
+
+| Etapa | CPU (OpenMP) | CUDA | Aceleración |
+|---|---:|---:|:--:|
+| Geometría de vista (solar + satélite + azimut) | ~8 s | 0.33 s | **~24×** |
+| Corrección Rayleigh por LUT (por canal) | ~1.1 s | 0.006 s | **~180×** |
+| Verde sintético + composición RGB | ~0.5 s | ~0.03 s | — |
+
+Las aceleraciones por etapa son grandes, pero la ganancia total está acotada por
+las etapas de I/O que dominan un render de disco completo.
+
 ---
 
 ## 7. Estado del proyecto
 
 HPSATVIEWS se encuentra en desarrollo activo, funcional estable y ampliación progresiva de capacidades y documentación.
 
-**Trabajo futuro:** permitir más satélites y no solamente los GOES. Se contempla explorar paralelismo de grano fino en GPU
-(CUDA/OpenCL) para las etapas de mayor costo computacional (corrección
-Rayleigh, reproyección), como complemento al paralelismo OpenMP actual.
+**Trabajo futuro:** permitir más satélites y no solamente los GOES. El backend
+CUDA opcional (§6.6) ya acelera las etapas de mayor costo computacional; se
+contempla extenderlo a la descompresión NetCDF en GPU (para que los datos
+decodificados nazcan en el device, evitando el ida y vuelta con el host) y a la
+reproyección.
 
 ¿Quieres contribuir, reportar un problema o pedir soporte? Consulta
 [CONTRIBUTING.md](CONTRIBUTING.md). El proyecto sigue el

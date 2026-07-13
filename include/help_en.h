@@ -33,8 +33,13 @@ static const char *HPSATVIEWS_HELP =
 "                      default parameters (8,8,4.0).\n"
 "  --clahe-params <p>  Implies CLAHE with params: tiles_x,tiles_y,clip_limit.\n"
 "  -j, --json          Save metadata to a JSON sidecar file alongside the image.\n"
-"  --cuda              Use GPU (CUDA) kernels where available (gray/pseudocolor).\n"
-"                      Requires a binary built with 'make CUDA=1'.\n"
+"  --cog               For GeoTIFF output, build a full Cloud Optimized GeoTIFF\n"
+"                      (with overviews). Default is a fast tiled GeoTIFF without\n"
+"                      them — better when the file is cropped/processed further.\n"
+#ifdef HPSV_CUDA
+"  --cuda              Use GPU (CUDA) kernels: true color (incl. Rayleigh), gray\n"
+"                      and pseudocolor. Falls back to CPU for unsupported modes.\n"
+#endif
 "  -v, --verbose       Enable detailed diagnostic messages (DEBUG level).\n"
 "\n"
 "Patterns for --out and Automatic Naming:\n"

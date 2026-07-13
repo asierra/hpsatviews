@@ -170,8 +170,32 @@ bytes comprimidos, no los píxeles (suites 0 diff).
 | **nivel 1 + SUB (ahora)** | **~4 s** | **151 MB** |
 
 **Wall-time full-disk truecolor `--rayleigh --cuda`: 31 s → 13.7 s** (2.3× vs el
-CPU original de 42 s → 3×). Alternativa: el GeoTIFF COG (ZSTD, `src/writer_geotiff.c`)
-ya escribía en ~12 s.
+CPU original de 42 s → 3×).
+
+### I/O: escritura GeoTIFF (optimizado 2026-07-13, CPU)
+
+**Este es el output operativo real** (LANOT genera las vistas finales con mapdrawer
+recortando el GeoTIFF; el GeoTIFF de hpsv es intermedio, no producto final). El
+writer (`src/writer_geotiff.c`) usaba el driver COG con overviews + un solo hilo.
+Barrido full-disk:
+
+| Config COG | Escritura | Tamaño |
+|---|---|---|
+| ZSTD 6, 1 hilo, overviews (antes) | 10.7 s | 184 MB |
+| + `NUM_THREADS=ALL_CPUS` | 6.9 s | 184 MB |
+| + `LEVEL=1` | 4.0 s | 204 MB |
+| + `OVERVIEWS=NONE` | **0.43 s** | 150 MB |
+
+Hallazgo: **los overviews (la pirámide COG) son ~90% del costo de escritura** y son
+inútiles para un intermedio que se recorta aguas abajo (mapdrawer no los reusa).
+Cambios: `NUM_THREADS=ALL_CPUS` siempre; **overviews opcionales vía `--cog`**
+(`cfg->build_cog`, `finalize_cog(..., cog)`). Default = GeoTIFF tileado sin
+overviews; `--cog` = COG completo (producto final). Test: `test_geotiff.sh` cuenta
+páginas TIFF (default 1, `--cog` >1).
+
+**Wall-time full-disk truecolor `--rayleigh`, GeoTIFF default: CPU ~19 s →
+CUDA ~9.2 s (~2×)**; el COG completo (`--cog`) queda en ~13 s (antes ~16.5 s por
+los threads). El GeoTIFF default ahora es incluso más rápido que el PNG (~10 s).
 
 ### I/O: lectura NetCDF paralela (implementado 2026-07-13, CPU)
 
@@ -199,12 +223,40 @@ suites 9/9 (el fast-path se ejerce en todos los tests, validado contra goldens).
 
 ### Balance acumulado
 
-Full-disk truecolor `--rayleigh`: **~42 s (CPU original) → ~10.2 s (~4×)**, atacando
-en orden el cuello real en cada paso: composición (Rayleigh 180×) → navegación
-(~8 s → 0.3 s) → escritura PNG (~21 s → ~4 s) → lectura NetCDF (~5.5 s → ~0.6 s).
-El cómputo ya es marginal; el resto (~10 s) se reparte entre descompresión de
-lectura, downsample, escritura y misc — sin un único dominante. El final purista
-pendiente sería nvCOMP (descompresión en GPU → datos nacen en device, sin H2D).
+Full-disk truecolor `--rayleigh`, ataque en orden del cuello real en cada paso:
+composición (Rayleigh 180×) → navegación (~8 s → 0.3 s) → escritura PNG
+(~21 s → ~4 s) → lectura NetCDF (~5.5 s → ~0.6 s). El wall-time del punto de
+partida (~42 s, CPU original sin ninguna optimización) bajó a **~10 s (~4×)**.
+
+**Ojo con atribuir todo a CUDA:** las mejoras de I/O (PNG, lectura paralela) son
+CPU-side y benefician a ambos builds. La ganancia *aislada de CUDA* es build-CPU
+vs build-CUDA en la versión actual (ambos con I/O optimizado):
+
+| Producto (full-disk) | Build CPU | Build CUDA |
+|---|---|---|
+| `truecolor --rayleigh` | ~21 s | ~10.6 s (~2×) |
+| `truecolor` (sin rayleigh) | ~9.5 s | ~9.2 s (~1×, I/O-bound) |
+
+Es decir: CUDA da ~2× cuando hay cómputo pesado (Rayleigh + nav); sin rayleigh el
+pipeline es I/O-bound y la GPU no cambia el wall-time. Los números del README
+(§6.6) son estos.
+
+### nvCOMP (descompresión en GPU) — DIFERIDO (decisión 2026-07-13)
+
+El "final purista" sería descomprimir los chunks en GPU (nvCOMP) para que los
+datos nazcan en device sin H2D. **Se pospuso por mal costo/beneficio hoy:**
+
+- La descompresión ya está en **~0.57 s** (libdeflate paralelo ya capturó el
+  grueso). nvCOMP la llevaría a ~0.15 s → **~0.4 s de ganancia** por sí sola.
+- El refactor completo (nvCOMP + unshuffle/scale/**downsample de C02** en GPU +
+  eliminar uploads) daría ~2.5–3.5 s → wall ~10 s → ~7–8 s.
+- Pero **nvCOMP no toca la escritura PNG (~4–5 s)**, que es el mayor costo único
+  restante. Con nvCOMP perfecto te quedas ~7–8 s, aún dominado por el PNG.
+- Costo: dependencia nueva (nvCOMP no instalado), `H5Dread_chunk` → nvCOMP →
+  kernels de unshuffle/scale, y validación numérica. Mini-proyecto aparte.
+
+Si algún día se retoma el wall-time, el mejor lever es **paralelizar/acelerar la
+escritura PNG** (~4–5 s, hoy un hilo), no nvCOMP.
 
 ## Pendiente — checklist para la estación de trabajo (RTX 5060 Ti)
 

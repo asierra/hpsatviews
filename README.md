@@ -551,16 +551,70 @@ used by geo2grid.
 
 Implemented in C11 (ISO/IEC 9899:2011) with OpenMP parallelization, HPSATVIEWS prioritizes high performance, efficient memory use, and scalability on multi-core systems.
 
+I/O is optimized on all builds: NetCDF variables are read by pulling the raw
+HDF5 chunks and decompressing them in parallel with libdeflate (rather than
+HDF5's single-threaded filter pipeline), and PNG output uses a fast
+compression/filter setting tuned for high-entropy satellite imagery. On a
+full-disk scene these cut variable decompression by roughly 9× and PNG writing
+by roughly 5×. GeoTIFF output is written multi-threaded and, by default, as a
+fast tiled file **without** the Cloud-Optimized overview pyramid — that pyramid
+is ~90% of the GeoTIFF write cost and is wasted work when the file is an
+intermediate that gets cropped or reprocessed downstream. Pass `--cog` to emit a
+full Cloud Optimized GeoTIFF when the GeoTIFF is the final product.
+
+### 6.6 GPU acceleration (CUDA)
+
+An optional CUDA backend offloads the heaviest per-pixel stages to an NVIDIA
+GPU. It is **opt-in and non-invasive**: the default build needs no CUDA toolkit
+and the OpenMP/CPU path remains the reference implementation. Build with
+`make CUDA=1` and select it at run time with `--cuda`. Output is validated to be
+identical to the CPU path (bit-for-bit on the sample data; within the test
+tolerance for FMA-level rounding).
+
+The device-resident design uploads each channel once and chains the whole
+composition on the GPU — synthetic green, Rayleigh LUT correction (with the
+viewing geometry computed on-device), gamma and the RGB compose — so the
+transfer cost is paid once rather than per operation. Modes and options without a
+GPU kernel (`--ray-analytic`, `--sharpen`, `--stretch`, non-true-color modes)
+transparently fall back to the CPU.
+
+Benchmarks below: GOES-19 full-disk L1b, working resolution 10848×10848 (118 MP),
+NVIDIA RTX 5060 Ti vs. OpenMP on 6 CPU cores, same build version (both include
+the I/O optimizations of §6.5).
+
+**End-to-end wall time** (default tiled GeoTIFF output)
+
+| Product (full disk) | CPU build | CUDA build | Speedup |
+|---|---:|---:|:--:|
+| `truecolor --rayleigh` | ~19 s | ~9.2 s | **~2×** |
+| `truecolor` (no Rayleigh) | ~9 s | ~9 s | ~1× |
+
+The benefit concentrates in compute-heavy paths. Without Rayleigh, no viewing
+geometry is computed and the composition is trivial, so the pipeline is
+I/O-bound and the GPU makes little end-to-end difference — the remaining wall
+time is reading, resampling and encoding, not arithmetic.
+
+**Per-stage acceleration** (the compute the GPU replaces, full disk)
+
+| Stage | CPU (OpenMP) | CUDA | Speedup |
+|---|---:|---:|:--:|
+| Viewing geometry (solar + satellite + azimuth) | ~8 s | 0.33 s | **~24×** |
+| Rayleigh LUT correction (per channel) | ~1.1 s | 0.006 s | **~180×** |
+| Synthetic green + RGB compose | ~0.5 s | ~0.03 s | — |
+
+The per-stage speedups are large, but end-to-end gains are bounded by the I/O
+stages that dominate a full-disk render.
+
 ---
 
 ## 7. Project status
 
 HPSATVIEWS is under active development, functionally stable, with progressive expansion of capabilities and documentation.
 
-**Future work:** support for more satellites, not just GOES. Exploring
-fine-grained GPU parallelism (CUDA/OpenCL) is also under consideration for
-the most computationally expensive stages (Rayleigh correction,
-reprojection), as a complement to the current OpenMP-based parallelism.
+**Future work:** support for more satellites, not just GOES. The optional CUDA
+backend (§6.6) already accelerates the compute-heavy stages; extending it to
+GPU-side NetCDF decompression (so decoded data is born on the device, avoiding
+the host round-trip) and to reprojection is under consideration.
 
 Want to contribute, report a problem, or get support? See
 [CONTRIBUTING.md](CONTRIBUTING.md). This project follows the

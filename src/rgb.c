@@ -807,7 +807,7 @@ static bool write_output(RgbContext *ctx, const char *product_label) {
         }
         // Pass 0,0 as the offset: it's already folded into meta_out.geotransform.
         write_geotiff_rgb(ctx->opts.output_filename, &ctx->final_image, &meta_out, 0, 0,
-                          product_label);
+                          product_label, ctx->opts.build_cog);
     } else {
         writer_save_png(ctx->opts.output_filename, &ctx->final_image);
     }
@@ -838,6 +838,7 @@ static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
     ctx->opts.save_both = cfg->save_both;
     ctx->opts.apply_histogram = cfg->apply_histogram;
     ctx->opts.force_geotiff = cfg->force_geotiff;
+    ctx->opts.build_cog = cfg->build_cog;
     ctx->opts.apply_rayleigh = cfg->apply_rayleigh;
     ctx->opts.rayleigh_analytic = cfg->rayleigh_analytic;
     ctx->opts.use_piecewise_stretch = cfg->use_piecewise_stretch;

@@ -139,6 +139,7 @@ static void add_common_opts(ArgParser *cmd_parser) {
     ap_add_str_opt(cmd_parser, "expr e", NULL);
     ap_add_str_opt(cmd_parser, "minmax", "0.0,255.0");
     ap_add_flag(cmd_parser, "cuda");
+    ap_add_flag(cmd_parser, "cog");
 }
 
 int main(int argc, char *argv[]) {

@@ -27,3 +27,20 @@ check_meta "band" "C13"
 check_meta "colormap_min" "1"
 check_meta "colormap_max" "5"
 check_meta "colormap_size" "6"
+
+# --cog toggle: the default GeoTIFF is a single-page tiled file (no overviews);
+# --cog builds the full Cloud Optimized GeoTIFF with an overview pyramid (extra
+# TIFF pages). identify's page count distinguishes them (stderr suppressed: the
+# GeoTIFF private tags trigger harmless libtiff "Unknown field" warnings).
+C13=../sample_data/OR_ABI-L2-CMIPC-M6C13_G16_s20242201301171_e20242201303555_c20242201304066.nc
+../bin/hpsv gray -t "$C13" -o geo_default.tif
+../bin/hpsv gray -t --cog "$C13" -o geo_cog.tif
+n_default=$(identify -format "%n\n" geo_default.tif 2>/dev/null | head -1)
+n_cog=$(identify -format "%n\n" geo_cog.tif 2>/dev/null | head -1)
+if [ "$n_default" -ne 1 ]; then
+    echo "FAIL: default GeoTIFF should have no overviews (pages=$n_default)" >&2; exit 1
+fi
+if [ "$n_cog" -le 1 ]; then
+    echo "FAIL: --cog GeoTIFF should embed overviews (pages=$n_cog)" >&2; exit 1
+fi
+echo "OK: default sin overviews (1 pág), --cog con overviews ($n_cog págs)"
