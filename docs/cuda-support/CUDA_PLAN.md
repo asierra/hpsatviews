@@ -147,9 +147,33 @@ RTX 5060 Ti vs OpenMP 6 cores):
 
 Con la navegación en GPU el wall-time baja **~10.5 s (~25%)**. El cómputo dejó de
 importar: los ~31 s restantes son **I/O puro** (leer 3 NetCDF de full-disk +
-escribir PNG). Siguiente frontera si se quiere más: I/O (lectura NetCDF paralela,
-escritura, o formato de salida), no más kernels. 0 px diff (CONUS) en toda la
-cadena truecolor+rayleigh+nav.
+escribir PNG). 0 px diff (CONUS) en toda la cadena truecolor+rayleigh+nav.
+
+### I/O: escritura PNG (optimizado 2026-07-13, CPU)
+
+Desglose del wall-time full-disk (~31 s): leer C01/C02/C03 ~5.5 s (C02 21696²
+domina, ~3.7 s), downsample C02→1 km ~1.5 s, cómputo GPU ~1 s, y **escribir el
+PNG ~21 s** (10848²×3 = 336 MB crudos → 143 MB). El PNG era ~70% del wall-time.
+
+Causa: `src/writer_png.c` usaba los defaults de libpng — zlib nivel 6 y
+**filtrado adaptativo** (prueba los 5 filtros por fila), un hilo. En imagen
+satelital (alta entropía) subir el nivel casi no reduce tamaño pero cuesta
+carísimo (nivel 9 = 65 s para 140 MB vs nivel 6 = 21 s para 143 MB). Fix:
+`png_set_compression_level(png, 1)` + `png_set_filter(png, 0, PNG_FILTER_SUB)`
+(NONE para paleta, donde filtrar índices es contraproducente). Solo cambia los
+bytes comprimidos, no los píxeles (suites 0 diff).
+
+| Config PNG | Escritura | Tamaño |
+|---|---|---|
+| nivel 6 + adaptativo (antes) | ~21 s | 143 MB |
+| nivel 1 + NONE | ~4 s | 176 MB |
+| **nivel 1 + SUB (ahora)** | **~4 s** | **151 MB** |
+
+**Wall-time full-disk truecolor `--rayleigh --cuda`: 31 s → 13.7 s** (2.3× vs el
+CPU original de 42 s → 3×). Alternativa: el GeoTIFF COG (ZSTD, `src/writer_geotiff.c`)
+ya escribía en ~12 s. Resto del I/O (lectura NetCDF ~5.5 s, descompresión HDF5 de
+un hilo) es el siguiente lever, más difícil: leer C02 a media resolución rompería
+la equivalencia del box-filter.
 
 ## Pendiente — checklist para la estación de trabajo (RTX 5060 Ti)
 
