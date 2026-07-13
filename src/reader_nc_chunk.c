@@ -1,0 +1,226 @@
+/* Fast chunked NetCDF-4/HDF5 read: parallel libdeflate decompression.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
+ *
+ * GOES ABI stores each variable as a 2-D chunked HDF5 dataset filtered with
+ * shuffle + deflate (gzip). HDF5's own read path decompresses every chunk on a
+ * single thread behind a global lock — the dominant cost of loading a full-disk
+ * scene. Here we read the raw (still-compressed) chunks with H5Dread_chunk and
+ * decompress them across all cores with libdeflate (~2x faster per core than
+ * zlib), then invert the shuffle and scatter into the destination grid.
+ *
+ * Anything outside the expected layout falls back (returns non-zero) so the
+ * caller re-reads with nc_get_var — correctness never depends on this path.
+ */
+
+#include "reader_nc_chunk.h"
+#include "logger.h"
+
+#include <hdf5.h>
+#include <libdeflate.h>
+#include <omp.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+/* Inverse of the HDF5 shuffle filter: the shuffled layout stores byte-plane 0
+ * of every element, then byte-plane 1, ... Rebuild interleaved elements. */
+static void unshuffle(const uint8_t *shuf, uint8_t *out, size_t nelem,
+                      size_t elem_size) {
+  for (size_t b = 0; b < elem_size; b++) {
+    const uint8_t *plane = shuf + b * nelem;
+    for (size_t i = 0; i < nelem; i++) out[i * elem_size + b] = plane[i];
+  }
+}
+
+int read_var_chunked_deflate(const char *filename, const char *varname,
+                             void *out, size_t nx, size_t ny,
+                             size_t elem_size) {
+  if (elem_size != 2) return 1; /* only int16/uint16 handled */
+
+  /* Escape hatch: HPSV_DISABLE_FAST_READ=1 forces the nc_get_var fallback (for
+   * A/B validation or if a future file layout ever misbehaves in production). */
+  if (getenv("HPSV_DISABLE_FAST_READ")) return 1;
+
+  /* Silence HDF5's automatic error stack printing; we handle failures. */
+  H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
+
+  int rc = 1; /* default: fall back */
+  hid_t file = -1, dset = -1, space = -1, dcpl = -1, dtype = -1;
+  uint8_t **raw = NULL;
+  hsize_t *rawsize = NULL;
+  unsigned *fmask = NULL;
+  size_t nchunks = 0;               /* set once known; keeps cleanup safe */
+  size_t chy = 0, chx = 0, nchx = 0, nchy = 0, chunk_bytes = 0;
+  int16_t fillval = 0;
+
+  file = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
+  if (file < 0) goto done;
+
+  dset = H5Dopen2(file, varname, H5P_DEFAULT);
+  if (dset < 0) goto done;
+
+  /* Rank 2, dims == {ny, nx}. */
+  space = H5Dget_space(dset);
+  if (space < 0 || H5Sget_simple_extent_ndims(space) != 2) goto done;
+  hsize_t dims[2];
+  if (H5Sget_simple_extent_dims(space, dims, NULL) < 0) goto done;
+  if (dims[0] != ny || dims[1] != nx) goto done;
+
+  /* Little-endian, 2-byte integer element. */
+  dtype = H5Dget_type(dset);
+  if (dtype < 0 || H5Tget_size(dtype) != elem_size ||
+      H5Tget_order(dtype) != H5T_ORDER_LE)
+    goto done;
+
+  /* Chunked layout, filters == shuffle (index 0) then deflate (index 1). */
+  dcpl = H5Dget_create_plist(dset);
+  if (dcpl < 0 || H5Pget_layout(dcpl) != H5D_CHUNKED) goto done;
+  hsize_t cdims[2];
+  if (H5Pget_chunk(dcpl, 2, cdims) < 0) goto done;
+  chy = (size_t)cdims[0];
+  chx = (size_t)cdims[1];
+  if (chy == 0 || chx == 0) goto done;
+
+  if (H5Pget_nfilters(dcpl) != 2) goto done;
+  for (unsigned fi = 0; fi < 2; fi++) {
+    unsigned flags = 0, cd[8];
+    size_t cd_n = 8;
+    H5Z_filter_t fid =
+        H5Pget_filter2(dcpl, fi, &flags, &cd_n, cd, 0, NULL, NULL);
+    if (fi == 0 && fid != H5Z_FILTER_SHUFFLE) goto done;
+    if (fi == 1 && fid != H5Z_FILTER_DEFLATE) goto done;
+  }
+
+  /* Fill value for any unallocated chunks (all-fill regions). */
+  if (H5Pget_fill_value(dcpl, dtype, &fillval) < 0) fillval = 0;
+
+  nchx = (nx + chx - 1) / chx;
+  nchy = (ny + chy - 1) / chy;
+  nchunks = nchx * nchy;
+  chunk_bytes = chy * chx * elem_size;
+
+  raw = (uint8_t **)calloc(nchunks, sizeof(uint8_t *));
+  rawsize = (hsize_t *)calloc(nchunks, sizeof(hsize_t));
+  fmask = (unsigned *)calloc(nchunks, sizeof(unsigned));
+  if (!raw || !rawsize || !fmask) goto done;
+
+  /* --- Serial phase: read every raw chunk (HDF5 is single-locked, but this is
+   * just pulling compressed bytes from the page cache — fast). --- */
+  bool read_ok = true;
+  for (size_t cy = 0; cy < nchy && read_ok; cy++) {
+    for (size_t cx = 0; cx < nchx; cx++) {
+      size_t k = cy * nchx + cx;
+      hsize_t offset[2] = {(hsize_t)(cy * chy), (hsize_t)(cx * chx)};
+      haddr_t addr = HADDR_UNDEF;
+      hsize_t csize = 0;
+      unsigned mask = 0;
+      if (H5Dget_chunk_info_by_coord(dset, offset, &mask, &addr, &csize) < 0) {
+        read_ok = false;
+        break;
+      }
+      if (addr == HADDR_UNDEF || csize == 0) {
+        raw[k] = NULL; /* unallocated -> fill value */
+        continue;
+      }
+      raw[k] = (uint8_t *)malloc(csize);
+      if (!raw[k]) { read_ok = false; break; }
+      if (H5Dread_chunk(dset, H5P_DEFAULT, offset, &mask, raw[k]) < 0) {
+        read_ok = false;
+        break;
+      }
+      rawsize[k] = csize;
+      fmask[k] = mask;
+    }
+  }
+  if (!read_ok) goto done;
+
+  /* --- Parallel phase: inflate + unshuffle + scatter. --- */
+  const unsigned SHUF_BIT = 0x1u; /* pipeline index 0 skipped */
+  const unsigned DEFL_BIT = 0x2u; /* pipeline index 1 skipped */
+  int failed = 0;
+  double t0 = omp_get_wtime();
+
+#pragma omp parallel
+  {
+    struct libdeflate_decompressor *dec = libdeflate_alloc_decompressor();
+    uint8_t *shuf = (uint8_t *)malloc(chunk_bytes);
+    uint8_t *elems = (uint8_t *)malloc(chunk_bytes);
+    if (!dec || !shuf || !elems) {
+#pragma omp atomic write
+      failed = 1;
+    }
+
+#pragma omp for schedule(static)
+    for (size_t k = 0; k < nchunks; k++) {
+      if (failed) continue;
+      size_t cy = k / nchx, cx = k % nchx;
+      size_t r0 = cy * chy, c0 = cx * chx;
+
+      const uint8_t *elem_bytes;
+      if (raw[k] == NULL) {
+        int16_t *e16 = (int16_t *)elems; /* unallocated chunk -> fill */
+        for (size_t i = 0; i < chy * chx; i++) e16[i] = fillval;
+        elem_bytes = elems;
+      } else {
+        const uint8_t *inflated;
+        if (fmask[k] & DEFL_BIT) {
+          inflated = raw[k]; /* deflate skipped for this chunk */
+        } else {
+          size_t got = 0;
+          if (libdeflate_zlib_decompress(dec, raw[k], rawsize[k], shuf,
+                                         chunk_bytes,
+                                         &got) != LIBDEFLATE_SUCCESS ||
+              got != chunk_bytes) {
+#pragma omp atomic write
+            failed = 1;
+            continue;
+          }
+          inflated = shuf;
+        }
+        if (fmask[k] & SHUF_BIT) {
+          elem_bytes = inflated; /* shuffle skipped -> already interleaved */
+        } else {
+          unshuffle(inflated, elems, chy * chx, elem_size);
+          elem_bytes = elems;
+        }
+      }
+
+      /* Scatter the chunk tile into out, clipping partial edge chunks. */
+      size_t rmax = (r0 + chy <= ny) ? chy : (ny - r0);
+      size_t cmax = (c0 + chx <= nx) ? chx : (nx - c0);
+      for (size_t lr = 0; lr < rmax; lr++) {
+        uint8_t *dst = (uint8_t *)out + ((r0 + lr) * nx + c0) * elem_size;
+        const uint8_t *src = elem_bytes + (lr * chx) * elem_size;
+        memcpy(dst, src, cmax * elem_size);
+      }
+    }
+
+    free(shuf);
+    free(elems);
+    if (dec) libdeflate_free_decompressor(dec);
+  }
+
+  if (!failed) {
+    LOG_TIMING(omp_get_wtime() - t0, "NetCDF chunked decompress (libdeflate)");
+    rc = 0;
+  }
+
+done:
+  if (raw) {
+    for (size_t k = 0; k < nchunks; k++) free(raw[k]);
+    free(raw);
+  }
+  free(rawsize);
+  free(fmask);
+  if (dtype >= 0) H5Tclose(dtype);
+  if (dcpl >= 0) H5Pclose(dcpl);
+  if (space >= 0) H5Sclose(space);
+  if (dset >= 0) H5Dclose(dset);
+  if (file >= 0) H5Fclose(file);
+  return rc;
+}

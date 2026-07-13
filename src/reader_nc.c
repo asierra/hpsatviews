@@ -7,6 +7,7 @@
  */
 #include "datanc.h"
 #include "reader_nc.h"
+#include "reader_nc_chunk.h"
 #include "logger.h"
 #include <math.h>
 #include <netcdf.h>
@@ -239,7 +240,26 @@ static int datanc_unpack_grid(int ncid, int varid, size_t total_size, DataNC *da
     void *datatmp = malloc(tsize * total_size);
     if (!datatmp) return -1;
 
-    if (nc_get_var(ncid, varid, datatmp) != NC_NOERR) { free(datatmp); return -1; }
+    // Fast path: read the HDF5 chunks and decompress them in parallel with
+    // libdeflate (reader_nc_chunk.c), which is far faster than HDF5's serial
+    // filter pipeline on large full-disk variables. Falls back to nc_get_var on
+    // any unsupported layout, so correctness never depends on it. Only the
+    // 2-byte integer case is handled by the fast reader.
+    bool fast_loaded = false;
+    if (tsize == 2 && datanc->varname) {
+        size_t plen = 0;
+        if (nc_inq_path(ncid, &plen, NULL) == NC_NOERR && plen > 0) {
+            char *path = (char *)malloc(plen + 1);
+            if (path && nc_inq_path(ncid, &plen, path) == NC_NOERR) {
+                if (read_var_chunked_deflate(path, datanc->varname, datatmp,
+                                             datanc->fdata.width,
+                                             datanc->fdata.height, tsize) == 0)
+                    fast_loaded = true;
+            }
+            free(path);
+        }
+    }
+    if (!fast_loaded && nc_get_var(ncid, varid, datatmp) != NC_NOERR) { free(datatmp); return -1; }
 
     if (cfg->var_type == NC_BYTE || cfg->var_type == NC_UBYTE) {
         datanc->is_float = false;

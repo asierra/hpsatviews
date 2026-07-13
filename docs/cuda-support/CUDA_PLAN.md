@@ -171,9 +171,40 @@ bytes comprimidos, no los píxeles (suites 0 diff).
 
 **Wall-time full-disk truecolor `--rayleigh --cuda`: 31 s → 13.7 s** (2.3× vs el
 CPU original de 42 s → 3×). Alternativa: el GeoTIFF COG (ZSTD, `src/writer_geotiff.c`)
-ya escribía en ~12 s. Resto del I/O (lectura NetCDF ~5.5 s, descompresión HDF5 de
-un hilo) es el siguiente lever, más difícil: leer C02 a media resolución rompería
-la equivalencia del box-filter.
+ya escribía en ~12 s.
+
+### I/O: lectura NetCDF paralela (implementado 2026-07-13, CPU)
+
+La lectura de los 3 NetCDF (~5.5 s) era descompresión HDF5/zlib de **un solo
+hilo** (no I/O de disco — con page cache la lectura cruda es ~0.07 s; se descartó
+el ramdisk por eso). Los archivos usan chunks (226×226) con filtro shuffle+deflate.
+`src/reader_nc_chunk.c` lee los chunks crudos con `H5Dread_chunk` y los descomprime
+en paralelo con **libdeflate** (ya enlazado vía GDAL; ~2× más rápido que zlib por
+hilo), invierte el shuffle y hace scatter al grid. Sortea el lock global de HDF5:
+la lectura cruda es trivial, la descompresión (lo caro) es nuestra y paralela.
+Fallback a `nc_get_var` ante cualquier layout no soportado (`HPSV_DISABLE_FAST_READ=1`
+lo fuerza). Descarta ~el mismo `datatmp` int16 que `nc_get_var`, así que la
+conversión a float downstream no cambia.
+
+| Canal | Descompresión antes | Ahora (libdeflate ‖) |
+|---|---|---|
+| C01 10848² | ~1.0 s | 0.10 s |
+| C02 21696² | ~3.7 s | 0.39 s (~9.4×) |
+| C03 10848² | ~0.9 s | 0.08 s |
+
+Equivalencia: PNG **byte-idéntico** fast vs fallback en full-disk (mismo md5) +
+suites 9/9 (el fast-path se ejerce en todos los tests, validado contra goldens).
+
+**Wall-time full-disk truecolor `--rayleigh --cuda`: 13.7 s → ~10.2 s.**
+
+### Balance acumulado
+
+Full-disk truecolor `--rayleigh`: **~42 s (CPU original) → ~10.2 s (~4×)**, atacando
+en orden el cuello real en cada paso: composición (Rayleigh 180×) → navegación
+(~8 s → 0.3 s) → escritura PNG (~21 s → ~4 s) → lectura NetCDF (~5.5 s → ~0.6 s).
+El cómputo ya es marginal; el resto (~10 s) se reparte entre descompresión de
+lectura, downsample, escritura y misc — sin un único dominante. El final purista
+pendiente sería nvCOMP (descompresión en GPU → datos nacen en device, sin H2D).
 
 ## Pendiente — checklist para la estación de trabajo (RTX 5060 Ti)
 

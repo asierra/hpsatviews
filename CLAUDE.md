@@ -21,7 +21,7 @@ sudo make install
 make clean
 ```
 
-Dependencies: `libnetcdf-dev`, `libpng-dev`, `libgdal-dev`, `libwebp-dev`, OpenMP-capable gcc.
+Dependencies: `libnetcdf-dev`, `libhdf5-dev`, `libdeflate-dev`, `libpng-dev`, `libgdal-dev`, `libwebp-dev`, OpenMP-capable gcc. (`libhdf5-dev`/`libdeflate-dev` back the parallel chunk reader in `src/reader_nc_chunk.c`.)
 
 ## Tests
 

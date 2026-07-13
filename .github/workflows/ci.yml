@@ -15,7 +15,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libnetcdf-dev libpng-dev libgdal-dev libwebp-dev imagemagick
+          sudo apt-get install -y libnetcdf-dev libhdf5-dev libdeflate-dev libpng-dev libgdal-dev libwebp-dev imagemagick
 
       - name: Cache sample data
         uses: actions/cache@v4

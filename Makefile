@@ -23,8 +23,11 @@ HPSV_LANG ?= en
 
 # Banderas base: C11 estándar, advertencias, OpenMP
 CFLAGS_COMMON = -Wall -Wextra -std=c11 -fopenmp -D_POSIX_C_SOURCE=200809L \
-                -D_DEFAULT_SOURCE -MMD -MP $(shell gdal-config --cflags)
-LDFLAGS = -lm -lnetcdf -lpng -lwebp -fopenmp $(shell gdal-config --libs)
+                -D_DEFAULT_SOURCE -MMD -MP $(shell gdal-config --cflags) \
+                $(shell nc-config --cflags)
+# libhdf5_serial + libdeflate: direct chunk reads decompressed in parallel
+# (src/reader_nc_chunk.c), bypassing HDF5's single-threaded filter pipeline.
+LDFLAGS = -lm -lnetcdf -lhdf5_serial -ldeflate -lpng -lwebp -fopenmp $(shell gdal-config --libs)
 
 ifeq ($(CUDA),1)
     CFLAGS_COMMON += -DHPSV_CUDA -I$(CUDA_HOME)/include

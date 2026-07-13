@@ -84,6 +84,7 @@ run_test_suite "CLAHE"          "test_clahe.sh"        "$SCRIPT_DIR"
 run_test_suite "GeoTIFF"        "test_geotiff.sh"      "$SCRIPT_DIR"
 run_test_suite "Reprojection"   "test_reprojection.sh" "$SCRIPT_DIR"
 run_test_suite "JSON Sidecar"   "test_json.sh"         "$SCRIPT_DIR"
+run_test_suite "Fast NetCDF read" "test_fastread.sh"   "$SCRIPT_DIR"
 # Se salta solo (exit 0) si el binario no tiene CUDA o no hay GPU.
 run_test_suite "CUDA vs CPU"    "test_cuda.sh"         "$SCRIPT_DIR"
 
