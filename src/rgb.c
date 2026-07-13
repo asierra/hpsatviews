@@ -13,6 +13,9 @@
 #include "args.h"
 #include "clip_loader.h"
 #include "config.h"
+#ifdef HPSV_CUDA
+#include "cuda_kernels.h"
+#endif
 #include "datanc.h"
 #include "daynight_mask.h"
 #include "image.h"
@@ -66,6 +69,24 @@ void rgb_context_destroy(RgbContext *ctx) {
 
 // --- PHASE 2: COMPOSERS (STRATEGY PATTERN) ---
 
+// Locates the C01 file and loads Rayleigh viewing geometry (sza/vza/raa) at the
+// given target resolution, reusing pre-computed lat/lon when available. Shared
+// by the CPU and CUDA true-color paths.
+static bool load_rayleigh_nav(RgbContext *ctx, RayleighNav *nav,
+                              unsigned int w, unsigned int h) {
+    const char *nav_file = NULL;
+    for (int i = 0; i < ctx->channel_set->count; i++) {
+        if (strcmp(ctx->channel_set->channels[i].name, "C01") == 0) {
+            nav_file = ctx->channel_set->channels[i].filename;
+            break;
+        }
+    }
+    if (ctx->has_navigation && ctx->nav_lat.data_in && ctx->nav_lon.data_in)
+        return rayleigh_load_navigation_from_latlon(nav_file, &ctx->nav_lat,
+                                                    &ctx->nav_lon, nav, w, h);
+    return rayleigh_load_navigation(nav_file, nav, w, h);
+}
+
 static bool compose_truecolor(RgbContext *ctx) {
     // 1. Setup and copy.
     DataF *ch_blue = &ctx->channels[1].fdata; // C01
@@ -79,25 +100,8 @@ static bool compose_truecolor(RgbContext *ctx) {
 
     // Rayleigh correction.
     if (ctx->opts.apply_rayleigh || ctx->opts.rayleigh_analytic) {
-        // Locate the C01 file for navigation.
-        const char *nav_file = NULL;
-        for (int i = 0; i < ctx->channel_set->count; i++) {
-            if (strcmp(ctx->channel_set->channels[i].name, "C01") == 0) {
-                nav_file = ctx->channel_set->channels[i].filename;
-                break;
-            }
-        }
         RayleighNav nav = {0};
-        // Reuse pre-computed lat/lon to avoid a costly compute_navigation_nc call.
-        bool nav_ok;
-        if (ctx->has_navigation && ctx->nav_lat.data_in && ctx->nav_lon.data_in) {
-            nav_ok =
-                rayleigh_load_navigation_from_latlon(nav_file, &ctx->nav_lat, &ctx->nav_lon, &nav,
-                                                     ctx->comp_b.width, ctx->comp_b.height);
-        } else {
-            nav_ok =
-                rayleigh_load_navigation(nav_file, &nav, ctx->comp_b.width, ctx->comp_b.height);
-        }
+        bool nav_ok = load_rayleigh_nav(ctx, &nav, ctx->comp_b.width, ctx->comp_b.height);
         if (nav_ok) {
             apply_solar_zenith_correction(&ctx->comp_b, &nav.sza);
             apply_solar_zenith_correction(&ctx->comp_r, &nav.sza);
@@ -152,6 +156,100 @@ static bool compose_truecolor(RgbContext *ctx) {
 
     return true;
 }
+
+#ifdef HPSV_CUDA
+/* Device-resident default true-color: sube C01/C02/C03 una sola vez, sintetiza
+ * el verde, aplica gamma por canal y compone en la GPU, y baja una sola imagen
+ * RGB. Solo cubre la ruta por defecto (sin Rayleigh/sharpen/stretch, que siguen
+ * en CPU). Deja ctx->final_image lista y devuelve true si la manejó; false ante
+ * cualquier fallo CUDA para que el llamador reintente por CPU.
+ *
+ * comp_r = C02 (rojo), comp_b = C01 (azul), comp_g = verde sintetizado de
+ * (azul=C01, rojo=C02, nir=C03), igual que compose_truecolor(). */
+static bool compose_truecolor_cuda(RgbContext *ctx) {
+    DataF *c01 = &ctx->channels[1].fdata;
+    DataF *c02 = &ctx->channels[2].fdata;
+    DataF *c03 = &ctx->channels[3].fdata;
+    if (!c01->data_in || !c02->data_in || !c03->data_in) return false;
+
+    DataFDev b = dataf_dev_upload(c01);   // azul
+    DataFDev r = dataf_dev_upload(c02);   // rojo
+    DataFDev nir = dataf_dev_upload(c03);
+    DataFDev g = {0};
+    bool handled = false;
+
+    if (b.d_data && r.d_data && nir.d_data) {
+        // Rayleigh (LUT) chain, device-resident, on the channels already uploaded.
+        // The analytic variant stays on CPU (excluded by the gate in run_rgb), so
+        // only apply_rayleigh reaches here. Order matches compose_truecolor():
+        // solar correction on all three, then LUT on blue (redband = red), then
+        // LUT on red. A nav-load failure skips Rayleigh and continues (as on CPU);
+        // a real CUDA error aborts so the caller retries the whole thing on CPU.
+        bool ray_ok = true;
+        if (ctx->opts.apply_rayleigh) {
+            RayleighNav nav = {0};
+            if (load_rayleigh_nav(ctx, &nav, b.width, b.height)) {
+                DataFDev sza = dataf_dev_upload(&nav.sza);
+                DataFDev vza = dataf_dev_upload(&nav.vza);
+                DataFDev raa = dataf_dev_upload(&nav.raa);
+                RayleighLUTDev lut1 = rayleigh_lut_dev_load(1);
+                RayleighLUTDev lut2 = rayleigh_lut_dev_load(2);
+                if (sza.d_data && vza.d_data && raa.d_data && lut1.d_table && lut2.d_table) {
+                    apply_solar_zenith_correction_dev(&b, &sza);
+                    apply_solar_zenith_correction_dev(&r, &sza);
+                    apply_solar_zenith_correction_dev(&nir, &sza);
+                    luts_rayleigh_correction_dev(&b, &sza, &vza, &raa, &lut1, &r);
+                    luts_rayleigh_correction_dev(&r, &sza, &vza, &raa, &lut2, NULL);
+                } else {
+                    ray_ok = false; // CUDA error -> fall back to CPU
+                }
+                rayleigh_lut_dev_destroy(&lut1);
+                rayleigh_lut_dev_destroy(&lut2);
+                dataf_dev_destroy(&sza);
+                dataf_dev_destroy(&vza);
+                dataf_dev_destroy(&raa);
+                rayleigh_free_navigation(&nav);
+            } else {
+                LOG_WARN("Failed to load navigation, skipping Rayleigh (CUDA).");
+            }
+        }
+
+        if (ray_ok) g = create_truecolor_green_from_dev(&b, &r, &nir);
+        if (g.d_data) {
+            /* Sin piecewise stretch el rango de render es [0, 1.1] por canal
+             * (igual que compose_truecolor()). La gamma por canal normaliza a
+             * [0,1] solo el canal al que se aplica. */
+            const float range_max = 1.1f;
+            float rmin = 0.0f, rmax = range_max;
+            float gmin = 0.0f, gmax = range_max;
+            float bmin = 0.0f, bmax = range_max;
+
+            if (fabsf(ctx->opts.gamma[0] - 1.0f) > 1e-6f) {
+                dataf_dev_apply_gamma(&r, ctx->opts.gamma[0], rmin, rmax);
+                rmin = 0.0f; rmax = 1.0f;
+            }
+            if (fabsf(ctx->opts.gamma[1] - 1.0f) > 1e-6f) {
+                dataf_dev_apply_gamma(&g, ctx->opts.gamma[1], gmin, gmax);
+                gmin = 0.0f; gmax = 1.0f;
+            }
+            if (fabsf(ctx->opts.gamma[2] - 1.0f) > 1e-6f) {
+                dataf_dev_apply_gamma(&b, ctx->opts.gamma[2], bmin, bmax);
+                bmin = 0.0f; bmax = 1.0f;
+            }
+
+            ctx->final_image = create_multiband_rgb_from_dev(
+                &r, &g, &b, rmin, rmax, gmin, gmax, bmin, bmax);
+            handled = (ctx->final_image.data != NULL);
+        }
+    }
+
+    dataf_dev_destroy(&b);
+    dataf_dev_destroy(&r);
+    dataf_dev_destroy(&nir);
+    dataf_dev_destroy(&g);
+    return handled;
+}
+#endif /* HPSV_CUDA */
 
 static bool compose_night(RgbContext *ctx) {
     // Load city-lights background image if requested.
@@ -862,46 +960,67 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         goto cleanup;
     }
 
-    // RGB composite.
-    LOG_INFO("Generating '%s' composite...", strategy->mode_name);
-    if (!strategy->composer_func(&ctx)) {
-        LOG_ERROR("Failed to generate RGB composite.");
-        goto cleanup;
+    // RGB composite. The default true-color path can run device-resident under
+    // --cuda; every other mode/option (Rayleigh, sharpen, stretch, non-truecolor
+    // modes, custom) still runs on the CPU.
+    bool cuda_handled = false;
+#ifdef HPSV_CUDA
+    if (cfg->use_cuda) {
+        // Accelerated: true-color, optionally with Rayleigh LUT. Still CPU-only:
+        // analytic Rayleigh, ratio sharpening, piecewise stretch, other modes.
+        bool truecolor_cuda = strcmp(ctx.opts.mode, "truecolor") == 0 &&
+                              !ctx.opts.rayleigh_analytic &&
+                              !ctx.opts.use_sharpen && !ctx.opts.use_piecewise_stretch;
+        if (truecolor_cuda) {
+            LOG_INFO("Generating 'truecolor' composite (CUDA, device-resident)...");
+            cuda_handled = compose_truecolor_cuda(&ctx);
+        }
+        if (!cuda_handled)
+            LOG_WARN("--cuda: this RGB configuration isn't GPU-accelerated yet; using CPU path.");
     }
+#endif
 
-    // Preprocess the DataF channels (apply per-channel gamma).
-    if (ctx.comp_r.data_in && ctx.comp_g.data_in && ctx.comp_b.data_in) {
-        bool any_gamma = fabsf(ctx.opts.gamma[0] - 1.0f) > 1e-6f ||
-                         fabsf(ctx.opts.gamma[1] - 1.0f) > 1e-6f ||
-                         fabsf(ctx.opts.gamma[2] - 1.0f) > 1e-6f;
-        if (any_gamma) {
-            LOG_INFO("Applying gamma R=%.2f G=%.2f B=%.2f", ctx.opts.gamma[0], ctx.opts.gamma[1],
-                     ctx.opts.gamma[2]);
-            // Only update the range to [0,1] for channels where gamma != 1.0; otherwise
-            // dataf_apply_gamma leaves the data unchanged, so the --minmax range
-            // (already in ctx.min_*/max_*) must be kept for rendering.
-            if (fabsf(ctx.opts.gamma[0] - 1.0f) > 1e-6f) {
-                dataf_apply_gamma(&ctx.comp_r, ctx.opts.gamma[0], ctx.min_r, ctx.max_r);
-                ctx.min_r = 0.0f;
-                ctx.max_r = 1.0f;
-            }
-            if (fabsf(ctx.opts.gamma[1] - 1.0f) > 1e-6f) {
-                dataf_apply_gamma(&ctx.comp_g, ctx.opts.gamma[1], ctx.min_g, ctx.max_g);
-                ctx.min_g = 0.0f;
-                ctx.max_g = 1.0f;
-            }
-            if (fabsf(ctx.opts.gamma[2] - 1.0f) > 1e-6f) {
-                dataf_apply_gamma(&ctx.comp_b, ctx.opts.gamma[2], ctx.min_b, ctx.max_b);
-                ctx.min_b = 0.0f;
-                ctx.max_b = 1.0f;
-            }
-            ctx.opts.gamma[0] = ctx.opts.gamma[1] = ctx.opts.gamma[2] = 1.0f;
+    if (!cuda_handled) {
+        LOG_INFO("Generating '%s' composite...", strategy->mode_name);
+        if (!strategy->composer_func(&ctx)) {
+            LOG_ERROR("Failed to generate RGB composite.");
+            goto cleanup;
         }
 
-        // Render to image.
-        ctx.final_image =
-            create_multiband_rgb(&ctx.comp_r, &ctx.comp_g, &ctx.comp_b, ctx.min_r, ctx.max_r,
-                                 ctx.min_g, ctx.max_g, ctx.min_b, ctx.max_b);
+        // Preprocess the DataF channels (apply per-channel gamma).
+        if (ctx.comp_r.data_in && ctx.comp_g.data_in && ctx.comp_b.data_in) {
+            bool any_gamma = fabsf(ctx.opts.gamma[0] - 1.0f) > 1e-6f ||
+                             fabsf(ctx.opts.gamma[1] - 1.0f) > 1e-6f ||
+                             fabsf(ctx.opts.gamma[2] - 1.0f) > 1e-6f;
+            if (any_gamma) {
+                LOG_INFO("Applying gamma R=%.2f G=%.2f B=%.2f", ctx.opts.gamma[0], ctx.opts.gamma[1],
+                         ctx.opts.gamma[2]);
+                // Only update the range to [0,1] for channels where gamma != 1.0; otherwise
+                // dataf_apply_gamma leaves the data unchanged, so the --minmax range
+                // (already in ctx.min_*/max_*) must be kept for rendering.
+                if (fabsf(ctx.opts.gamma[0] - 1.0f) > 1e-6f) {
+                    dataf_apply_gamma(&ctx.comp_r, ctx.opts.gamma[0], ctx.min_r, ctx.max_r);
+                    ctx.min_r = 0.0f;
+                    ctx.max_r = 1.0f;
+                }
+                if (fabsf(ctx.opts.gamma[1] - 1.0f) > 1e-6f) {
+                    dataf_apply_gamma(&ctx.comp_g, ctx.opts.gamma[1], ctx.min_g, ctx.max_g);
+                    ctx.min_g = 0.0f;
+                    ctx.max_g = 1.0f;
+                }
+                if (fabsf(ctx.opts.gamma[2] - 1.0f) > 1e-6f) {
+                    dataf_apply_gamma(&ctx.comp_b, ctx.opts.gamma[2], ctx.min_b, ctx.max_b);
+                    ctx.min_b = 0.0f;
+                    ctx.max_b = 1.0f;
+                }
+                ctx.opts.gamma[0] = ctx.opts.gamma[1] = ctx.opts.gamma[2] = 1.0f;
+            }
+
+            // Render to image.
+            ctx.final_image =
+                create_multiband_rgb(&ctx.comp_r, &ctx.comp_g, &ctx.comp_b, ctx.min_r, ctx.max_r,
+                                     ctx.min_g, ctx.max_g, ctx.min_b, ctx.max_b);
+        }
     }
 
     if (ctx.final_image.data == NULL) {

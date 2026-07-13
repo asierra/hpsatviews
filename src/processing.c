@@ -304,14 +304,28 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         LOG_WARN("Single-channel mode: only gamma[0]=%.2f will be used (ignoring gamma[1]=%.2f, gamma[2]=%.2f)",
                  cfg->gamma[0], cfg->gamma[1], cfg->gamma[2]);
     }
-    if (fabsf(cfg->gamma[0] - 1.0f) > 1e-6f && c01.is_float && c01.fdata.data_in) {
-        LOG_INFO("Applying gamma %.2f", cfg->gamma[0]);
-        float gmin = minmax_provided ? minmax[0] : c01.fdata.fmin;
-        float gmax = minmax_provided ? minmax[1] : c01.fdata.fmax;
-        dataf_apply_gamma(&c01.fdata, cfg->gamma[0], gmin, gmax);
-        // After gamma, data range is [0, 1].
-        minmax[0] = c01.fdata.fmin;
-        minmax[1] = c01.fdata.fmax;
+    // Gamma is part of the float chain. With --cuda it runs device-resident in
+    // the gray block below (kept off the CPU so the upload is paid once);
+    // otherwise it runs here on the CPU. Either way the post-gamma range is
+    // [0,1], so the minmax fed to gray and the colormap metadata match.
+    bool do_gamma = fabsf(cfg->gamma[0] - 1.0f) > 1e-6f && c01.is_float && c01.fdata.data_in;
+    float gmin = 0.0f, gmax = 0.0f;
+    if (do_gamma) {
+        gmin = minmax_provided ? minmax[0] : c01.fdata.fmin;
+        gmax = minmax_provided ? minmax[1] : c01.fdata.fmax;
+        // Mirror dataf_apply_gamma()'s degenerate-range short-circuit so the
+        // CPU and device paths agree on whether gamma actually ran.
+        if (gmax - gmin > 0.0f && !IS_NONDATA(gmin)) {
+            if (!cfg->use_cuda) {
+                LOG_INFO("Applying gamma %.2f", cfg->gamma[0]);
+                dataf_apply_gamma(&c01.fdata, cfg->gamma[0], gmin, gmax);
+            }
+            // After gamma, data range is [0, 1] (both paths).
+            minmax[0] = 0.0f;
+            minmax[1] = 1.0f;
+        } else {
+            do_gamma = false;
+        }
     }
 
     if (is_pseudocolor && !cptdata) {
@@ -321,9 +335,18 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     }
     if (c01.is_float) {
 #ifdef HPSV_CUDA
-        if (cfg->use_cuda)
-            final_image = create_single_gray_cuda(c01.fdata, cfg->invert_values, cfg->use_alpha, minmax[0], minmax[1], is_pseudocolor ? cptdata : NULL);
-        else
+        if (cfg->use_cuda) {
+            // Device-resident chain: upload the float grid once, run gamma (if
+            // any) and gray on the GPU, then download only the uint8 image.
+            DataFDev dev = dataf_dev_upload(&c01.fdata);
+            if (dev.d_data) {
+                if (do_gamma) dataf_dev_apply_gamma(&dev, cfg->gamma[0], gmin, gmax);
+                final_image = create_single_gray_from_dev(&dev, cfg->invert_values, cfg->use_alpha,
+                                                          minmax[0], minmax[1], is_pseudocolor ? cptdata : NULL);
+                dataf_dev_destroy(&dev);
+            }
+            // Upload failure leaves final_image empty; the NULL check below reports it.
+        } else
 #endif
         final_image = create_single_gray(c01.fdata, cfg->invert_values, cfg->use_alpha, minmax[0], minmax[1], is_pseudocolor ? cptdata : NULL);
     } else {

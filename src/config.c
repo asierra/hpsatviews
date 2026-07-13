@@ -360,9 +360,9 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
     // GPU acceleration (opt-in; requires a binary built with CUDA=1).
     cfg->use_cuda = ap_found(parser, "cuda");
 #ifdef HPSV_CUDA
-    if (cfg->use_cuda && cfg->command && strcmp(cfg->command, "rgb") == 0) {
-        LOG_WARN("--cuda: no RGB kernels implemented yet; rgb runs on CPU.");
-    }
+    // rgb: only the default true-color path is GPU-accelerated so far; run_rgb()
+    // warns and falls back to CPU for any other mode/option, so no blanket
+    // message here.
 #else
     if (cfg->use_cuda) {
         LOG_ERROR("--cuda: this binary was built without CUDA support. "

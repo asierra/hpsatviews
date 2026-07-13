@@ -1,0 +1,44 @@
+/* Device-resident true-color composition kernels (synthetic green + RGB
+ * compose), operating on DataFDev buffers so the default true-color chain
+ * (upload C01/C02/C03 -> green -> gamma -> compose -> download) stays on the
+ * GPU, paying the H2D transfer once.
+ * Copyright (c) 2025-2026 Alejandro Aguilar Sierra (asierra@unam.mx)
+ * Laboratorio Nacional de Observación de la Tierra, UNAM
+ *
+ * This file is part of HPSATVIEWS.
+ * Licensed under the GNU General Public License v3.0 (see LICENSE file).
+ *
+ * Solo bajo #ifdef HPSV_CUDA; implementación en src/cuda/truecolor_cuda.cu.
+ */
+#ifndef HPSATVIEWS_CUDA_TRUECOLOR_H_
+#define HPSATVIEWS_CUDA_TRUECOLOR_H_
+
+#include "cuda_dataf.h"
+#include "image.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Verde sintético residente en device: G = 0.465*B + 0.465*R + 0.07*NIR,
+ * NonData si alguna entrada lo es. Réplica de create_truecolor_synthetic_green()
+ * (src/truecolor.c) SIN la reducción min/max: en truecolor el rango de render
+ * es fijo (0..1.1), así que green.fmin/fmax no se usan. Reserva un buffer de
+ * device nuevo; devuelve DataFDev con d_data==NULL si falla. */
+DataFDev create_truecolor_green_from_dev(const DataFDev *blue,
+                                         const DataFDev *red,
+                                         const DataFDev *nir);
+
+/* Composición RGB de 3 DataFDev a imagen uint8 (3 bpp), con stretch lineal
+ * por canal y clamp a [0,1]. Réplica de create_multiband_rgb() (src/truecolor.c).
+ * Baja solo la imagen resultante. ImageData con data==NULL si falla. */
+ImageData create_multiband_rgb_from_dev(const DataFDev *r, const DataFDev *g,
+                                        const DataFDev *b, float r_min,
+                                        float r_max, float g_min, float g_max,
+                                        float b_min, float b_max);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* HPSATVIEWS_CUDA_TRUECOLOR_H_ */

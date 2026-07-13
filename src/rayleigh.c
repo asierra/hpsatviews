@@ -320,7 +320,7 @@ static inline float get_rayleigh_value(const RayleighLUT *lut, float s, float v,
 
 
 /// Loads the embedded Rayleigh LUT for the given ABI channel (table is NULL on failure).
-static RayleighLUT rayleigh_lut_load_from_memory(const uint8_t channel) {
+RayleighLUT rayleigh_lut_load_from_memory(const uint8_t channel) {
     RayleighLUT lut = {0};
     const unsigned char *data;
     unsigned int data_len;

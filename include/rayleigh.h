@@ -48,6 +48,10 @@ void rayleigh_free_navigation(RayleighNav *nav);
 /// LUT-based Rayleigh correction.
 void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t channel, const DataF *redband);
 
+/// Loads the embedded Rayleigh LUT for an ABI channel (table is NULL on failure).
+/// Exposed so the CUDA path can reuse the exact same LUT parsing.
+RayleighLUT rayleigh_lut_load_from_memory(const uint8_t channel);
+
 void rayleigh_lut_destroy(RayleighLUT *lut);
 
 #endif /* HPSATVIEWS_RAYLEIGH_H_ */

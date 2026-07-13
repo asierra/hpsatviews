@@ -41,4 +41,23 @@ fi
 ../bin/hpsv pseudo -v "$ANCHOR_C13" --cuda -o pseudo_cuda.png
 ./compare_image.sh pseudo_cuda.png pseudo_cpu.png
 
-echo "OK: salida CUDA equivalente a la ruta CPU en los 3 casos."
+# Gamma (C13 invertido): cadena residente en device upload -> gamma -> gray.
+# Verifica que la gamma en GPU coincide con dataf_apply_gamma() (CPU) y que
+# encadenar una op extra sobre el DataFDev no altera el resultado.
+../bin/hpsv gray -v "$ANCHOR_C13" -i --gamma 2.0 -o gamma_cpu.png
+../bin/hpsv gray -v "$ANCHOR_C13" -i --gamma 2.0 --cuda -o gamma_cuda.png
+./compare_image.sh gamma_cuda.png gamma_cpu.png
+
+# True color por defecto: cadena residente multi-canal (sube C01/C02/C03 una
+# vez, verde sintético + compose en GPU). Ejercita green_kernel y multiband_kernel.
+../bin/hpsv rgb -v "$ANCHOR_C01" --mode truecolor -o tc_cpu.png
+../bin/hpsv rgb -v "$ANCHOR_C01" --mode truecolor --cuda -o tc_cuda.png
+./compare_image.sh tc_cuda.png tc_cpu.png
+
+# True color + Rayleigh (LUT): cadena residente completa (solar zenith + LUT
+# trilineal + relajación por nubes en device). Ejercita rayleigh_lut_kernel.
+../bin/hpsv rgb -v "$ANCHOR_C01" --mode truecolor --rayleigh -o tcray_cpu.png
+../bin/hpsv rgb -v "$ANCHOR_C01" --mode truecolor --rayleigh --cuda -o tcray_cuda.png
+./compare_image.sh tcray_cuda.png tcray_cpu.png
+
+echo "OK: salida CUDA equivalente a la ruta CPU en los 6 casos."

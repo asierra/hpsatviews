@@ -51,6 +51,91 @@ Notas de corrección verificadas contra el código:
 > cero regresiones en el build por defecto (el flag `--cuda` debe fallar
 > con mensaje claro y la suite CUDA debe saltarse sola).
 
+## Validación y benchmark en GPU (2026-07-13, RTX 5060 Ti, CUDA 13.3 sm_120)
+
+Validado en la estación: `make CUDA=1` compila, `CUDA=1 tests/run_all_tests.sh`
+pasa las 8 suites, equivalencia CPU/GPU **0 píxeles distintos** en todos los
+casos (IR invertido, visible, alfa bpp=2, pseudocolor, gamma).
+
+**Benchmark del kernel gray standalone** (full-disk L1b RadF GOES-19, OpenMP 6
+cores vs CUDA incl. transferencias):
+
+| Canal | Píxeles | CPU OpenMP | CUDA (incl. transf.) | Ratio |
+|---|---|---|---|---|
+| C13 FD 5424² | 29 MP | ~0.020 s | 0.042 s | 2.1× más lento |
+| C01 FD 10848² | 118 MP | 0.087 s | 0.165 s | 1.9× más lento |
+| C02 FD 21696² | 471 MP | 0.399 s | 0.701 s | 1.8× más lento |
+
+**Hallazgo:** el kernel gray es ~2× **más lento** que OpenMP, y el ratio se
+mantiene estable en un rango de 16× de tamaño → es transferencia H2D/D2H +
+`cudaMalloc` escalando lineal con los datos, no overhead fijo amortizable. Un
+kernel trivial por-píxel nunca gana: pagas un round-trip de GB por microsegundos
+de cómputo. **La GPU solo gana si la transferencia se amortiza sobre varias ops
+encadenadas en device.**
+
+### Capa "DataF residente en device" (implementada 2026-07-13)
+
+Prerrequisito para que cualquier kernel Nivel 1 valga la pena. Sube el float una
+sola vez, encadena kernels en GPU, baja solo el uint8 de salida.
+
+| Pieza | Ubicación |
+|---|---|
+| Tipo `DataFDev` + API (`upload`/`destroy`/`apply_gamma`/`gray_from_dev`) | `include/cuda_dataf.h` |
+| Lifecycle + kernel gamma residente | `src/cuda/dataf_dev.cu` |
+| `create_single_gray_from_dev` (reusa `gray_kernel`, sin H2D) | `src/cuda/gray_cuda.cu` |
+| Helper device compartido (`is_nondata_dev`) | `src/cuda/cuda_common.cuh` |
+| Despacho de cadena `upload → gamma → gray → download` | `src/processing.c` (bloque float bajo `--cuda`) |
+| Caso de test gamma | `tests/test_cuda.sh` |
+
+Cada op loguea su propio `[PERF]` para exponer el desglose. **Prueba de
+amortización** (C02 FD 471 MP, cadena `upload → gamma → gray`):
+
+| Op | Costo en la cadena | Costo si fuera aislada |
+|---|---|---|
+| upload (cudaMalloc + H2D) | 0.393 s (1×) | 0.393 s |
+| gamma (kernel) | **0.009 s** | ~0.65 s (round-trip propio) |
+| gray + D2H | 0.254 s | 0.254 s + H2D |
+
+La gamma residente cuesta 9 ms; aislada costaría ~70× más por su propio
+round-trip. **Agregar una op a la cadena cuesta solo su kernel.** Para truecolor
+(~10 ops sobre 3 bandas) esto convierte ~10 transferencias en 1 upload + 1
+download. El kernel gray standalone sigue perdiendo contra OpenMP; el objetivo
+no es acelerar gray, sino tener la infra para que la cadena RGB completa gane.
+
+> **Nota de build:** cambiar entre `make` y `make CUDA=1` requiere `make clean`
+> primero — make no recompila los `.o` de C al cambiar solo `CFLAGS`
+> (`-DHPSV_CUDA`), así que un build mezclado enlaza `config.c` sin CUDA y
+> `--cuda` falla con "built without CUDA support" aunque el binario tenga los
+> kernels. `make clean && make CUDA=1` siempre.
+
+### True color completo residente (implementado 2026-07-13)
+
+El truecolor **por defecto** y con **`--rayleigh`** corren enteros en GPU
+(`compose_truecolor_cuda` en `src/rgb.c`, gate en `run_rgb`): sube C01/C02/C03
+(+ sza/vza/raa si hay Rayleigh) una vez, encadena solar → LUT → green → gamma →
+compose en device, baja una imagen RGB. Kernels en `src/cuda/truecolor_cuda.cu`
+y `src/cuda/rayleigh_cuda.cu`. Fallback a CPU con `LOG_WARN` para
+`--ray-analytic`, sharpen, stretch, modos no-truecolor y custom. Equivalencia
+0 px (CONUS: default, +gamma, +rayleigh).
+
+**Benchmark full-disk truecolor `--rayleigh`** (ref C01, 10848²=118 MP,
+RTX 5060 Ti vs OpenMP 6 cores):
+
+| Sección | CPU | CUDA |
+|---|---|---|
+| Rayleigh LUT (por canal) | ~1.1 s (extrapolado de 0.124 s @ 13 MP) | 0.006 s |
+| Cadena de composición completa | ~3 s | ~0.86 s (incl. 6 uploads + compose D2H) |
+| **Wall-time end-to-end** | 41–42 s | 38–40 s |
+
+La cadena de composición es ~3–4× más rápida y el kernel Rayleigh ~180×, pero
+el **wall-time mejora solo ~2.6 s** porque a nivel total el pipeline pasó a
+estar dominado por **I/O** (leer 3 NetCDF de full-disk + escribir PNG, ~30 s) y
+el **cómputo de navegación en CPU** (`compute_solar_angles_nc` /
+`compute_satellite_angles_nc`, ~8 s). El cuello de botella se movió de cómputo
+de composición a I/O + navegación → siguiente frontera de optimización (no más
+kernels de composición). La navegación (trig por píxel sobre lat/lon) es en sí
+un buen candidato a GPU si se quiere bajar ese wall-time.
+
 ## Pendiente — checklist para la estación de trabajo (RTX 5060 Ti)
 
 0. **En la laptop, antes de nada:** `sudo apt-get install libnetcdf-dev
@@ -80,10 +165,10 @@ Notas de corrección verificadas contra el código:
 
 | Función origen | Ubicación real | Estado | Notas |
 |---|---|---|---|
-| `create_single_gray()` | `src/gray.c` | ✅ portado | Patrón de referencia para el resto. |
-| Corrección gamma | `dataf_apply_gamma()` en `src/datanc.c` (llamada desde `processing.c` y `rgb.c`) | Pendiente | Un `powf()` por píxel; kernel trivial. Buen segundo ejercicio. |
+| `create_single_gray()` | `src/gray.c` | ✅ portado (residente) | `create_single_gray_from_dev`; opera sobre `DataFDev`. |
+| Corrección gamma | `dataf_apply_gamma()` en `src/datanc.c` (llamada desde `processing.c` y `rgb.c`) | ✅ portado (residente) | `dataf_dev_apply_gamma`, in place sobre `DataFDev`. Cuesta 9 ms en la cadena (471 MP): prueba de amortización. Falta la ruta gamma de `rgb.c` (3 canales). |
 | Álgebra de bandas (`--expr`) | `dataf_op_dataf()` / `dataf_op_scalar()` en `src/datanc.c` (el parser en `parse_expr.c` solo produce el `LinearCombo`; la evaluación son ops elemento-a-elemento) | Pendiente | No hace falta compilar expresiones a kernels: basta portar las 2 ops elemento-a-elemento, o un kernel único que evalúe el `LinearCombo` (≤10 términos) por píxel, que además evita N pasadas por memoria. |
-| Composición RGB / green sintético | `src/truecolor.c` | Pendiente | 3 bandas de entrada por píxel de salida, sin dependencia entre píxeles. |
+| Composición RGB / green sintético | `src/truecolor.c` | ✅ portado (residente) | `create_truecolor_green_from_dev` + `create_multiband_rgb_from_dev` (`src/cuda/truecolor_cuda.cu`). El truecolor **por defecto** corre entero en GPU vía `compose_truecolor_cuda` (`src/rgb.c`): sube C01/C02/C03 una vez, green + gamma×3 + compose en device, baja una imagen RGB. Modos/flags avanzados (Rayleigh/sharpen/stretch/custom, no-truecolor) → `LOG_WARN` + CPU. 0 px diff (default, +gamma, y fallback de rayleigh). |
 | `create_single_grayb()` (byte) | `src/gray.c` | Pendiente (hoy: WARN + CPU) | Solo si aparece un caso de uso L2-byte pesado; probablemente no vale la pena. |
 
 ### Nivel 2 — stencil / vecindad local (memoria compartida)
@@ -98,7 +183,7 @@ Notas de corrección verificadas contra el código:
 | Función origen | Ubicación real | Estado | Notas |
 |---|---|---|---|
 | Reproyección geos → lat/lon | `src/reprojection.c` | Pendiente | Gather con acceso fuente no coalescido. Candidato ideal a memoria de textura (interpolación bilineal por hardware). Cuidado con el llenado de nodata fuera del disco (ver Gotchas del proyecto). |
-| Corrección Rayleigh (LUT) | `src/rayleigh.c` | Pendiente | LUTs embebidas de **65,712 bytes por canal** (`rayleigh_lut_c0X_data_len` en `src/rayleigh_lut_embedded.c`): excede por poco el límite de 64 KB de `__constant__`, así que van a textura 3D o global + `__ldg()`. Indexado por sec(SZA), sec(VZA), 180°−Δφ. Incluye la relajación por nubes (rolloff con reflectancia C02 > 0.20). |
+| Corrección Rayleigh (LUT) + solar zenith | `src/rayleigh.c`, `src/truecolor.c` | ✅ portado (residente) | `luts_rayleigh_correction_dev` + `apply_solar_zenith_correction_dev` (`src/cuda/rayleigh_cuda.cu` + `include/cuda_rayleigh.h`). La LUT se parsea en host (se expuso `rayleigh_lut_load_from_memory`) y su tabla (~65 KB) sube a memoria global; lookup trilineal por hilo. Se encadena sobre los `DataFDev` ya subidos en `compose_truecolor_cuda`: solar×3 → LUT(C01, redband=C02) → LUT(C02). **Kernel: 0.124 s (CPU 13 MP) → 0.006 s (GPU 118 MP)**, ~180×. 0 px diff (CONUS). El truecolor `--rayleigh` corre entero en GPU; solo `--ray-analytic`/sharpen/stretch siguen en CPU. **Primera cadena RGB que gana a OpenMP.** |
 
 Para cada kernel nuevo, repetir el patrón ya establecido: firma drop-in en
 `cuda_kernels.h`, implementación en `src/cuda/`, despacho `#ifdef HPSV_CUDA +
@@ -111,9 +196,11 @@ cfg->use_cuda` en el sitio de llamada, y caso de comparación CPU/GPU en
   (`y*width+x`) — ningún cambio de layout necesario.
 - **Transferencias:** medir siempre transferencia + cómputo (los
   `cudaEvent_t` del kernel gray ya lo hacen). Cuando haya varios kernels en
-  cadena (gamma → gray → CLAHE), la ganancia grande será mantener los datos
-  en GPU entre pasos en vez de ida y vuelta por operación — eso pedirá un
-  `DataF` "residente en device" (fase posterior, no ahora).
+  cadena (gamma → gray → CLAHE), la ganancia grande está en mantener los datos
+  en GPU entre pasos en vez de ida y vuelta por operación — el `DataF`
+  "residente en device" (`DataFDev`, `include/cuda_dataf.h`) ya existe y es la
+  base de todo lo que sigue. El benchmark 2026-07-13 confirmó que sin él ningún
+  kernel Nivel 1 gana; con él, cada op extra en la cadena cuesta solo su kernel.
 - **Doble ruta:** la ruta OpenMP no se retira; es el baseline de corrección
   y el fallback de todo entorno sin GPU.
 - **Criterio de aceptación por kernel:** salida equivalente a la versión

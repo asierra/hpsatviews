@@ -13,23 +13,12 @@
 #ifndef HPSATVIEWS_CUDA_KERNELS_H_
 #define HPSATVIEWS_CUDA_KERNELS_H_
 
-#include "image.h"
-#include "datanc.h"
-#include "reader_cpt.h"
-#include <stdbool.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/* Equivalente CUDA de create_single_gray() (src/gray.c). Devuelve una
- * ImageData con data == NULL si falla cualquier operación CUDA. */
-ImageData create_single_gray_cuda(DataF c01, bool invert_value, bool use_alpha,
-                                  float min_val, float max_val,
-                                  const CPTData* cpt);
-
-#ifdef __cplusplus
-}
-#endif
+/* Umbrella público de la aceleración CUDA. Hoy toda la API vive en la capa
+ * residente en device (cuda_dataf.h): subir el float una vez, encadenar
+ * kernels (gamma -> gray -> ...) en GPU y bajar solo el uint8 resultante.
+ * Ver el porqué (transferencia-bound) en docs/cuda-support/CUDA_PLAN.md. */
+#include "cuda_dataf.h"
+#include "cuda_truecolor.h"
+#include "cuda_rayleigh.h"
 
 #endif /* HPSATVIEWS_CUDA_KERNELS_H_ */
