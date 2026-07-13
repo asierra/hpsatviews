@@ -32,6 +32,7 @@ typedef struct {
     bool use_piecewise_stretch; // --stretch: piecewise contrast stretch
     bool use_sharpen;           // --sharpen: ratio sharpening
     bool invert_values;         // Invert scale (IR channels)
+    bool use_cuda;              // --cuda: GPU kernels (requires build with CUDA=1)
     
     // Compositing options
     int scale;                  // Integer scale factor (up- or down-sampling)

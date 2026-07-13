@@ -1,0 +1,135 @@
+# Plan de implementación: soporte CUDA en hpsatviews
+
+## Contexto
+
+`hpsatviews` es un proyecto en C11 + OpenMP para procesamiento de imágenes
+satelitales GOES-R ABI (composiciones RGB, escalas de grises, corrección
+Rayleigh, reproyección geoestacionaria → lat/lon, CLAHE, etc). El objetivo es
+acelerar con CUDA las operaciones más pesadas, manteniendo la versión
+CPU/OpenMP como default y como referencia de corrección.
+
+**Hardware objetivo:** NVIDIA RTX 5060 Ti (Blackwell, `sm_120`), en la
+estación de trabajo. **Ojo:** la máquina de desarrollo donde se integró este
+código NO tiene `nvcc` ni GPU (verificado 2026-07-12); todo lo que requiere
+compilar `.cu` o ejecutar en GPU se valida en la estación.
+
+**Filosofía:** cada kernel es un módulo aislado en `src/cuda/`, seleccionable
+en runtime con `--cuda`, que reemplaza a su contraparte OpenMP sin tocar la
+lógica de negocio. Cero regresiones en el build por defecto: `make` sin
+`CUDA=1` compila exactamente igual que antes y no requiere `nvcc`.
+
+## Estado actual (2026-07-12): integrado al árbol, pendiente de validar en GPU
+
+Los borradores que vivían en esta carpeta ya se integraron (mejorados) al
+árbol del proyecto:
+
+| Pieza | Ubicación | Notas |
+|---|---|---|
+| Build opcional `make CUDA=1` | `Makefile` | `CUDA_ARCH ?= sm_120`, `CUDA_HOME ?= /usr/local/cuda` (ambos sobreescribibles en la línea de make). La regla nvcc genera `.d` de dependencias (`-MMD -MF`, requiere CUDA ≥ 11.2) y respeta `DEBUG=1` (`-g -G`). |
+| Header público | `include/cuda_kernels.h` | Firmas `extern "C"` idénticas a las de `gray.h`; solo se incluye bajo `#ifdef HPSV_CUDA`. |
+| Primer kernel: gray | `src/cuda/gray_cuda.cu` | Puerto de `create_single_gray()`. Un hilo por píxel, bloque 16×16. Mejoras sobre el borrador original: `CUDA_CHECK` ahora hace `goto cleanup` (el borrador retornaba fugando `imout.data`, `d_in`, `d_out` y los eventos); warm-up `cudaFree(0)` para que la creación del contexto CUDA (cientos de ms la primera vez) no contamine el `LOG_TIMING`; se eliminó el `cudaDeviceSynchronize` redundante (el memcpy D2H ya sincroniza). |
+| Flag CLI `--cuda` | `src/main.c` (`add_common_opts`), `src/config.c` (`use_cuda` + validación), `include/config.h` | Común a los 3 comandos. Sin build CUDA: error claro y exit≠0 ("rebuild with make CUDA=1"). Con build CUDA pero comando `rgb`: `LOG_WARN` (aún no hay kernels RGB) y sigue por CPU. Datos byte (int8): `LOG_WARN` y CPU. |
+| Despacho runtime | `src/processing.c` (sitio único de llamada de `create_single_gray`) | `#ifdef HPSV_CUDA` + `cfg->use_cuda`. |
+| Ayuda EN/ES | `include/help_en.h`, `include/help_es.h` | Ambos idiomas en sincronía (requisito del proyecto). |
+| Test de equivalencia | `tests/test_cuda.sh`, registrado en `tests/run_all_tests.sh` | Compara salida `--cuda` vs CPU con `compare_image.sh` (gray IR invertido, gray+alfa bpp=2, pseudocolor con paleta interna). Se salta con éxito si el binario no tiene CUDA o no hay GPU, así que no rompe CI ni entornos sin GPU. `CUDA=1 tests/run_all_tests.sh` compila con CUDA y ejecuta la suite de verdad. |
+
+Notas de corrección verificadas contra el código:
+
+- `NonData = 1.0e+32` (`src/datanc.c:19`) satisface `IS_NONDATA` (≥ 1e30),
+  así que el único chequeo `is_nondata_dev()` del kernel equivale al doble
+  chequeo `!= NonData && !IS_NONDATA` del original. No hay divergencia.
+- `image_create(0,0,0)` devuelve `data == NULL`, que es exactamente lo que
+  `run_processing()` verifica como fallo (`processing.c`), así que el
+  sentinela de error del kernel encaja con el flujo existente.
+
+> **Advertencia (2026-07-12):** ninguno de los cambios integrados pudo
+> compilarse en la laptop de desarrollo: tras la actualización del sistema
+> de ese día faltan paquetes de build (al menos `libwebp-dev`; revisar
+> también `libnetcdf-dev`, `libpng-dev`, `libgdal-dev`). El código C se
+> revisó solo por inspección. Primer paso de la siguiente sesión:
+> reinstalar dependencias, `make` y `tests/run_all_tests.sh` para confirmar
+> cero regresiones en el build por defecto (el flag `--cuda` debe fallar
+> con mensaje claro y la suite CUDA debe saltarse sola).
+
+## Pendiente — checklist para la estación de trabajo (RTX 5060 Ti)
+
+0. **En la laptop, antes de nada:** `sudo apt-get install libnetcdf-dev
+   libpng-dev libgdal-dev libwebp-dev`, luego `make` y
+   `tests/run_all_tests.sh` (build por defecto, sin CUDA).
+1. **Compilar:** `make CUDA=1`. Si `nvcc --version` < 12.8, `sm_120` no
+   existe todavía: usar `make CUDA=1 CUDA_ARCH=sm_89` (funcionalmente
+   correcto, sin features específicas de Blackwell). Si el toolkit no está
+   en `/usr/local/cuda`, pasar `CUDA_HOME=/ruta`.
+2. **Validar equivalencia:** `CUDA=1 tests/run_all_tests.sh` (o
+   `cd tests && ./test_cuda.sh` con el binario ya compilado). Si hay
+   diferencias de píxeles > tolerancia, revisar primero redondeo
+   float→uint8 (CPU trunca igual que el kernel, pero `-O3 -march=native`
+   puede fusionar multiplicaciones con FMA y diferir ±1 LSB — la tolerancia
+   de `compare_image.sh` lo absorbe).
+3. **Medir:** correr con `-v` sobre un full-disk real y comparar los
+   `[PERF]` de `Single Gray` (OpenMP) vs `Single Gray (CUDA, incl.
+   transferencias)`. El baseline justo es OpenMP multi-hilo, no serial.
+   Si la transferencia H2D/D2H domina, anotar el desglose antes de
+   optimizar kernels (afecta la prioridad de todo el roadmap).
+4. **Documentar:** agregar `--cuda` y `make CUDA=1` al README y a las
+   páginas man (`man/hpsv.1`, `man/hpsv.es.1`) antes de mergear a `main`.
+
+## Roadmap de kernels (ubicaciones verificadas en el código)
+
+### Nivel 1 — por-píxel independientes (sin dependencia entre hilos)
+
+| Función origen | Ubicación real | Estado | Notas |
+|---|---|---|---|
+| `create_single_gray()` | `src/gray.c` | ✅ portado | Patrón de referencia para el resto. |
+| Corrección gamma | `dataf_apply_gamma()` en `src/datanc.c` (llamada desde `processing.c` y `rgb.c`) | Pendiente | Un `powf()` por píxel; kernel trivial. Buen segundo ejercicio. |
+| Álgebra de bandas (`--expr`) | `dataf_op_dataf()` / `dataf_op_scalar()` en `src/datanc.c` (el parser en `parse_expr.c` solo produce el `LinearCombo`; la evaluación son ops elemento-a-elemento) | Pendiente | No hace falta compilar expresiones a kernels: basta portar las 2 ops elemento-a-elemento, o un kernel único que evalúe el `LinearCombo` (≤10 términos) por píxel, que además evita N pasadas por memoria. |
+| Composición RGB / green sintético | `src/truecolor.c` | Pendiente | 3 bandas de entrada por píxel de salida, sin dependencia entre píxeles. |
+| `create_single_grayb()` (byte) | `src/gray.c` | Pendiente (hoy: WARN + CPU) | Solo si aparece un caso de uso L2-byte pesado; probablemente no vale la pena. |
+
+### Nivel 2 — stencil / vecindad local (memoria compartida)
+
+| Función origen | Ubicación real | Estado | Notas |
+|---|---|---|---|
+| CLAHE | `image_apply_clahe()` en `src/image.c` | Pendiente | Histograma por tile (atomics/shared) + interpolación bilineal entre tiles. Referencia: PMPP, caps. de shared memory e histogramas. |
+| Ratio sharpening | `dataf_ratio_sharpen_map()` en `src/truecolor.c:236` + `dataf_mean_2x2()` en `src/datanc.c` | Pendiente | Media por bloque 2×2 → tiling clásico con shared memory. |
+
+### Nivel 3 — gather / lookup (mayor beneficio potencial, el más delicado)
+
+| Función origen | Ubicación real | Estado | Notas |
+|---|---|---|---|
+| Reproyección geos → lat/lon | `src/reprojection.c` | Pendiente | Gather con acceso fuente no coalescido. Candidato ideal a memoria de textura (interpolación bilineal por hardware). Cuidado con el llenado de nodata fuera del disco (ver Gotchas del proyecto). |
+| Corrección Rayleigh (LUT) | `src/rayleigh.c` | Pendiente | LUTs embebidas de **65,712 bytes por canal** (`rayleigh_lut_c0X_data_len` en `src/rayleigh_lut_embedded.c`): excede por poco el límite de 64 KB de `__constant__`, así que van a textura 3D o global + `__ldg()`. Indexado por sec(SZA), sec(VZA), 180°−Δφ. Incluye la relajación por nubes (rolloff con reflectancia C02 > 0.20). |
+
+Para cada kernel nuevo, repetir el patrón ya establecido: firma drop-in en
+`cuda_kernels.h`, implementación en `src/cuda/`, despacho `#ifdef HPSV_CUDA +
+cfg->use_cuda` en el sitio de llamada, y caso de comparación CPU/GPU en
+`tests/test_cuda.sh`.
+
+## Consideraciones transversales
+
+- **Layout:** `DataF`/`DataB`/`ImageData` ya son buffers planos row-major
+  (`y*width+x`) — ningún cambio de layout necesario.
+- **Transferencias:** medir siempre transferencia + cómputo (los
+  `cudaEvent_t` del kernel gray ya lo hacen). Cuando haya varios kernels en
+  cadena (gamma → gray → CLAHE), la ganancia grande será mantener los datos
+  en GPU entre pasos en vez de ida y vuelta por operación — eso pedirá un
+  `DataF` "residente en device" (fase posterior, no ahora).
+- **Doble ruta:** la ruta OpenMP no se retira; es el baseline de corrección
+  y el fallback de todo entorno sin GPU.
+- **Criterio de aceptación por kernel:** salida equivalente a la versión
+  OpenMP sobre datos reales de `sample_data/` dentro de la tolerancia de
+  `compare_image.sh` — no solo "compila y corre".
+- **Métrica de rendimiento:** CUDA vs OpenMP multi-hilo real, no vs serial.
+
+## Referencias
+
+- Hwu, Kirk, El Hajj — *Programming Massively Parallel Processors*, 5ª ed.
+  Caps. de jerarquía de memoria, coalescencia, shared memory, histogramas
+  y textura aplican directamente a los niveles 2 y 3.
+
+## Historial
+
+- Los borradores originales de esta carpeta (`gray_cuda.cu`,
+  `cuda_kernels.h`, `hpsatviews_makefile.diff`) se integraron al árbol el
+  2026-07-12 con las correcciones descritas arriba y se eliminaron de aquí
+  para evitar duplicados desincronizados.

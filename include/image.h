@@ -34,7 +34,9 @@ typedef struct {
 
 static inline ColorArray *color_array_create(unsigned size) {
   ColorArray *color_array;
-  color_array = malloc(sizeof(ColorArray) + sizeof(Color) * size);
+  /* Cast requerido: este header también se compila como C++ (nvcc, vía
+   * cuda_kernels.h), donde void* no convierte implícitamente. */
+  color_array = (ColorArray *)malloc(sizeof(ColorArray) + sizeof(Color) * size);
   color_array->length = size;
   return color_array;
 }

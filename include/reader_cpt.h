@@ -39,7 +39,9 @@ typedef struct {
 
 
 static inline CPTData *cpt_create(unsigned int num_colors, bool has_nan_color) {
-	CPTData* cpt = malloc(sizeof(CPTData));
+	/* Cast requerido: este header también se compila como C++ (nvcc, vía
+	 * cuda_kernels.h), donde void* no convierte implícitamente. */
+	CPTData* cpt = (CPTData*)malloc(sizeof(CPTData));
 	memset(cpt, 0, sizeof(CPTData));
     cpt->num_colors = num_colors;
     cpt->has_foreground = false;

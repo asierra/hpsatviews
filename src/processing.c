@@ -19,6 +19,9 @@
 #include "datanc.h"
 #include "clip_loader.h"
 #include "gray.h"
+#ifdef HPSV_CUDA
+#include "cuda_kernels.h"
+#endif
 #include "parse_expr.h"
 #include "channelset.h"
 #include "palette.h"
@@ -317,8 +320,15 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         colormap_meta.val_max = minmax[1];
     }
     if (c01.is_float) {
+#ifdef HPSV_CUDA
+        if (cfg->use_cuda)
+            final_image = create_single_gray_cuda(c01.fdata, cfg->invert_values, cfg->use_alpha, minmax[0], minmax[1], is_pseudocolor ? cptdata : NULL);
+        else
+#endif
         final_image = create_single_gray(c01.fdata, cfg->invert_values, cfg->use_alpha, minmax[0], minmax[1], is_pseudocolor ? cptdata : NULL);
     } else {
+        if (cfg->use_cuda)
+            LOG_WARN("--cuda: not implemented for byte (int8) data; using CPU path.");
         final_image = create_single_grayb(c01.bdata, cfg->invert_values, cfg->use_alpha, is_pseudocolor ? cptdata : NULL);
     }
     

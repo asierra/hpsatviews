@@ -356,6 +356,20 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
     
     // Histogram equalization.
     cfg->apply_histogram = ap_found(parser, "histo");
+
+    // GPU acceleration (opt-in; requires a binary built with CUDA=1).
+    cfg->use_cuda = ap_found(parser, "cuda");
+#ifdef HPSV_CUDA
+    if (cfg->use_cuda && cfg->command && strcmp(cfg->command, "rgb") == 0) {
+        LOG_WARN("--cuda: no RGB kernels implemented yet; rgb runs on CPU.");
+    }
+#else
+    if (cfg->use_cuda) {
+        LOG_ERROR("--cuda: this binary was built without CUDA support. "
+                  "Rebuild with 'make CUDA=1'.");
+        return false;
+    }
+#endif
     
     // Rayleigh atmospheric correction (RGB mode only).
     if (cfg->command && strcmp(cfg->command, "rgb") == 0) {

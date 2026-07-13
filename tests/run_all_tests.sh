@@ -63,9 +63,10 @@ run_test_suite() {
     echo
 }
 
-# Compilar proyecto primero
+# Compilar proyecto primero. Con CUDA=1 en el entorno, compila también los
+# kernels GPU y habilita la suite CUDA (ej: CUDA=1 tests/run_all_tests.sh).
 echo -e "${YELLOW}Compilando proyecto...${NC}"
-if make -C "$REPO_DIR" clean > /dev/null 2>&1 && make -C "$REPO_DIR" > /dev/null 2>&1; then
+if make -C "$REPO_DIR" clean > /dev/null 2>&1 && make -C "$REPO_DIR" ${CUDA:+CUDA=$CUDA} > /dev/null 2>&1; then
     echo -e "${GREEN}✓ Compilación exitosa${NC}"
     echo
 else
@@ -83,6 +84,8 @@ run_test_suite "CLAHE"          "test_clahe.sh"        "$SCRIPT_DIR"
 run_test_suite "GeoTIFF"        "test_geotiff.sh"      "$SCRIPT_DIR"
 run_test_suite "Reprojection"   "test_reprojection.sh" "$SCRIPT_DIR"
 run_test_suite "JSON Sidecar"   "test_json.sh"         "$SCRIPT_DIR"
+# Se salta solo (exit 0) si el binario no tiene CUDA o no hay GPU.
+run_test_suite "CUDA vs CPU"    "test_cuda.sh"         "$SCRIPT_DIR"
 
 # Resumen final
 echo "========================================"

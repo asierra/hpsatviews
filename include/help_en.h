@@ -33,6 +33,8 @@ static const char *HPSATVIEWS_HELP =
 "                      default parameters (8,8,4.0).\n"
 "  --clahe-params <p>  Implies CLAHE with params: tiles_x,tiles_y,clip_limit.\n"
 "  -j, --json          Save metadata to a JSON sidecar file alongside the image.\n"
+"  --cuda              Use GPU (CUDA) kernels where available (gray/pseudocolor).\n"
+"                      Requires a binary built with 'make CUDA=1'.\n"
 "  -v, --verbose       Enable detailed diagnostic messages (DEBUG level).\n"
 "\n"
 "Patterns for --out and Automatic Naming:\n"
