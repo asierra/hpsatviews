@@ -102,6 +102,93 @@ void reprojection_find_pixel_for_coord(const DataF* navla, const DataF* navlo,
     *out_iy = best_iy;
 }
 
+ReprojPlan reproject_build_plan(const ImageData* src_image, const DataNC* data_nc,
+                                float lat_min, float lat_max, float lon_min, float lon_max,
+                                float native_resolution_km, const float* clip_coords) {
+    ReprojPlan plan = {0};
+    if (!src_image || !src_image->data || !data_nc || !data_nc->proj_info.valid) {
+        LOG_ERROR("Invalid parameters for reprojection plan.");
+        return plan;
+    }
+
+    double a   = data_nc->proj_info.semi_major;
+    double b   = data_nc->proj_info.semi_minor;
+    double H   = a + data_nc->proj_info.sat_height;
+    double e2  = (a * a - b * b) / (a * a);
+    double a2  = a * a;
+    double b2  = b * b;
+    double lambda0 = data_nc->proj_info.lon_origin * (M_PI / 180.0);
+
+    const double *gt = data_nc->geotransform;
+    unsigned int src_w = data_nc->fdata.width > 0 ? data_nc->fdata.width :
+                         (data_nc->bdata.width > 0 ? data_nc->bdata.width : src_image->width);
+    unsigned int src_h = data_nc->fdata.height > 0 ? data_nc->fdata.height :
+                         (data_nc->bdata.height > 0 ? data_nc->bdata.height : src_image->height);
+
+    float target_lon_min, target_lon_max, target_lat_min, target_lat_max;
+    if (clip_coords) {
+        target_lon_min = (clip_coords[0] > lon_min) ? clip_coords[0] : lon_min;
+        target_lon_max = (clip_coords[2] < lon_max) ? clip_coords[2] : lon_max;
+        target_lat_min = (clip_coords[3] > lat_min) ? clip_coords[3] : lat_min;
+        target_lat_max = (clip_coords[1] < lat_max) ? clip_coords[1] : lat_max;
+    } else {
+        target_lon_min = lon_min;
+        target_lon_max = lon_max;
+        target_lat_min = lat_min;
+        target_lat_max = lat_max;
+    }
+
+    float lon_range = target_lon_max - target_lon_min;
+    float lat_range = target_lat_max - target_lat_min;
+    float lat_center = (target_lat_min + target_lat_max) / 2.0f;
+    float lat_rad_c = lat_center * (float)(M_PI / 180.0);
+    float km_per_deg_lat = 111.132954f - 0.559822f * cosf(2.0f * lat_rad_c);
+    float target_res_km = (native_resolution_km > 0.0f) ? native_resolution_km : 1.0f;
+    float target_res_deg = target_res_km / km_per_deg_lat;
+
+    size_t width  = (size_t)(lon_range / target_res_deg + 0.5f);
+    size_t height = (size_t)(lat_range / target_res_deg + 0.5f);
+    if (width  < 10) width  = 10;
+    if (height < 10) height = 10;
+    const size_t MAX_DIM = 10000;
+    if (width  > MAX_DIM) width  = MAX_DIM;
+    if (height > MAX_DIM) height = MAX_DIM;
+
+    double safe_gt[6];
+    for (int i = 0; i < 6; i++) safe_gt[i] = gt[i];
+    if (safe_gt[1] == 0.0 || safe_gt[5] == 0.0 || fabs(safe_gt[1]) > 1.0) {
+        LOG_WARN("Invalid geotransform. Generating analytic fallback for Full Disk.");
+        double fov = 0.303744; // FOV Radianes estandar de GOES-R FD
+        safe_gt[0] = -fov / 2.0;
+        safe_gt[1] = fov / (double)src_w;
+        safe_gt[2] = 0.0;
+        safe_gt[3] = fov / 2.0;
+        safe_gt[4] = 0.0;
+        safe_gt[5] = -fov / (double)src_h;
+    }
+
+    LOG_DEBUG("Reprojection params: a=%.1f, b=%.1f, H=%.1f", a, b, H);
+    LOG_DEBUG("Original reprojection GT: [%.6f, %.6f, %.6f, %.6f]", gt[0], gt[1], gt[3], gt[5]);
+
+    plan.width  = (unsigned int)width;
+    plan.height = (unsigned int)height;
+    plan.bpp    = src_image->bpp;
+    plan.src_w  = src_w;
+    plan.src_h  = src_h;
+    plan.target_lon_min = target_lon_min;
+    plan.target_lat_max = target_lat_max;
+    plan.deg_per_px_lon = (double)lon_range / (double)width;
+    plan.deg_per_px_lat = (double)lat_range / (double)height;
+    plan.b2_over_a2 = b2 / a2;
+    plan.e2 = e2;
+    plan.b = b;
+    plan.H = H;
+    plan.a2_over_b2 = a2 / b2;
+    plan.lambda0 = lambda0;
+    memcpy(plan.safe_gt, safe_gt, sizeof(safe_gt));
+    return plan;
+}
+
 ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* data_nc,
                                      float lat_min, float lat_max,
                                      float lon_min, float lon_max,

@@ -37,4 +37,22 @@ ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* d
                                      const float* clip_coords,
                                      const unsigned char* nodata_pixel);
 
+/* Precomputed reprojection geometry: everything the per-output-pixel inverse
+ * scan-angle math needs, computed once. Shared by the CPU loop and the CUDA
+ * gather kernel so both use the exact same projection setup. */
+typedef struct {
+    unsigned int width, height, bpp;   ///< output dims + bytes/pixel (width==0 on failure)
+    unsigned int src_w, src_h;         ///< source (fixed-grid) dims
+    double target_lon_min, target_lat_max;
+    double deg_per_px_lon, deg_per_px_lat;
+    double b2_over_a2, e2, b, H, a2_over_b2, lambda0;
+    double safe_gt[6];
+} ReprojPlan;
+
+/// Builds the reprojection plan (output size, target extent, projection params).
+/// Returns a plan with width==0 if the inputs are invalid.
+ReprojPlan reproject_build_plan(const ImageData* src_image, const DataNC* data_nc,
+                                float lat_min, float lat_max, float lon_min, float lon_max,
+                                float native_resolution_km, const float* clip_coords);
+
 #endif /* HPSATVIEWS_REPROJECTION_H_ */

@@ -603,6 +603,7 @@ remuestrear y codificar, no aritmética.
 | Geometría de vista (solar + satélite + azimut) | ~8 s | 0.33 s | **~24×** |
 | Corrección Rayleigh por LUT (por canal) | ~1.1 s | 0.006 s | **~180×** |
 | Verde sintético + composición RGB | ~0.5 s | ~0.03 s | — |
+| Reproyección a lat/lon (con `-G`/`-B`) | ~2.3 s | 0.30 s | **~7.5×** |
 
 Las aceleraciones por etapa son grandes, pero la ganancia total está acotada por
 las etapas de I/O que dominan un render de disco completo.

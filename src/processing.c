@@ -482,6 +482,23 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         }
 
         // Reproject using the original, unaltered image.
+#ifdef HPSV_CUDA
+        ImageData geo_base = cfg->use_cuda
+            ? reproject_image_analytical_cuda(
+                  &final_image, &c01,
+                  navla_full.fmin, navla_full.fmax,
+                  navlo_full.fmin, navlo_full.fmax,
+                  c01.native_resolution_km,
+                  cfg->has_clip ? cfg->clip_coords : NULL,
+                  nodata_pixel)
+            : reproject_image_analytical(
+                  &final_image, &c01,
+                  navla_full.fmin, navla_full.fmax,
+                  navlo_full.fmin, navlo_full.fmax,
+                  c01.native_resolution_km,
+                  cfg->has_clip ? cfg->clip_coords : NULL,
+                  nodata_pixel);
+#else
         ImageData geo_base = reproject_image_analytical(
             &final_image, &c01,
             navla_full.fmin, navla_full.fmax,
@@ -490,6 +507,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             cfg->has_clip ? cfg->clip_coords : NULL,
             nodata_pixel
         );
+#endif
 
         float final_lon_min, final_lon_max, final_lat_min, final_lat_max;
         if (cfg->has_clip) {

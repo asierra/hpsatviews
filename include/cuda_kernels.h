@@ -21,5 +21,6 @@
 #include "cuda_truecolor.h"
 #include "cuda_rayleigh.h"
 #include "cuda_nav.h"
+#include "cuda_reproject.h"
 
 #endif /* HPSATVIEWS_CUDA_KERNELS_H_ */

@@ -601,6 +601,7 @@ time is reading, resampling and encoding, not arithmetic.
 | Viewing geometry (solar + satellite + azimuth) | ~8 s | 0.33 s | **~24×** |
 | Rayleigh LUT correction (per channel) | ~1.1 s | 0.006 s | **~180×** |
 | Synthetic green + RGB compose | ~0.5 s | ~0.03 s | — |
+| Reprojection to lat/lon (with `-G`/`-B`) | ~2.3 s | 0.30 s | **~7.5×** |
 
 The per-stage speedups are large, but end-to-end gains are bounded by the I/O
 stages that dominate a full-disk render.

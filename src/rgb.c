@@ -1110,11 +1110,25 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         // the same convention already used for interior NonData pixels in apply_enhancements().
         unsigned char nodata_pattern[4] = {0};
         const unsigned char *nodata_pixel = ctx.opts.use_alpha ? nodata_pattern : NULL;
+#ifdef HPSV_CUDA
+        ImageData reprojected = cfg->use_cuda
+            ? reproject_image_analytical_cuda(
+                  &ctx.final_image, &ctx.channels[ctx.ref_channel_idx], ctx.nav_lat.fmin,
+                  ctx.nav_lat.fmax, ctx.nav_lon.fmin, ctx.nav_lon.fmax,
+                  ctx.channels[ctx.ref_channel_idx].native_resolution_km,
+                  ctx.opts.has_clip ? ctx.opts.clip_coords : NULL, nodata_pixel)
+            : reproject_image_analytical(
+                  &ctx.final_image, &ctx.channels[ctx.ref_channel_idx], ctx.nav_lat.fmin,
+                  ctx.nav_lat.fmax, ctx.nav_lon.fmin, ctx.nav_lon.fmax,
+                  ctx.channels[ctx.ref_channel_idx].native_resolution_km,
+                  ctx.opts.has_clip ? ctx.opts.clip_coords : NULL, nodata_pixel);
+#else
         ImageData reprojected = reproject_image_analytical(
             &ctx.final_image, &ctx.channels[ctx.ref_channel_idx], ctx.nav_lat.fmin,
             ctx.nav_lat.fmax, ctx.nav_lon.fmin, ctx.nav_lon.fmax,
             ctx.channels[ctx.ref_channel_idx].native_resolution_km,
             ctx.opts.has_clip ? ctx.opts.clip_coords : NULL, nodata_pixel);
+#endif
 
         if (reprojected.data == NULL) {
             LOG_ERROR("Failure during reprojection.");

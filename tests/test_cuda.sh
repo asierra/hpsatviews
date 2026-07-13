@@ -61,4 +61,16 @@ fi
 ../bin/hpsv rgb -v "$ANCHOR_C01" --mode truecolor --rayleigh --cuda -o tcray_cuda.png
 ./compare_image.sh tcray_cuda.png tcray_cpu.png
 
-echo "OK: salida CUDA equivalente a la ruta CPU en los 6 casos."
+# Reproyección geos -> lat/lon (-G), vecino más cercano (gray, bpp=1): ejercita
+# reproject_kernel en la rama nearest.
+../bin/hpsv gray -v "$ANCHOR_C13" -i -G -o reproj_gray_cpu.png
+../bin/hpsv gray -v "$ANCHOR_C13" -i -G --cuda -o reproj_gray_cuda.png
+./compare_image.sh reproj_gray_cuda.png reproj_gray_cpu.png
+
+# Reproyección (-G) bilineal (truecolor, bpp=3): ejercita la rama bilineal del
+# reproject_kernel y el relleno de nodata fuera del disco.
+../bin/hpsv rgb -v "$ANCHOR_C01" --mode truecolor -G -o reproj_tc_cpu.png
+../bin/hpsv rgb -v "$ANCHOR_C01" --mode truecolor -G --cuda -o reproj_tc_cuda.png
+./compare_image.sh reproj_tc_cuda.png reproj_tc_cpu.png
+
+echo "OK: salida CUDA equivalente a la ruta CPU en los 8 casos."
