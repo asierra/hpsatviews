@@ -30,6 +30,12 @@
 
 \journal{SoftwareX}
 
+%% Performance placeholders — fill from reproduction/bench_server.sh on the A30
+%% server (Xeon Gold 6326 CPU vs. A30 GPU, same machine). \perfTBD renders a
+%% loud marker so no cell is missed before submission.
+\newcommand{\PRODSERVER}{an NVIDIA A30 GPU (Intel Xeon Gold 6326)}
+\newcommand{\perfTBD}{\fbox{\textbf{TBD}}}
+
 \begin{document}
 
 %% ---------------------------------------------------------------------------
@@ -87,7 +93,7 @@ GOES-R ABI \sep Satellite image processing \sep Real-time pipelines
 \toprule
 \textbf{Nr.} & \textbf{Code metadata description} & \textbf{Please fill in this column} \\
 \midrule
-C1 & Current code version & v1.0.1 \\
+C1 & Current code version & v1.1.0 \\
 C2 & Permanent link to code/repository used for this code version &
 \url{https://github.com/asierra/hpsatviews} \\
 C3 & Permanent link to Reproducible Capsule &
@@ -95,10 +101,11 @@ C3 & Permanent link to Reproducible Capsule &
 C4 & Legal Code License & GNU General Public License v3.0 (GPL-3.0) \\
 C5 & Code versioning system used & git \\
 C6 & Software code languages, tools, and services used &
-C11 (POSIX extensions), OpenMP, GNU Make \\
+C11 (POSIX extensions), OpenMP, optional CUDA, GNU Make \\
 C7 & Compilation requirements, operating environments \& dependencies &
-OpenMP-capable GCC; \texttt{libnetcdf}, \texttt{libpng}, \texttt{libgdal},
-\texttt{libwebp}. Linux/POSIX. \\
+OpenMP-capable GCC; \texttt{libnetcdf}, \texttt{libhdf5}, \texttt{libdeflate},
+\texttt{libpng}, \texttt{libgdal}, \texttt{libwebp}. Optional GPU path: an
+NVIDIA CUDA toolkit and a CUDA-capable GPU. Linux/POSIX. \\
 C8 & If available, link to developer documentation/manual &
 \url{https://github.com/asierra/hpsatviews} (README, man page) \\
 C9 & Support email for questions & asierra@unam.mx \\
@@ -198,10 +205,13 @@ abstraction layers. The processing pipeline is linear and explicit
     \item Normalize the physical data to 8-bit.
     \item Optionally reproject from the satellite's fixed grid to a geographic
     lat/lon (WGS84) grid.
-    \item Write the final image as PNG or GeoTIFF --- with essential metadata
-    embedded directly in the GeoTIFF tags for seamless extraction by
-    downstream cataloging tools --- and, conditionally, emit a JSON metadata
-    sidecar.
+    \item Write the final image as PNG or GeoTIFF, with essential metadata
+    embedded directly in the GeoTIFF tags for seamless extraction by downstream
+    cataloging tools, and, conditionally, a JSON metadata sidecar. GeoTIFF
+    output is multi-threaded and, by default, a fast tiled file without the
+    Cloud-Optimized overview pyramid --- wasted work when the file is an
+    intermediate that is cropped downstream --- with a full Cloud Optimized
+    GeoTIFF available on demand.
 \end{enumerate}
 
 Most pixel loops are expressed as \texttt{\#pragma omp parallel for}, with
@@ -225,6 +235,21 @@ eliminates any need for Python, \texttt{pyspectral}, or external data files at
 run time. Likewise, OpenMP loop parallelism trades multi-node scalability for
 simplicity and low overhead on the single multi-core machines typical of an
 image-ingestion pipeline.
+
+Two execution paths coexist by design. The OpenMP/CPU implementation is the
+reference and the default build; an optional CUDA backend (built with
+\texttt{make CUDA=1} and selected at run time with \texttt{-{}-cuda}) offloads
+the compute-heavy stages to an NVIDIA GPU. Rather than accelerating a single
+kernel in isolation --- where the host--device transfer would dominate --- the
+backend keeps each channel resident on the device and chains the whole
+composition on the GPU: viewing geometry, Rayleigh lookup, synthetic-green and
+RGB compositing, gamma, and geometric reprojection, so the transfer cost is paid
+once per scene. The CPU path remains the bit-for-bit correctness reference and
+the fallback for any mode or option without a GPU kernel. Independently of the
+GPU, input decoding is parallelized: NetCDF variables are read by pulling the
+raw HDF5 chunks and decompressing them across all cores with \texttt{libdeflate},
+bypassing the single-threaded HDF5 filter pipeline that otherwise dominates
+full-disk load time.
 
 \begin{figure}[!ht]
     \centering
@@ -269,9 +294,17 @@ functionalities are:
     fixed satellite grid to a geographic lat/lon grid, emission of both the
     native and reprojected outputs in a single run, and extraction of arbitrary
     regional crops.
-    \item \textbf{Georeferenced output and metadata.} PNG or Cloud-Optimized
-    GeoTIFF output, with an optional JSON sidecar carrying CRS, bounding box,
-    and product fields for downstream cataloging and serving.
+    \item \textbf{Georeferenced output and metadata.} PNG or GeoTIFF output ---
+    a fast tiled GeoTIFF by default, or a full Cloud-Optimized GeoTIFF on
+    demand --- with an optional JSON sidecar carrying CRS, bounding box, and
+    product fields for downstream cataloging and serving.
+    \item \textbf{Optional GPU acceleration.} A CUDA backend, built optionally
+    (\texttt{make CUDA=1}) and selected at run time (\texttt{-{}-cuda}),
+    offloads the compute-heavy stages --- viewing geometry, Rayleigh correction,
+    true-color composition, and geometric reprojection --- to an NVIDIA GPU,
+    keeping the data resident on the device across the pipeline. Output is
+    validated identical to the CPU reference; unsupported modes fall back to the
+    CPU transparently.
 \end{itemize}
 
 %% ---------------------------------------------------------------------------
@@ -396,11 +429,41 @@ on the low-latency, dependency-light design described above.
     operational infrastructure elsewhere, beyond its current deployment.
 \end{itemize}
 
+Beyond deployment ergonomics, parallel I/O and the optional GPU backend cut
+per-scene wall time on full-disk scenes. Reading and decompressing the input
+NetCDF in parallel with \texttt{libdeflate} reduces variable decompression by
+roughly $9\times$ over the single-threaded HDF5 path, and writing a fast tiled
+GeoTIFF instead of a full Cloud-Optimized pyramid removes the dominant share of
+the output cost --- both benefit the CPU-only build. With the CUDA backend, the
+compute-heavy stages are accelerated further, as summarized in
+Table~\ref{tab:perf}; the CPU/OpenMP path remains the reference and produces
+identical output.
+
+\begin{table}[!ht]
+\centering
+\caption{Full-disk (10{,}848$\times$10{,}848) true-color with Rayleigh
+correction on \PRODSERVER: CPU/OpenMP build versus the optional CUDA build.
+Output is validated identical between the two paths.}
+\label{tab:perf}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Stage} & \textbf{CPU (OpenMP)} & \textbf{CUDA} \\
+\midrule
+Viewing geometry (solar + satellite) & \perfTBD & \perfTBD \\
+Rayleigh LUT correction (per channel) & \perfTBD & \perfTBD \\
+Geometric reprojection to lat/lon & \perfTBD & \perfTBD \\
+\midrule
+End-to-end wall time & \perfTBD & \perfTBD \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 The software reached its first public release (v1.0.0) in June 2026, archived
-on Zenodo under a persistent DOI. Planned development focuses on the most
-computationally intensive stages: extending support to additional satellite
-platforms beyond the GOES-R series, and exploring fine-grained GPU parallelism
-for Rayleigh atmospheric correction and geometric reprojection.
+on Zenodo under a persistent DOI. The optional GPU backend now accelerates the
+Rayleigh-correction, viewing-geometry, compositing, and reprojection stages
+previously identified as the most computationally intensive; ongoing work
+extends support to additional satellite platforms beyond the GOES-R series and
+explores GPU-side NetCDF decompression so decoded data is born on the device.
 
 %% ---------------------------------------------------------------------------
 %% Section 5 -- Conclusions

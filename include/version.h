@@ -10,8 +10,8 @@
 
 // Version components (major.minor.patch).
 #define HPSV_VERSION_MAJOR 1
-#define HPSV_VERSION_MINOR 0
-#define HPSV_VERSION_PATCH 1
+#define HPSV_VERSION_MINOR 1
+#define HPSV_VERSION_PATCH 0
 
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
