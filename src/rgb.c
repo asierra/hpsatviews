@@ -371,8 +371,8 @@ static bool compose_daynite(RgbContext *ctx) {
     if (!compose_truecolor(ctx)) {
         return false;
     }
-    // Force citylights for the night composite.
-    ctx->opts.use_citylights = true;
+    // City lights on the night side follow the user's -l/--citylights flag
+    // (same as standalone night mode), not forced on.
     if (!compose_night(ctx)) {
         return false;
     }
