@@ -8,7 +8,7 @@
  * Firmas idénticas a sus contrapartes en gray.h/rgb.h/etc. para que
  * puedan usarse como reemplazo drop-in seleccionable en runtime (--cuda).
  * Solo tiene sentido incluir este header bajo #ifdef HPSV_CUDA: las
- * implementaciones viven en src/cuda/*.cu y solo se compilan con CUDA=1.
+ * implementaciones viven en los .cu de src/cuda/ y solo se compilan con CUDA=1.
  */
 #ifndef HPSATVIEWS_CUDA_KERNELS_H_
 #define HPSATVIEWS_CUDA_KERNELS_H_
@@ -17,6 +17,7 @@
  * residente en device (cuda_dataf.h): subir el float una vez, encadenar
  * kernels (gamma -> gray -> ...) en GPU y bajar solo el uint8 resultante.
  * Ver el porqué (transferencia-bound) en docs/cuda-support/CUDA_PLAN.md. */
+#include "cuda_device.h"
 #include "cuda_dataf.h"
 #include "cuda_truecolor.h"
 #include "cuda_rayleigh.h"

@@ -22,6 +22,28 @@ El Makefile compila para `CUDA_ARCH ?= sm_120` (RTX 50xx). Ajústalo a tu GPU:
 `nvidia-smi` muestra el **driver** (y su CUDA máx), no `nvcc`. El toolkit (nvcc)
 se instala aparte. Cualquier CUDA ≥ 11 soporta `sm_75`/`sm_80`.
 
+No hace falta adivinar si acertaste: al resolver `--cuda`, `hpsv` reporta el
+dispositivo que agarró y verifica que el binario tenga código para él, antes de
+leer ningún NetCDF.
+
+```
+INFO : CUDA device 0: Tesla T4 (sm_75, 40 SMs, 14912/15360 MiB free)
+```
+
+Con la arch equivocada (p.ej. el build por defecto `sm_120` en una T4) la corrida
+aborta ahí mismo, con exit ≠ 0, en vez de fallar a media pipeline:
+
+```
+ERROR: --cuda: this binary has no device code for Tesla T4 (sm_75): no kernel
+       image is available for execution on the device. Rebuild with
+       'make clean && make CUDA=1 CUDA_ARCH=sm_75'.
+```
+
+Ojo: `-arch=sm_XX` también embebe PTX, así que un binario compilado para una arch
+**menor** que la GPU sí corre (el driver lo JIT-compila, pagando ~100 ms al primer
+kernel). Lo que nunca funciona es al revés: PTX de `compute_120` no baja a `sm_75`.
+Compila para la arch exacta del servidor.
+
 ## 2. Dependencias por distro
 
 **Debian/Ubuntu:**

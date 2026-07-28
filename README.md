@@ -571,6 +571,12 @@ and the OpenMP/CPU path remains the reference implementation. Build with
 identical to the CPU path (bit-for-bit on the sample data; within the test
 tolerance for FMA-level rounding).
 
+`--cuda` reports the device it selected (`CUDA device 0: Tesla T4 (sm_75, 40 SMs,
+14912/15360 MiB free)`) — worth keeping in the logs on a shared server — and
+fails fast, before any I/O, if no GPU is usable or the binary was built for a
+different `CUDA_ARCH` than the GPU present. See
+[`docs/cuda-support/DEPLOYMENT.md`](docs/cuda-support/DEPLOYMENT.md).
+
 The device-resident design uploads each channel once and chains the whole
 composition on the GPU — synthetic green, Rayleigh LUT correction (with the
 viewing geometry computed on-device), gamma and the RGB compose — so the

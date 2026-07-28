@@ -573,6 +573,12 @@ referencia. Se compila con `make CUDA=1` y se selecciona en tiempo de ejecución
 con `--cuda`. La salida se valida idéntica a la de la CPU (bit a bit en los datos
 de ejemplo; dentro de la tolerancia de las pruebas para redondeo a nivel FMA).
 
+`--cuda` reporta el dispositivo que seleccionó (`CUDA device 0: Tesla T4 (sm_75,
+40 SMs, 14912/15360 MiB free)`) —conviene conservarlo en los logs de un servidor
+compartido— y aborta de inmediato, antes de cualquier I/O, si no hay GPU
+utilizable o si el binario se compiló para un `CUDA_ARCH` distinto al de la GPU
+presente. Ver [`docs/cuda-support/DEPLOYMENT.md`](docs/cuda-support/DEPLOYMENT.md).
+
 El diseño residente en device sube cada canal una sola vez y encadena toda la
 composición en la GPU —verde sintético, corrección Rayleigh por LUT (con la
 geometría de vista calculada en el device), gamma y la composición RGB— de modo

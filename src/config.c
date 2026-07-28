@@ -9,6 +9,9 @@
 #include "args.h"
 #include "clip_loader.h"
 #include "logger.h"
+#ifdef HPSV_CUDA
+#include "cuda_device.h"
+#endif
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -361,9 +364,15 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
     cfg->build_cog = ap_found(parser, "cog");
     cfg->use_cuda = ap_found(parser, "cuda");
 #ifdef HPSV_CUDA
+    // Resolve and report the GPU up front: on a shared server the run should
+    // record which device it got, and an unusable device (none present, or a
+    // binary built for another CUDA_ARCH) must fail here rather than mid-pipeline.
     // rgb: only the default true-color path is GPU-accelerated so far; run_rgb()
     // warns and falls back to CPU for any other mode/option, so no blanket
     // message here.
+    if (cfg->use_cuda && !cuda_report_device()) {
+        return false;
+    }
 #else
     if (cfg->use_cuda) {
         LOG_ERROR("--cuda: this binary was built without CUDA support. "
