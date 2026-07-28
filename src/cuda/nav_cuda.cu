@@ -190,7 +190,14 @@ extern "C" bool compute_rayleigh_nav_dev(const DataFDev *navla,
   CUDA_CHECK(cudaEventRecord(t1));
   CUDA_CHECK(cudaEventSynchronize(t1));
   CUDA_CHECK(cudaEventElapsedTime(&ms, t0, t1));
-  LOG_TIMING(ms / 1000.0, "Navigation (CUDA, device-resident: solar+sat+raa)");
+  /* NO se llama "Navigation": ese nombre ya lo usa el [PERF] de la malla
+   * lat/lon (reader_nc.c), que corre en CPU también bajo --cuda y por tanto
+   * aparece en el mismo log. Parear esos dos por el nombre daría un speedup
+   * falso; la contraparte real de este kernel son los [PERF] "Solar geometry" +
+   * "Satellite geometry" del CPU (el RAA del CPU va sin medir dentro de
+   * compute_relative_azimuth). */
+  LOG_TIMING(ms / 1000.0,
+             "Solar+satellite geometry (CUDA, device-resident: solar+sat+raa)");
   ok = true;
 
 cleanup:

@@ -37,16 +37,16 @@ echo "### CPU build (no CUDA) ###"
 make clean >/dev/null 2>&1 && make $MK_HDF5 >/dev/null 2>&1 && echo "build ok"
 echo "-- per-stage (-v) --"
 ./bin/hpsv rgb "$ANCHOR" --mode truecolor --rayleigh -o "$OUT" -v 2>&1 \
-  | grep -iE "chunked decompress|Rayleigh LUT \(|Solar geometry|Satellite geometry|GeoTIFF|Downsampling"
+  | grep -iE "chunked decompress|Navigation \(|Solar geometry|Satellite geometry|Solar zenith|Rayleigh LUT C|Synthetic green|Multiband|GeoTIFF|Downsampling"
 echo -n "wall CPU  #1: "; run ./bin/hpsv rgb "$ANCHOR" --mode truecolor --rayleigh -o "$OUT"
 echo -n "wall CPU  #2: "; run ./bin/hpsv rgb "$ANCHOR" --mode truecolor --rayleigh -o "$OUT"
 
 echo ""
 echo "### CUDA build (CUDA_ARCH=$ARCH) ###"
 make clean >/dev/null 2>&1 && make CUDA=1 CUDA_ARCH="$ARCH" $MK_HDF5 >/dev/null 2>&1 && echo "build ok"
-echo "-- per-stage (-v): watch Navigation (double-heavy, GPU FP64-sensitive) --"
+echo "-- per-stage (-v): watch Solar+satellite geometry (double-heavy, GPU FP64-sensitive) --"
 ./bin/hpsv rgb "$ANCHOR" --mode truecolor --rayleigh --cuda -o "$OUT" -v 2>&1 \
-  | grep -iE "chunked decompress|DataF upload|Navigation \(CUDA|Rayleigh LUT \(CUDA|Solar zenith|Synthetic green|Multiband|GeoTIFF|Downsampling"
+  | grep -iE "chunked decompress|DataF upload|Navigation \(|Solar\+satellite geometry|Solar zenith|Rayleigh LUT C|Synthetic green|Multiband|GeoTIFF|Downsampling"
 echo -n "wall CUDA #1: "; run ./bin/hpsv rgb "$ANCHOR" --mode truecolor --rayleigh --cuda -o "$OUT"
 echo -n "wall CUDA #2: "; run ./bin/hpsv rgb "$ANCHOR" --mode truecolor --rayleigh --cuda -o "$OUT"
 

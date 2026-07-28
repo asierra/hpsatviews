@@ -24,6 +24,7 @@ extern "C" {
  * a memoria global y se lee con acceso trilineal por hilo. */
 typedef struct {
   float *d_table;                ///< tabla plana [SZA][VZA][AZ] en device
+  uint8_t channel;               ///< canal ABI de la LUT (para el log [PERF])
   int n_sz, n_vz, n_az;
   float sz_min, sz_max, sz_step;
   float vz_min, vz_max, vz_step;

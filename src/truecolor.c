@@ -34,6 +34,11 @@ DataF create_truecolor_synthetic_green(const DataF *c_blue, const DataF *c_red, 
     float local_min = 1e30f;
     float local_max = -1e30f;
 
+    // Timed to pair with "Synthetic green (CUDA, device-resident)"
+    // (src/cuda/truecolor_cuda.cu): the CUDA path measures the same stage, so
+    // the two [PERF] lines are directly comparable per-host.
+    double start = omp_get_wtime();
+
     #pragma omp parallel for reduction(min:local_min) reduction(max:local_max)
     for (size_t i = 0; i < green.size; i++) {
         float B = c_blue->data_in[i];
@@ -53,13 +58,15 @@ DataF create_truecolor_synthetic_green(const DataF *c_blue, const DataF *c_red, 
             if (G_val > local_max) local_max = G_val;
         }
     }
-    
+
+    LOG_TIMING(omp_get_wtime() - start, "Synthetic green");
+
     // Keep default min/max if no valid data was found.
     if (local_min < 1e29f) {
         green.fmin = local_min;
         green.fmax = local_max;
     }
-    
+
     return green;
 }
 
@@ -72,6 +79,9 @@ void apply_solar_zenith_correction(DataF *data, const DataF *sza) {
 
     float local_min = 1e30f;
     float local_max = -1e30f;
+
+    // Pairs with "Solar zenith correction (CUDA, device-resident)".
+    double start = omp_get_wtime();
 
     #pragma omp parallel for reduction(min:local_min) reduction(max:local_max)
     for (size_t i = 0; i < data->size; i++) {
@@ -94,6 +104,8 @@ void apply_solar_zenith_correction(DataF *data, const DataF *sza) {
             data->data_in[i] = 0.0f;
         }
     }
+
+    LOG_TIMING(omp_get_wtime() - start, "Solar zenith correction");
 
     if (local_min < 1e29f) {
         data->fmin = local_min;
@@ -132,6 +144,12 @@ ImageData create_multiband_rgb(const DataF* r_ch, const DataF* g_ch, const DataF
     if (fabs(g_range) < 1e-6) g_range = 1.0f;
     if (fabs(b_range) < 1e-6) b_range = 1.0f;
 
+    // Pairs with "Multiband RGB (CUDA, device-resident: kernel + D2H)". That one
+    // includes the D2H copy of the result; here the equivalent cost is nil (the
+    // loop writes straight into the output image), so the CPU number is the
+    // compose alone — same total work, no transfer to attribute.
+    double start = omp_get_wtime();
+
     #pragma omp parallel for
     for (size_t i = 0; i < size; i++) {
         float r_val = r_ch->data_in[i];
@@ -166,6 +184,8 @@ ImageData create_multiband_rgb(const DataF* r_ch, const DataF* g_ch, const DataF
         imout.data[idx + 1] = g_byte;
         imout.data[idx + 2] = b_byte;
     }
+
+    LOG_TIMING(omp_get_wtime() - start, "Multiband RGB");
 
     return imout;
 }

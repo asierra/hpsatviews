@@ -87,8 +87,39 @@ reproduction/bench_server.sh /ruta/OR_ABI-L1b-RadF-M6C02_...nc
 # Overrides: CUDA_ARCH=sm_80  HDF5_LIB=hdf5  OMP_NUM_THREADS=<hilos de producción>
 ```
 Compara build CPU vs build CUDA (full-disk truecolor + Rayleigh, GeoTIFF por
-defecto) con desglose por etapa. **Vigila la línea `Navigation (CUDA)`**: es el
-kernel double-heavy más sensible al FP64 de la GPU (en dev, RTX 5060 Ti: ~0.33 s).
+defecto) con desglose por etapa. **Vigila la línea
+`Solar+satellite geometry (CUDA)`**: es el kernel double-heavy más sensible al
+FP64 de la GPU (en dev, RTX 5060 Ti: ~0.33 s en full-disk).
+
+Cada etapa acelerada emite un `[PERF]` (nivel DEBUG, requiere `-v`) en **ambas**
+rutas, con etiquetas pareadas para poder dividir una entre otra:
+
+| Etapa | `[PERF]` CPU | `[PERF]` CUDA |
+|---|---|---|
+| Geometría solar+satelital | `Solar geometry` + `Satellite geometry` | `Solar+satellite geometry (CUDA…)` |
+| Corrección cenital solar | `Solar zenith correction` | `Solar zenith correction (CUDA…)` |
+| Rayleigh LUT | `Rayleigh LUT C01 (… px)` | `Rayleigh LUT C01 (… px grid, CUDA…)` |
+| Verde sintético | `Synthetic green` | `Synthetic green (CUDA…)` |
+| Composición RGB | `Multiband RGB` | `Multiband RGB (CUDA…: kernel + D2H)` |
+| Gray / pseudocolor | `Single Gray` | `Single Gray (CUDA…: kernel + D2H)` |
+| Gamma | `Gamma` | `Gamma (CUDA…)` |
+| Reproyección | `Analytic reprojection finished` | `Analytic reprojection (CUDA…)` |
+| Transferencia H2D | — (no aplica) | `DataF upload (cudaMalloc + H2D)` |
+
+Dos trampas al leer el desglose:
+
+- **`Navigation (WxH)` no es una etapa acelerada.** Es la malla lat/lon
+  (`reader_nc.c`) y corre en CPU en los dos builds, así que aparece en ambos logs
+  sin cambiar. La contraparte del kernel de navegación son `Solar geometry` +
+  `Satellite geometry`, no esta línea.
+- **Los `px` de Rayleigh no son el mismo conteo.** El CPU cuenta píxeles válidos
+  (salta NonData/noche); el CUDA reporta el grid completo (lanza un hilo por
+  píxel). Compara los tiempos, no los conteos.
+
+Suma las etapas aceleradas de cada lado y compáralas contra el wall: si el bloque
+acelerado ya es una fracción chica del wall, el techo del speedup es bajo por
+Amdahl aunque la GPU gane 10× en su parte (el resto —NetCDF, lat/lon, GeoTIFF—
+es CPU en ambos builds).
 
 ## 5. Criterio de decisión
 

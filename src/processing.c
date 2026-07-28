@@ -316,8 +316,10 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         // Mirror dataf_apply_gamma()'s degenerate-range short-circuit so the
         // CPU and device paths agree on whether gamma actually ran.
         if (gmax - gmin > 0.0f && !IS_NONDATA(gmin)) {
+            // Logged for both paths; the CUDA one defers the work to the
+            // device-resident block below but still applies the same gamma.
+            LOG_INFO("Applying gamma %.2f", cfg->gamma[0]);
             if (!cfg->use_cuda) {
-                LOG_INFO("Applying gamma %.2f", cfg->gamma[0]);
                 dataf_apply_gamma(&c01.fdata, cfg->gamma[0], gmin, gmax);
             }
             // After gamma, data range is [0, 1] (both paths).
@@ -338,14 +340,21 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         if (cfg->use_cuda) {
             // Device-resident chain: upload the float grid once, run gamma (if
             // any) and gray on the GPU, then download only the uint8 image.
+            LOG_INFO("Generating %s view (CUDA, device-resident)...",
+                     is_pseudocolor ? "pseudocolor" : "grayscale");
             DataFDev dev = dataf_dev_upload(&c01.fdata);
             if (dev.d_data) {
                 if (do_gamma) dataf_dev_apply_gamma(&dev, cfg->gamma[0], gmin, gmax);
                 final_image = create_single_gray_from_dev(&dev, cfg->invert_values, cfg->use_alpha,
                                                           minmax[0], minmax[1], is_pseudocolor ? cptdata : NULL);
                 dataf_dev_destroy(&dev);
+            } else {
+                // Attribute the failure to the GPU here; the NULL check below
+                // only reports the generic "Failed to create image."
+                LOG_ERROR("--cuda: uploading the %ux%u grid to the GPU failed; "
+                          "retry without --cuda to use the CPU path.",
+                          c01.fdata.width, c01.fdata.height);
             }
-            // Upload failure leaves final_image empty; the NULL check below reports it.
         } else
 #endif
         final_image = create_single_gray(c01.fdata, cfg->invert_values, cfg->use_alpha, minmax[0], minmax[1], is_pseudocolor ? cptdata : NULL);

@@ -57,6 +57,7 @@ extern "C" RayleighLUTDev rayleigh_lut_dev_load(uint8_t channel) {
   }
 
   dev.d_table = d_table;
+  dev.channel = channel;
   dev.n_sz = host.n_sz; dev.n_vz = host.n_vz; dev.n_az = host.n_az;
   dev.sz_min = host.sz_min; dev.sz_max = host.sz_max; dev.sz_step = host.sz_step;
   dev.vz_min = host.vz_min; dev.vz_max = host.vz_max; dev.vz_step = host.vz_step;
@@ -263,5 +264,12 @@ extern "C" void luts_rayleigh_correction_dev(DataFDev *img, const DataFDev *sza,
     LOG_ERROR("luts_rayleigh_correction_dev: %s", cudaGetErrorString(e));
     return;
   }
-  LOG_TIMING(ms / 1000.0, "Rayleigh LUT (CUDA, device-resident)");
+  /* Se reporta el canal para poder parear con el [PERF] por canal del CPU
+   * ("Rayleigh LUT C%02d (%zu px)", src/rayleigh.c). El conteo NO es el mismo:
+   * el CPU cuenta píxeles válidos (salta NonData/noche), mientras que aquí se
+   * lanza un hilo por píxel del grid completo, así que se reporta el grid y se
+   * dice "grid" para no invitar a comparar los dos números. Contar válidos en
+   * device exigiría una reducción que perturbaría lo que se está midiendo. */
+  LOG_TIMING(ms / 1000.0, "Rayleigh LUT C%02d (%zu px grid, CUDA, device-resident)",
+             lut->channel, img->size);
 }

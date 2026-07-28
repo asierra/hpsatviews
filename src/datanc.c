@@ -455,6 +455,11 @@ void dataf_apply_gamma(DataF *data, float gamma, float min_val, float max_val) {
     // EUMETSAT/CIRA convention: output = norm^(1/gamma); gamma > 1 brightens.
     float inv_gamma = 1.0f / gamma;
 
+    // Pairs with "Gamma (CUDA, device-resident)" (src/cuda/dataf_dev.cu). Both
+    // short-circuit identically above, so a missing [PERF] line means the same
+    // thing on either path: gamma didn't run.
+    double start = omp_get_wtime();
+
 #pragma omp parallel for
     for (size_t i = 0; i < data->size; i++) {
         float val = data->data_in[i];
@@ -472,6 +477,8 @@ void dataf_apply_gamma(DataF *data, float gamma, float min_val, float max_val) {
             norm = 1.0f;
         data->data_in[i] = powf(norm, inv_gamma);
     }
+
+    LOG_TIMING(omp_get_wtime() - start, "Gamma");
 
     // Range is now [0, 1] after gamma normalization.
     data->fmin = 0.0f;
