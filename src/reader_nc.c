@@ -117,6 +117,7 @@ static const ProductVariable PRODUCT_VARIABLES[] = {
     {"CTP",  "PRES"},
     {"LST",  "LST"},
     {"SST",  "SST"},
+    {"AOD",  "AOD"},
     {NULL, NULL}
 };
 
