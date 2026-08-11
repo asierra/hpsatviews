@@ -14,7 +14,7 @@ mapdrawer fd.tif --outsize 512 -o fd.jpg
 
 mapdrawer fd_geo.tif --outsize 512 -o fd_geo.jpg
 
-magick fd.jpg fd_geo.jpg cuts.jpg -background black -splice 10x0+0+0 +append fig1.jpg
+magick fd.jpg fd_geo.jpg cuts.jpg -background black -splice 10x0+0+0 +append reprojection.jpg
 
 rm a5.jpg  atlantic.jpg  cuts.jpg  fd_geo.jpg  fd_geo.tif  fd.jpg  fd.tif
 

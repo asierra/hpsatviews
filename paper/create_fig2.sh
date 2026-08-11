@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# Directorio donde se deja el panel ensamblado. Sin esto la variable quedaba
+# vacía y montage intentaba escribir en /hpsv_panel.png -> Permission denied.
+OUT_DIR="${OUT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+
 #1.daynite: Huracán Otis (Rápida Intensificación), 20232980100, mexico
 #2. Ash RGB: Erupción del Popocatépetl (Alerta Amarilla Fase 3), 20240582056, ejevolcanico
 #3. c02 con clahe, 20242201320, ejevolcanico

@@ -30,11 +30,11 @@
 
 \journal{SoftwareX}
 
-%% Performance placeholders — fill from reproduction/bench_server.sh on the A30
-%% server (Xeon Gold 6326 CPU vs. A30 GPU, same machine). \perfTBD renders a
-%% loud marker so no cell is missed before submission.
-\newcommand{\PRODSERVER}{an NVIDIA A30 GPU (Intel Xeon Gold 6326)}
-\newcommand{\perfTBD}{\fbox{\textbf{TBD}}}
+%% Production server used for every timing in Section 4. Confirmed with `lscpu`
+%% on the host: 2 sockets x Xeon Gold 6326 (16 cores each, 2 threads per core)
+%% = 64 threads, 2 NUMA nodes, 48 MiB L3.
+\newcommand{\PRODSERVER}{the production server (NVIDIA A30 GPU, dual Intel Xeon
+Gold 6326 at 2.90~GHz, 32 cores / 64 threads)}
 
 \begin{document}
 
@@ -123,8 +123,9 @@ Operational hazard monitoring imposes a hard computational deadline: visual
 satellite products must be generated within seconds of data arrival and
 regenerated continuously as new full-disk scenes stream in every five to
 fifteen minutes. A GOES-R ABI full-disk scene spans sixteen spectral channels
-at up to $0.5$~km resolution, so each timestamp delivers a multi-gigabyte
-burst of NetCDF data that must be decoded, corrected, normalized, and
+at up to $0.5$~km resolution, so each timestamp delivers close to a gigabyte
+of NetCDF data (0.94~GB for a representative GOES-19 full disk, all sixteen
+channels) that must be decoded, corrected, normalized, and
 optionally reprojected before an image can be delivered. Under this cadence
 the binding constraint is not analytical richness but end-to-end
 throughput --- a volcanic-ash advisory or a hurricane day/night composite that
@@ -244,8 +245,9 @@ kernel in isolation --- where the host--device transfer would dominate --- the
 backend keeps each channel resident on the device and chains the whole
 composition on the GPU: viewing geometry, Rayleigh lookup, synthetic-green and
 RGB compositing, gamma, and geometric reprojection, so the transfer cost is paid
-once per scene. The CPU path remains the bit-for-bit correctness reference and
-the fallback for any mode or option without a GPU kernel. Independently of the
+once per scene. The CPU path remains the correctness reference and the fallback
+for any mode or option without a GPU kernel; the two agree to within
+floating-point rounding, quantified in Section~\ref{sec:impact}. Independently of the
 GPU, input decoding is parallelized: NetCDF variables are read by pulling the
 raw HDF5 chunks and decompressing them across all cores with \texttt{libdeflate},
 bypassing the single-threaded HDF5 filter pipeline that otherwise dominates
@@ -302,9 +304,9 @@ functionalities are:
     (\texttt{make CUDA=1}) and selected at run time (\texttt{-{}-cuda}),
     offloads the compute-heavy stages --- viewing geometry, Rayleigh correction,
     true-color composition, and geometric reprojection --- to an NVIDIA GPU,
-    keeping the data resident on the device across the pipeline. Output is
-    validated identical to the CPU reference; unsupported modes fall back to the
-    CPU transparently.
+    keeping the data resident on the device across the pipeline. Every GPU stage
+    is regression-tested against its CPU counterpart; unsupported modes fall back
+    to the CPU transparently.
 \end{itemize}
 
 %% ---------------------------------------------------------------------------
@@ -382,13 +384,16 @@ composites the engine supports.
     \centering
     \includegraphics[width=\textwidth]{radiometric.jpg}
     \caption{Composite panel of \texttt{hpsatviews} radiometric outputs
-    generated from GOES ABI data: (a) night composite with meteorological
-    colormap; (b) volcanic-ash RGB composite isolating SO$_2$ and ash plumes;
-    (c) air-mass RGB composite illustrating synoptic-scale dynamics;
-    (d) pseudocolor enhancement of a Level-2 cloud-top-pressure product;
-    (e) grayscale view of the high-resolution visible channel with CLAHE applied
-    to enhance local cloud textures; (f) severe-storms RGB composite
-    highlighting deep convection.}
+    generated from GOES ABI data: (a) true-color composite of Hurricane Otis
+    during its rapid intensification off Guerrero, 25 October 2023;
+    (b) volcanic-ash RGB composite of Popocat\'epetl under Yellow Alert Phase 3,
+    27 February 2024, isolating the ash plume from surrounding meteorological
+    cloud; (c) grayscale view of the high-resolution visible channel with CLAHE
+    applied to enhance local cloud textures; (d) pseudocolor enhancement of a
+    Level-2 cloud-top-pressure product over a severe Gulf of Mexico
+    \emph{norte}; (e) air-mass RGB composite illustrating synoptic-scale
+    dynamics during winter storm Elliott, 23 December 2022; (f) severe-storms
+    RGB composite highlighting deep convection.}
     \label{fig:radiometric}
 \end{figure}
 
@@ -429,34 +434,68 @@ on the low-latency, dependency-light design described above.
     operational infrastructure elsewhere, beyond its current deployment.
 \end{itemize}
 
+\subsection{Measured performance}
+\label{sec:performance}
+
 Beyond deployment ergonomics, parallel I/O and the optional GPU backend cut
-per-scene wall time on full-disk scenes. Reading and decompressing the input
-NetCDF in parallel with \texttt{libdeflate} reduces variable decompression by
-roughly $9\times$ over the single-threaded HDF5 path, and writing a fast tiled
-GeoTIFF instead of a full Cloud-Optimized pyramid removes the dominant share of
-the output cost --- both benefit the CPU-only build. With the CUDA backend, the
-compute-heavy stages are accelerated further, as summarized in
-Table~\ref{tab:perf}; the CPU/OpenMP path remains the reference and produces
-identical output.
+per-scene wall time on full-disk scenes. NetCDF variables are read by pulling
+the raw HDF5 chunks and decompressing them across all cores with
+\texttt{libdeflate}; writing a fast tiled GeoTIFF instead of a full
+Cloud-Optimized pyramid removes roughly $90\%$ of the output cost, since that
+pyramid is wasted work when the file is an intermediate that is cropped
+downstream. Both benefit the CPU-only build. On a full disk the encoder choice
+dominates what remains: \texttt{libpng} compresses single-threaded, making a PNG
+about $10\times$ costlier to write than the equivalent GeoTIFF ($2.4$~s versus
+$0.22$~s).
+
+Table~\ref{tab:perf} compares \texttt{hpsatviews} against \texttt{geo2grid}
+on the production server, over the same scene and the same product. Because
+\texttt{geo2grid} emits its ABI true color at $0.5$~km with ratio sharpening,
+\texttt{hpsatviews} is invoked with the flags that reproduce exactly that
+product; comparing the two tools' defaults would compare different images. The
+\texttt{geo2grid} figure is its \emph{best} time over a sweep of its
+\texttt{-{}-num-workers} setting: its default of four workers takes $108$~s on
+this host, and its \texttt{dask} graph saturates at thirty-two, so quoting the
+default would overstate the difference by more than threefold.
 
 \begin{table}[!ht]
 \centering
-\caption{Full-disk (10{,}848$\times$10{,}848) true-color with Rayleigh
-correction on \PRODSERVER: CPU/OpenMP build versus the optional CUDA build.
-Output is validated identical between the two paths.}
+\caption{Full-disk GOES-19 true color (21{,}696$\times$21{,}696, $0.5$~km) with
+Rayleigh correction and ratio sharpening, written as a GeoTIFF, on \PRODSERVER.
+End-to-end wall time, including process startup, reading and writing; median of
+two runs with a warm page cache. Reproduced by
+\texttt{reproduction/bench\_geo2grid.sh}.}
 \label{tab:perf}
 \begin{tabular}{@{}lrr@{}}
 \toprule
-\textbf{Stage} & \textbf{CPU (OpenMP)} & \textbf{CUDA} \\
+\textbf{Engine} & \textbf{Wall time} & \textbf{Speed-up} \\
 \midrule
-Viewing geometry (solar + satellite) & \perfTBD & \perfTBD \\
-Rayleigh LUT correction (per channel) & \perfTBD & \perfTBD \\
-Geometric reprojection to lat/lon & \perfTBD & \perfTBD \\
-\midrule
-End-to-end wall time & \perfTBD & \perfTBD \\
+\texttt{geo2grid} 1.3 (best, 32 dask workers) & $30.63$~s & --- \\
+\texttt{hpsatviews} (CPU, OpenMP, 64 threads) & $9.25$~s & $3.31\times$ \\
+\texttt{hpsatviews} (CUDA) & $3.02$~s & $10.14\times$ \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+The like-for-like comparison is the CPU row: same host, same cores, same
+product, a $3.31\times$ reduction in wall time attributable to the
+implementation substrate alone. The CUDA row is what an operator actually
+obtains, since \texttt{geo2grid} has no GPU path at all, but it compares
+hardware classes and should be read as such. Internally the GPU backend gives
+$2.16\times$ over the CPU path on the default $1$~km product ($2.53$~s versus
+$1.17$~s) and $3.06\times$ on the $0.5$~km sharpened product above, where four
+times the pixel count shifts the balance from I/O towards arithmetic.
+
+Two equivalence checks accompany these timings, since a faster engine that
+produces a different image would not be a substitute. Against \texttt{geo2grid},
+over the illuminated disk, the mean absolute difference is $3.90$ of $255$
+digital numbers ($1.5\%$), with $95.9\%$ of pixels within $10$ and $98.2\%$
+within $25$; the residual is concentrated at the limb and the day/night
+terminator. Between the CPU and CUDA paths of \texttt{hpsatviews} the outputs
+agree to floating-point rounding: fewer than $10^{-5}$ of pixels differ at all,
+and none by more than one digital number. Both checks are scripted
+(\texttt{reproduction/compare\_g2g\_product.sh} and \texttt{tests/test\_cuda.sh})
+and run as part of the regression suite.
 
 The software reached its first public release (v1.0.0) in June 2026, archived
 on Zenodo under a persistent DOI. The optional GPU backend now accelerates the
