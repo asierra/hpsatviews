@@ -602,9 +602,19 @@ Rayleigh por LUT, verde sintético, stretch piecewise, composición RGB y, para
 `daynite`, el pseudocolor nocturno, la máscara día/noche y la mezcla—. La imagen
 compuesta también se queda en device para alimentar la reproyección, así que un
 render completo de `daynite -G` mueve los cuatro canales de entrada hacia la GPU
-y una imagen de salida, sin viajes intermedios. Las opciones sin kernel
-(`--ray-analytic`, `--sharpen`, `--citylights`, otros modos RGB) caen a CPU de
-forma transparente.
+y una imagen de salida, sin viajes intermedios. El *ratio sharpening*
+(`--sharpen`) también corre en GPU, fundido en un solo kernel que recalcula el
+promedio de cada bloque 2×2 en sitio en vez de materializar los arreglos
+intermedios de promedio y razones que construye la CPU. Las opciones sin kernel
+(`--ray-analytic`, `--citylights`, otros modos RGB) caen a CPU de forma
+transparente.
+
+Conviene revisarlo cuando una configuración parezca más lenta de lo esperado:
+`--cuda` registra `this RGB configuration isn't GPU-accelerated yet; using CPU
+path` cada vez que una opción saca a truecolor del gate acelerado. Hasta esta
+versión `--sharpen` hacía justo eso, lo que convertía en silencio toda
+comparación con geo2grid —que exige el realce para igualar su producto— en una
+medición de CPU.
 
 #### Resultados
 

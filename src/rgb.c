@@ -97,7 +97,7 @@ static const char *rgb_ref_filename(const RgbContext *ctx) {
 static bool truecolor_cuda_eligible(const RgbOptions *o) {
 #ifdef HPSV_CUDA
     return o->use_cuda && strcmp(o->mode, "truecolor") == 0 &&
-           !o->rayleigh_analytic && !o->use_sharpen;
+           !o->rayleigh_analytic;
 #else
     (void)o;
     return false;
@@ -387,7 +387,16 @@ static bool compose_truecolor_cuda(RgbContext *ctx, DataFDev *nav_keep_la,
 
         if (ray_ok) g = create_truecolor_green_from_dev(&b, &r, &nir);
 
-        // Orden idéntico a compose_truecolor(): rayleigh -> verde -> stretch.
+        // Orden idéntico a compose_truecolor(): rayleigh -> verde -> sharpen
+        // -> stretch. El sharpening lee el rojo y modifica verde y azul en
+        // sitio, así que tiene que ir antes de que el stretch toque el rojo.
+        if (g.d_data && ctx->opts.use_sharpen) {
+            if (!apply_ratio_sharpen_dev(&r, &g, &b)) {
+                ray_ok = false;
+                dataf_dev_destroy(&g);
+            }
+        }
+
         if (g.d_data && ctx->opts.use_piecewise_stretch) {
             if (!apply_piecewise_stretch_dev(&r) || !apply_piecewise_stretch_dev(&g) ||
                 !apply_piecewise_stretch_dev(&b)) {
@@ -1263,14 +1272,15 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         goto cleanup;
     }
 
-    // RGB composite. The default true-color path can run device-resident under
-    // --cuda; every other mode/option (Rayleigh, sharpen, stretch, non-truecolor
-    // modes, custom) still runs on the CPU.
+    // RGB composite. The true-color path can run device-resident under --cuda;
+    // every other mode/option (analytic Rayleigh, non-truecolor modes, custom)
+    // still runs on the CPU.
     bool cuda_handled = false;
 #ifdef HPSV_CUDA
     if (cfg->use_cuda) {
-        // Accelerated: true-color, optionally with Rayleigh LUT. Still CPU-only:
-        // analytic Rayleigh, ratio sharpening, piecewise stretch, other modes.
+        // Accelerated: true-color, optionally with Rayleigh LUT, ratio
+        // sharpening and piecewise stretch. Still CPU-only: analytic Rayleigh
+        // and the other modes.
         bool truecolor_cuda = truecolor_cuda_eligible(&ctx.opts);
         // daynite: mismo gate salvo el modo, más las luces de ciudad, que siguen
         // en CPU (habría que subir el fondo WebP y no están en la ruta operativa).

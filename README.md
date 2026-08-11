@@ -600,8 +600,17 @@ Rayleigh LUT correction, synthetic green, piecewise stretch, the RGB compose and
 for `daynite`, the nocturnal pseudocolour, the day/night mask and the blend. The
 composed image also stays on the device to feed the reprojection, so a full
 `daynite -G` render moves the four input channels in and one image out, with no
-intermediate round trips. Options without a GPU kernel (`--ray-analytic`,
-`--sharpen`, `--citylights`, other RGB modes) fall back to the CPU transparently.
+intermediate round trips. Ratio sharpening (`--sharpen`) runs on the GPU too,
+fused into a single kernel that recomputes each 2×2 block mean in place instead
+of materializing the intermediate mean and ratio arrays the CPU builds. Options
+without a GPU kernel (`--ray-analytic`, `--citylights`, other RGB modes) fall
+back to the CPU transparently.
+
+Worth checking when a configuration seems slower than expected: `--cuda` logs
+`this RGB configuration isn't GPU-accelerated yet; using CPU path` whenever an
+option takes true colour out of the accelerated gate. Until this release
+`--sharpen` did exactly that, which silently turned every geo2grid comparison —
+sharpening is required to match its product — into a CPU measurement.
 
 #### Results
 

@@ -52,6 +52,15 @@ ImageData create_multiband_rgb_from_dev(const DataFDev *r, const DataFDev *g,
  * GEO2GRID_STRETCH_X/Y. Deja fmin/fmax en [0,1]. false ante fallo CUDA. */
 bool apply_piecewise_stretch_dev(DataFDev *band);
 
+/* Ratio sharpening in place sobre verde y azul, usando el rojo (C02) como
+ * referencia. Réplica de dataf_ratio_sharpen_map() seguida de los dos OP_MUL de
+ * compose_truecolor(), fundidos en un solo kernel: cada hilo recalcula el
+ * promedio de su bloque 2x2 en vez de materializar los dos arreglos
+ * intermedios. Los tres canales deben tener las mismas dimensiones.
+ * false ante fallo CUDA o desajuste de tamaños. */
+bool apply_ratio_sharpen_dev(const DataFDev *red, DataFDev *green,
+                             DataFDev *blue);
+
 /* Copia a host un buffer de imagen de device. Mantiene la API de CUDA fuera del
  * código C del pipeline. false ante fallo. */
 bool cuda_download_device_image(const unsigned char *d_image, unsigned char *host,

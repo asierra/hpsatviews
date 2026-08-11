@@ -278,3 +278,97 @@ cleanup:
   if (t1) cudaEventDestroy(t1);
   return ok;
 }
+
+/* ---- ratio sharpening -----------------------------------------------------
+ * Port de dataf_ratio_sharpen_map() + los dos OP_MUL de compose_truecolor()
+ * (src/truecolor.c, src/rgb.c). La CPU materializa dos arreglos intermedios —el
+ * promedio 2x2 y el mapa de razones— y recorre la imagen tres veces; aquí cada
+ * hilo recalcula el promedio de su propio bloque 2x2 y multiplica verde y azul
+ * en sitio, en una sola pasada y sin reservar nada.
+ *
+ * El promedio se acumula en el mismo orden que la CPU (k = 0..3 sobre
+ * {(x0,y0),(x1,y0),(x0,y1),(x1,y1)}) porque la suma en float no es asociativa:
+ * cambiar el orden daría un último bit distinto y rompería la comparación
+ * byte a byte de tests/test_cuda.sh. */
+__global__ void ratio_sharpen_kernel(const float *red, float *g, float *b,
+                                     unsigned int w, unsigned int h) {
+  unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
+  unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
+  if (x >= w || y >= h) return;
+
+  /* Origen del bloque 2x2 al que pertenece este pixel; el borde impar se
+   * duplica sobre si mismo, igual que dataf_mean_2x2(). */
+  unsigned int x0 = (x & ~1u), y0 = (y & ~1u);
+  unsigned int x1 = (x0 + 1 < w) ? x0 + 1 : x0;
+  unsigned int y1 = (y0 + 1 < h) ? y0 + 1 : y0;
+
+  const float vals[4] = {red[(size_t)y0 * w + x0], red[(size_t)y0 * w + x1],
+                         red[(size_t)y1 * w + x0], red[(size_t)y1 * w + x1]};
+  float sum = 0.0f;
+  int count = 0;
+  for (int k = 0; k < 4; k++) {
+    if (!is_nondata_dev(vals[k])) {
+      sum += vals[k];
+      count++;
+    }
+  }
+  float mean = (count > 0) ? sum / count : HPSV_NONDATA_DEV;
+
+  size_t i = (size_t)y * w + x;
+  float ch = red[i];
+  float ratio;
+  if (is_nondata_dev(ch) || is_nondata_dev(mean) || mean == 0.0f) {
+    ratio = 1.0f;
+  } else {
+    ratio = ch / mean;
+    if (!isfinite(ratio) || ratio < 0.0f) ratio = 1.0f;
+    if (ratio < 0.5f) ratio = 0.5f;
+    if (ratio > 1.5f) ratio = 1.5f;
+  }
+
+  /* dataf_op_dataf(OP_MUL) propaga NonData desde cualquiera de los dos
+   * operandos; el mapa de razones nunca lo es, asi que basta con mirar el
+   * canal. */
+  float gv = g[i];
+  if (!is_nondata_dev(gv)) g[i] = gv * ratio;
+  float bv = b[i];
+  if (!is_nondata_dev(bv)) b[i] = bv * ratio;
+}
+
+extern "C" bool apply_ratio_sharpen_dev(const DataFDev *red, DataFDev *green,
+                                        DataFDev *blue) {
+  if (!red || !red->d_data || !green || !green->d_data || !blue ||
+      !blue->d_data)
+    return false;
+  if (green->width != red->width || green->height != red->height ||
+      blue->width != red->width || blue->height != red->height) {
+    LOG_ERROR("apply_ratio_sharpen_dev: dimensiones distintas entre canales.");
+    return false;
+  }
+
+  bool ok = false;
+  cudaEvent_t t0 = NULL, t1 = NULL;
+  float ms = 0.0f;
+  dim3 block(16, 16);
+  dim3 grid((red->width + block.x - 1) / block.x,
+            (red->height + block.y - 1) / block.y);
+
+  CUDA_CHECK(cudaEventCreate(&t0));
+  CUDA_CHECK(cudaEventCreate(&t1));
+  CUDA_CHECK(cudaEventRecord(t0));
+
+  ratio_sharpen_kernel<<<grid, block>>>(red->d_data, green->d_data,
+                                        blue->d_data, red->width, red->height);
+  CUDA_CHECK(cudaGetLastError());
+
+  CUDA_CHECK(cudaEventRecord(t1));
+  CUDA_CHECK(cudaEventSynchronize(t1));
+  CUDA_CHECK(cudaEventElapsedTime(&ms, t0, t1));
+  LOG_TIMING(ms / 1000.0, "Ratio sharpening (CUDA, device-resident)");
+  ok = true;
+
+cleanup:
+  if (t0) cudaEventDestroy(t0);
+  if (t1) cudaEventDestroy(t1);
+  return ok;
+}

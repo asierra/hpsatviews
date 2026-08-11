@@ -61,6 +61,26 @@ fi
 ../bin/hpsv rgb -v "$ANCHOR_C01" --mode truecolor --rayleigh --cuda -o tcray_cuda.png
 ./compare_image.sh tcray_cuda.png tcray_cpu.png
 
+# True color + Rayleigh + ratio sharpening + stretch: la configuración que hay
+# que usar para comparar contra geo2grid, porque es el producto que geo2grid
+# emite. Hasta que existió ratio_sharpen_kernel, --sharpen sacaba a truecolor
+# del gate de CUDA y esta corrida caía entera a CPU en silencio (salvo por un
+# LOG_WARN), de modo que el "benchmark GPU" medía la ruta OpenMP. Si alguien
+# vuelve a excluir una opción del gate, este caso no falla — sigue pasando,
+# porque ambas rutas dan lo mismo — así que la vigilancia real es el grep de
+# abajo sobre el aviso.
+../bin/hpsv rgb -v "$ANCHOR_C01" --mode truecolor --rayleigh --sharpen --stretch \
+    -o sharpen_cpu.png
+../bin/hpsv rgb -v "$ANCHOR_C01" --mode truecolor --rayleigh --sharpen --stretch \
+    --cuda -o sharpen_cuda.png 2> sharpen_cuda.log
+./compare_image.sh sharpen_cuda.png sharpen_cpu.png
+if grep -q "isn't GPU-accelerated" sharpen_cuda.log; then
+    echo "  FALLO: --sharpen sacó a truecolor de la ruta CUDA (cayó a CPU)"
+    exit 1
+else
+    echo "  OK: --sharpen se mantiene en la ruta CUDA"
+fi
+
 # Reproyección geos -> lat/lon (-G), vecino más cercano (gray, bpp=1): ejercita
 # reproject_kernel en la rama nearest.
 ../bin/hpsv gray -v "$ANCHOR_C13" -i -G -o reproj_gray_cpu.png
@@ -97,4 +117,4 @@ fi
 ../bin/hpsv rgb -v "$ANCHOR_C01" --mode daynite -G --cuda -o daynite_cuda.png
 ./compare_image.sh daynite_cuda.png daynite_cpu.png
 
-echo "OK: salida CUDA equivalente a la ruta CPU en los 10 casos."
+echo "OK: salida CUDA equivalente a la ruta CPU en los 11 casos."
