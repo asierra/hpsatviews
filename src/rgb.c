@@ -62,6 +62,11 @@ void rgb_context_destroy(RgbContext *ctx) {
     image_destroy(&ctx->final_image);
     image_destroy(&ctx->alpha_mask);
 
+#ifdef HPSV_CUDA
+    cuda_free_device_image((unsigned char *)ctx->d_final_image);
+#endif
+    ctx->d_final_image = NULL;
+
     if (ctx->opts.output_generated && ctx->opts.output_filename) {
         free(ctx->opts.output_filename);
     }
@@ -264,9 +269,17 @@ static bool compose_truecolor_cuda(RgbContext *ctx) {
                 bmin = 0.0f; bmax = 1.0f;
             }
 
+            // Se conserva la imagen en device: si nada la modifica en host, la
+            // reproyección la consume tal cual y se ahorra el H2D de vuelta.
+            unsigned char *d_img = NULL;
             ctx->final_image = create_multiband_rgb_from_dev(
-                &r, &g, &b, rmin, rmax, gmin, gmax, bmin, bmax);
+                &r, &g, &b, rmin, rmax, gmin, gmax, bmin, bmax, &d_img);
             handled = (ctx->final_image.data != NULL);
+            if (handled) {
+                ctx->d_final_image = d_img;
+            } else {
+                cuda_free_device_image(d_img);
+            }
         }
     }
 
@@ -705,6 +718,7 @@ static bool apply_enhancements(RgbContext *ctx) {
         if (night_pct > 0.1f && mask.data) {
             LOG_INFO("Blending day/night images (night: %.2f%%)", night_pct);
             ctx->final_image = blend_images(ctx->alpha_mask, ctx->final_image, mask);
+            ctx->final_image_touched = true;
         } else {
             LOG_INFO("Scene is mostly daytime (%.2f%%), using only visible composite.", day_pct);
         }
@@ -717,12 +731,14 @@ static bool apply_enhancements(RgbContext *ctx) {
     if (strcmp(ctx->opts.mode, "daynite") != 0) {
         if (ctx->opts.apply_histogram) {
             image_apply_histogram(ctx->final_image);
+            ctx->final_image_touched = true;
         }
         if (ctx->opts.apply_clahe) {
             LOG_INFO("Applying CLAHE (tiles=%dx%d, clip=%.1f)", ctx->opts.clahe_tiles_x,
                      ctx->opts.clahe_tiles_y, ctx->opts.clahe_clip_limit);
             image_apply_clahe(ctx->final_image, ctx->opts.clahe_tiles_x, ctx->opts.clahe_tiles_y,
                               ctx->opts.clahe_clip_limit);
+            ctx->final_image_touched = true;
         }
     }
 
@@ -736,6 +752,7 @@ static bool apply_enhancements(RgbContext *ctx) {
         if (with_alpha.data) {
             image_destroy(&ctx->final_image);
             ctx->final_image = with_alpha;
+            ctx->final_image_touched = true;
         }
         image_destroy(&ctx->alpha_mask);
         memset(&ctx->alpha_mask, 0, sizeof(ImageData));
@@ -758,6 +775,7 @@ static bool apply_scaling(RgbContext *ctx) {
         if (scaled_img.data) {
             image_destroy(&ctx->final_image);
             ctx->final_image = scaled_img;
+            ctx->final_image_touched = true;
         } else {
             LOG_ERROR("Failed to scale image.");
             return false;
@@ -1111,12 +1129,23 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         unsigned char nodata_pattern[4] = {0};
         const unsigned char *nodata_pixel = ctx.opts.use_alpha ? nodata_pattern : NULL;
 #ifdef HPSV_CUDA
+        // La copia en device solo sirve si nadie tocó la imagen en host desde la
+        // composición; si la tocaron, el espejo quedó obsoleto y hay que subirla.
+        // HPSV_NO_DEVICE_HANDOFF=1 fuerza el H2D aunque el espejo sea válido: es
+        // el A/B que prueba que ambos caminos dan los mismos píxeles.
+        const unsigned char *d_src =
+            (ctx.final_image_touched || getenv("HPSV_NO_DEVICE_HANDOFF"))
+                ? NULL
+                : (const unsigned char *)ctx.d_final_image;
+        if (d_src) {
+            LOG_INFO("Reprojection reuses the device-resident composite (no H2D).");
+        }
         ImageData reprojected = cfg->use_cuda
             ? reproject_image_analytical_cuda(
                   &ctx.final_image, &ctx.channels[ctx.ref_channel_idx], ctx.nav_lat.fmin,
                   ctx.nav_lat.fmax, ctx.nav_lon.fmin, ctx.nav_lon.fmax,
                   ctx.channels[ctx.ref_channel_idx].native_resolution_km,
-                  ctx.opts.has_clip ? ctx.opts.clip_coords : NULL, nodata_pixel)
+                  ctx.opts.has_clip ? ctx.opts.clip_coords : NULL, nodata_pixel, d_src)
             : reproject_image_analytical(
                   &ctx.final_image, &ctx.channels[ctx.ref_channel_idx], ctx.nav_lat.fmin,
                   ctx.nav_lat.fmax, ctx.nav_lon.fmin, ctx.nav_lon.fmax,

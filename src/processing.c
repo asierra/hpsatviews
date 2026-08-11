@@ -499,7 +499,8 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
                   navlo_full.fmin, navlo_full.fmax,
                   c01.native_resolution_km,
                   cfg->has_clip ? cfg->clip_coords : NULL,
-                  nodata_pixel)
+                  // gray/pseudocolor no dejan la imagen residente en device.
+                  nodata_pixel, NULL)
             : reproject_image_analytical(
                   &final_image, &c01,
                   navla_full.fmin, navla_full.fmax,

@@ -73,4 +73,20 @@ fi
 ../bin/hpsv rgb -v "$ANCHOR_C01" --mode truecolor -G --cuda -o reproj_tc_cuda.png
 ./compare_image.sh reproj_tc_cuda.png reproj_tc_cpu.png
 
-echo "OK: salida CUDA equivalente a la ruta CPU en los 8 casos."
+# Handoff residente: con --cuda la composición deja la imagen RGB en device y la
+# reproyección la consume sin volver a subirla. HPSV_NO_DEVICE_HANDOFF=1 fuerza
+# el H2D. Ambos caminos deben dar bytes IDÉNTICOS (no basta la tolerancia de
+# compare_image.sh: es literalmente la misma memoria, cualquier diferencia
+# significa que el espejo en device quedó obsoleto — típicamente un paso nuevo
+# que modifica final_image en host sin marcar ctx->final_image_touched).
+../bin/hpsv rgb -v "$ANCHOR_C01" -m truecolor --rayleigh -G --cuda -o handoff_on.png
+HPSV_NO_DEVICE_HANDOFF=1 ../bin/hpsv rgb -v "$ANCHOR_C01" -m truecolor --rayleigh -G \
+    --cuda -o handoff_off.png
+if cmp -s handoff_on.png handoff_off.png; then
+    echo "  OK: handoff residente byte-idéntico al camino con H2D"
+else
+    echo "  FALLO: el handoff residente difiere del camino con H2D"
+    exit 1
+fi
+
+echo "OK: salida CUDA equivalente a la ruta CPU en los 9 casos."

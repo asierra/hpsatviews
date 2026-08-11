@@ -20,16 +20,23 @@ extern "C" {
 #endif
 
 /* Drop-in CUDA equivalent of reproject_image_analytical() (src/reprojection.c):
- * same signature and output. Reuses reproject_build_plan() for the projection
- * setup, uploads the source uint8 image, runs one thread per output pixel
- * (nearest-neighbor for bpp==1, bilinear otherwise) and downloads the result.
- * Returns ImageData with data==NULL on failure. */
+ * same output. Reuses reproject_build_plan() for the projection setup, runs one
+ * thread per output pixel (nearest-neighbor for bpp==1, bilinear otherwise) and
+ * downloads the result. Returns ImageData with data==NULL on failure.
+ *
+ * d_src_image: puntero de device con la imagen fuente ya subida, o NULL para
+ * subirla desde src_image->data como antes. Sirve para encadenar con
+ * create_multiband_rgb_from_dev(), que puede conservar su salida en device y
+ * ahorrarse el H2D de aquí. Cuando no es NULL, src_image se sigue usando por sus
+ * dimensiones/bpp, que deben coincidir con las del buffer de device. La
+ * propiedad del buffer NO se transfiere: lo sigue liberando el llamador. */
 ImageData reproject_image_analytical_cuda(const ImageData* src_image, const DataNC* data_nc,
                                           float lat_min, float lat_max,
                                           float lon_min, float lon_max,
                                           float native_resolution_km,
                                           const float* clip_coords,
-                                          const unsigned char* nodata_pixel);
+                                          const unsigned char* nodata_pixel,
+                                          const unsigned char* d_src_image);
 
 #ifdef __cplusplus
 }

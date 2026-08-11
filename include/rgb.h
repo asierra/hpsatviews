@@ -84,6 +84,18 @@ typedef struct {
     ImageData final_image;
     ImageData alpha_mask;
 
+    /// Copia de final_image que quedó residente en GPU tras la composición CUDA
+    /// (void* para no arrastrar tipos de CUDA a este header; es unsigned char*).
+    /// NULL si el build no es CUDA o si la composición no corrió en device.
+    void *d_final_image;
+    /// Lo pone en true CUALQUIER código que modifique final_image en host después
+    /// de la composición. Mientras siga en false, d_final_image es un espejo fiel
+    /// y la reproyección puede consumirlo sin volver a subir la imagen. Es el
+    /// flag el que manda: se marca en el sitio real de la mutación, así que un
+    /// paso nuevo que se olvide de marcarlo es el único modo de romper esto —
+    /// por eso tests/test_cuda.sh compara ambos caminos píxel a píxel.
+    bool final_image_touched;
+
     bool error_occurred;
     char error_msg[512];
 } RgbContext;

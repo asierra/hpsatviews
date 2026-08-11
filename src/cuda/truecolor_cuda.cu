@@ -124,7 +124,9 @@ extern "C" ImageData create_multiband_rgb_from_dev(const DataFDev *r,
                                                    const DataFDev *b,
                                                    float r_min, float r_max,
                                                    float g_min, float g_max,
-                                                   float b_min, float b_max) {
+                                                   float b_min, float b_max,
+                                                   unsigned char **d_retain) {
+  if (d_retain) *d_retain = NULL;
   if (!r || !g || !b || !r->d_data || !g->d_data || !b->d_data) {
     LOG_ERROR("create_multiband_rgb_from_dev: input DataFDev is NULL.");
     return image_create(0, 0, 0);
@@ -175,7 +177,14 @@ extern "C" ImageData create_multiband_rgb_from_dev(const DataFDev *r,
   ok = true;
 
 cleanup:
-  if (d_out) cudaFree(d_out);
+  /* Con d_retain el buffer sobrevive a esta función: lo hereda el llamador para
+   * dárselo a la reproyección. Solo se entrega si todo salió bien; ante fallo se
+   * libera aquí para no dejar un puntero colgante en manos del llamador. */
+  if (ok && d_retain) {
+    *d_retain = d_out;
+  } else if (d_out) {
+    cudaFree(d_out);
+  }
   if (t0) cudaEventDestroy(t0);
   if (t1) cudaEventDestroy(t1);
   if (!ok) {
@@ -183,4 +192,8 @@ cleanup:
     return image_create(0, 0, 0);
   }
   return imout;
+}
+
+extern "C" void cuda_free_device_image(unsigned char *d_image) {
+  if (d_image) cudaFree(d_image);
 }

@@ -112,7 +112,8 @@ __global__ void reproject_kernel(const unsigned char *src, unsigned char *out,
 extern "C" ImageData reproject_image_analytical_cuda(
     const ImageData *src_image, const DataNC *data_nc, float lat_min,
     float lat_max, float lon_min, float lon_max, float native_resolution_km,
-    const float *clip_coords, const unsigned char *nodata_pixel) {
+    const float *clip_coords, const unsigned char *nodata_pixel,
+    const unsigned char *d_src_image) {
 
   ReprojPlan p = reproject_build_plan(src_image, data_nc, lat_min, lat_max,
                                       lon_min, lon_max, native_resolution_km,
@@ -133,7 +134,10 @@ extern "C" ImageData reproject_image_analytical_cuda(
   size_t out_bytes = (size_t)p.width * p.height * p.bpp;
 
   bool ok = false;
-  unsigned char *d_src = NULL, *d_out = NULL, *d_nodata = NULL;
+  /* d_src_owned solo se usa cuando hay que subir la imagen; si el llamador ya la
+   * tiene en device, se apunta a la suya y no se libera aquí. */
+  unsigned char *d_src_owned = NULL, *d_out = NULL, *d_nodata = NULL;
+  const unsigned char *d_src = d_src_image;
   cudaEvent_t t0 = NULL, t1 = NULL;
   float ms = 0.0f;
   dim3 block(16, 16);
@@ -144,9 +148,13 @@ extern "C" ImageData reproject_image_analytical_cuda(
   CUDA_CHECK(cudaEventCreate(&t1));
   CUDA_CHECK(cudaEventRecord(t0));
 
-  CUDA_CHECK(cudaMalloc((void **)&d_src, src_bytes));
+  if (!d_src) {
+    CUDA_CHECK(cudaMalloc((void **)&d_src_owned, src_bytes));
+    CUDA_CHECK(cudaMemcpy(d_src_owned, src_image->data, src_bytes,
+                          cudaMemcpyHostToDevice));
+    d_src = d_src_owned;
+  }
   CUDA_CHECK(cudaMalloc((void **)&d_out, out_bytes));
-  CUDA_CHECK(cudaMemcpy(d_src, src_image->data, src_bytes, cudaMemcpyHostToDevice));
   // Discarded pixels without a nodata pattern stay 0 (matches the CPU memset).
   CUDA_CHECK(cudaMemset(d_out, 0, out_bytes));
   if (nodata_pixel) {
@@ -163,11 +171,13 @@ extern "C" ImageData reproject_image_analytical_cuda(
   CUDA_CHECK(cudaEventRecord(t1));
   CUDA_CHECK(cudaEventSynchronize(t1));
   CUDA_CHECK(cudaEventElapsedTime(&ms, t0, t1));
-  LOG_TIMING(ms / 1000.0, "Analytic reprojection (CUDA, incl. transferencias)");
+  /* LOG_TIMING concatena fmt con un literal, así que la variante va como %s. */
+  LOG_TIMING(ms / 1000.0, "Analytic reprojection (CUDA, %s)",
+             d_src_owned ? "incl. transferencias" : "fuente residente: sin H2D");
   ok = true;
 
 cleanup:
-  if (d_src) cudaFree(d_src);
+  if (d_src_owned) cudaFree(d_src_owned);
   if (d_out) cudaFree(d_out);
   if (d_nodata) cudaFree(d_nodata);
   if (t0) cudaEventDestroy(t0);

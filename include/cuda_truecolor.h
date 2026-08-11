@@ -31,11 +31,22 @@ DataFDev create_truecolor_green_from_dev(const DataFDev *blue,
 
 /* Composición RGB de 3 DataFDev a imagen uint8 (3 bpp), con stretch lineal
  * por canal y clamp a [0,1]. Réplica de create_multiband_rgb() (src/truecolor.c).
- * Baja solo la imagen resultante. ImageData con data==NULL si falla. */
+ * Baja la imagen resultante a host. ImageData con data==NULL si falla.
+ *
+ * d_retain: si no es NULL, además conserva el buffer de device con la imagen y
+ * escribe ahí su puntero, para que la reproyección pueda consumirlo sin volver a
+ * subirlo (ver reproject_image_analytical_cuda). El llamador pasa a ser dueño de
+ * ese buffer y debe liberarlo con cuda_free_device_image(). Con NULL, el buffer
+ * se libera aquí y el comportamiento es el de siempre. La copia D2H se hace en
+ * ambos casos: hay código host (apply_enhancements) que consume la imagen. */
 ImageData create_multiband_rgb_from_dev(const DataFDev *r, const DataFDev *g,
                                         const DataFDev *b, float r_min,
                                         float r_max, float g_min, float g_max,
-                                        float b_min, float b_max);
+                                        float b_min, float b_max,
+                                        unsigned char **d_retain);
+
+/* Libera un buffer de imagen de device obtenido vía d_retain. Seguro con NULL. */
+void cuda_free_device_image(unsigned char *d_image);
 
 #ifdef __cplusplus
 }
