@@ -17,6 +17,8 @@ int load_nc_sf(const char *filename, DataNC *datanc);
 int load_nc_float(const char *filename, DataF *datanc, const char *variable);
 
 /// Computes lat/lon navigation grids from the GOES-R fixed-grid projection metadata.
+/// Computes the lat/lon grids for a GOES fixed-grid file. The projection setup is
+/// shared with the CUDA path via nav_build_plan() (include/nav_plan.h).
 int compute_navigation_nc(const char *GOES_L1b_filename, DataF *navla, DataF *navlo);
 
 /// Builds navigation grids for an already-reprojected geographic (equirectangular) grid.

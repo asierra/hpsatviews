@@ -7,6 +7,7 @@
  */
 #include "datanc.h"
 #include "reader_nc.h"
+#include "nav_plan.h"
 #include "reader_nc_chunk.h"
 #include "logger.h"
 #include <math.h>
@@ -382,10 +383,11 @@ void compute_lalo(double x, double y, double *la, double *lo) {
     *lo = (double)((lon_rad - M_PI) * rad2deg);
 }
 
-int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
-    int ncid, varid;
-    int retval;
+int nav_build_plan(const char *filename, NavPlan *plan) {
+    if (!plan) return -1;
+    memset(plan, 0, sizeof(*plan));
 
+    int ncid, varid, retval;
     if ((retval = nc_open(filename, NC_NOWRITE, &ncid)))
         ERR(retval);
 
@@ -400,12 +402,8 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
         ERR(retval);
     if ((retval = nc_inq_dimlen(ncid, yid, &height)))
         ERR(retval);
-    *navla = dataf_create(width, height);
-    navla->size = navla->width * navla->height;
-    navlo->width = navla->width;
-    navlo->height = navla->height;
-    navlo->size = navla->size;
 
+    double hsat = 0.0, sm_maj = 0.0, sm_min = 0.0, lo_proj_orig = 0.0;
     if ((retval = nc_inq_varid(ncid, "goes_imager_projection", &varid)))
         ERR(retval);
     if ((retval = nc_get_att_double(ncid, varid, "perspective_point_height", &hsat)))
@@ -414,12 +412,8 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
         ERR(retval);
     if ((retval = nc_get_att_double(ncid, varid, "semi_minor_axis", &sm_min)))
         ERR(retval);
-
-    double lo_proj_orig = 0.0;
     if ((retval = nc_get_att_double(ncid, varid, "longitude_of_projection_origin", &lo_proj_orig)))
         ERR(retval);
-    H = sm_maj + hsat;
-    lambda_0 = lo_proj_orig / rad2deg;
 
     double x_sf = 1.0, y_sf = 1.0, x_ao = 0.0, y_ao = 0.0;
 
@@ -429,7 +423,6 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
         ERR(retval);
     if ((retval = nc_inq_varid(ncid, "y", &yid)))
         ERR(retval);
-
     if ((retval = nc_get_att_double(ncid, xid, "scale_factor", &x_sf))) ERR(retval);
     if ((retval = nc_get_att_double(ncid, xid, "add_offset",   &x_ao))) ERR(retval);
     if ((retval = nc_get_att_double(ncid, yid, "scale_factor", &y_sf))) ERR(retval);
@@ -437,29 +430,67 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
 
     short *x_vals_raw = malloc(width * sizeof(short));
     short *y_vals_raw = malloc(height * sizeof(short));
-
-    if (!x_vals_raw || !y_vals_raw) {
-        free(x_vals_raw);
-        free(y_vals_raw);
+    double *x_rad = malloc(width * sizeof(double));
+    double *y_rad = malloc(height * sizeof(double));
+    if (!x_vals_raw || !y_vals_raw || !x_rad || !y_rad) {
+        free(x_vals_raw); free(y_vals_raw); free(x_rad); free(y_rad);
         nc_close(ncid);
         LOG_ERROR("Memory error while reading x[], y[]");
         return -1;
     }
 
-    if ((retval = nc_get_var_short(ncid, xid, x_vals_raw))) {
-        free(x_vals_raw);
-        free(y_vals_raw);
-        nc_close(ncid);
-        ERR(retval);
-    }
-    if ((retval = nc_get_var_short(ncid, yid, y_vals_raw))) {
-        free(x_vals_raw);
-        free(y_vals_raw);
+    if ((retval = nc_get_var_short(ncid, xid, x_vals_raw)) ||
+        (retval = nc_get_var_short(ncid, yid, y_vals_raw))) {
+        free(x_vals_raw); free(y_vals_raw); free(x_rad); free(y_rad);
         nc_close(ncid);
         ERR(retval);
     }
 
+    for (size_t i = 0; i < width; i++)
+        x_rad[i] = (double)x_vals_raw[i] * x_sf + x_ao;
+    for (size_t j = 0; j < height; j++)
+        y_rad[j] = (double)y_vals_raw[j] * y_sf + y_ao;
+
+    free(x_vals_raw);
+    free(y_vals_raw);
+    if ((retval = nc_close(ncid))) {
+        free(x_rad); free(y_rad);
+        ERR(retval);
+    }
+
+    plan->width = width;
+    plan->height = height;
+    plan->H = sm_maj + hsat;
+    plan->lambda_0 = lo_proj_orig / rad2deg;
+    plan->sm_maj = sm_maj;
+    plan->sm_min = sm_min;
+    plan->x_rad = x_rad;
+    plan->y_rad = y_rad;
+    return 0;
+}
+
+void nav_plan_destroy(NavPlan *plan) {
+    if (!plan) return;
+    free(plan->x_rad);
+    free(plan->y_rad);
+    memset(plan, 0, sizeof(*plan));
+}
+
+int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
+    NavPlan plan;
+    if (nav_build_plan(filename, &plan) != 0) return -1;
+
+    const size_t width = plan.width, height = plan.height;
+    const double H = plan.H, lambda_0 = plan.lambda_0;
+    const double sm_maj = plan.sm_maj, sm_min = plan.sm_min;
+
+    *navla = dataf_create(width, height);
     *navlo = dataf_create(width, height);
+    if (!navla->data_in || !navlo->data_in) {
+        nav_plan_destroy(&plan);
+        LOG_ERROR("Memory error allocating navigation grids");
+        return -1;
+    }
 
     // Precompute sin/cos per column (x) and row (y) to avoid recomputing them
     // 'height' and 'width' times, respectively.
@@ -469,21 +500,19 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
     double *csy_arr = malloc(height * sizeof(double));
     if (!snx_arr || !csx_arr || !sny_arr || !csy_arr) {
         free(snx_arr); free(csx_arr); free(sny_arr); free(csy_arr);
-        free(x_vals_raw); free(y_vals_raw);
-        nc_close(ncid);
+        nav_plan_destroy(&plan);
         LOG_ERROR("Memory error while precomputing navigation sin/cos");
         return -1;
     }
     for (size_t i = 0; i < width; i++) {
-        double x = (double)x_vals_raw[i] * x_sf + x_ao;
-        snx_arr[i] = sin(x);
-        csx_arr[i] = cos(x);
+        snx_arr[i] = sin(plan.x_rad[i]);
+        csx_arr[i] = cos(plan.x_rad[i]);
     }
     for (size_t j = 0; j < height; j++) {
-        double y = (double)y_vals_raw[j] * y_sf + y_ao;
-        sny_arr[j] = sin(y);
-        csy_arr[j] = cos(y);
+        sny_arr[j] = sin(plan.y_rad[j]);
+        csy_arr[j] = cos(plan.y_rad[j]);
     }
+    nav_plan_destroy(&plan);
 
     const double sm_maj2 = sm_maj * sm_maj;
     const double sm_min2 = sm_min * sm_min;
@@ -543,12 +572,6 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
         navlo->fmax = 180.0f;
         LOG_WARN("No valid navigation pixels in compute_navigation_nc; using default extents.");
     }
-
-    free(x_vals_raw);
-    free(y_vals_raw);
-
-    if ((retval = nc_close(ncid)))
-        ERR(retval);
 
     return 0;
 }
