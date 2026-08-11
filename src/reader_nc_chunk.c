@@ -19,6 +19,7 @@
 #include "reader_nc_chunk.h"
 #include "logger.h"
 
+#include <fcntl.h>
 #include <hdf5.h>
 #include <libdeflate.h>
 #include <omp.h>
@@ -26,6 +27,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 /* Inverse of the HDF5 shuffle filter: the shuffled layout stores byte-plane 0
  * of every element, then byte-plane 1, ... Rebuild interleaved elements. */
@@ -45,6 +47,7 @@ static void unshuffle(const uint8_t *shuf, uint8_t *out, size_t nelem,
 typedef struct {
   hsize_t *rawsize;
   unsigned *fmask;
+  haddr_t *rawaddr; /* offset de cada chunk dentro del archivo, para pread() */
   size_t nchx, nchy, chy, chx;
   bool ok;
 } ChunkIndex;
@@ -52,7 +55,6 @@ typedef struct {
 static int chunk_index_cb(const hsize_t *offset, unsigned filter_mask,
                           haddr_t addr, hsize_t size, void *op_data) {
   ChunkIndex *idx = (ChunkIndex *)op_data;
-  (void)addr;
   size_t cy = (size_t)offset[0] / idx->chy;
   size_t cx = (size_t)offset[1] / idx->chx;
   if (cy >= idx->nchy || cx >= idx->nchx) { /* offset outside the grid we sized */
@@ -62,6 +64,7 @@ static int chunk_index_cb(const hsize_t *offset, unsigned filter_mask,
   size_t k = cy * idx->nchx + cx;
   idx->rawsize[k] = size;
   idx->fmask[k] = filter_mask;
+  idx->rawaddr[k] = addr;
   return 0;
 }
 #endif
@@ -83,6 +86,8 @@ int read_var_chunked_deflate(const char *filename, const char *varname,
   uint8_t **raw = NULL;
   hsize_t *rawsize = NULL;
   unsigned *fmask = NULL;
+  haddr_t *rawaddr = NULL;
+  int fd = -1;
   size_t nchunks = 0;               /* set once known; keeps cleanup safe */
   size_t chy = 0, chx = 0, nchx = 0, nchy = 0, chunk_bytes = 0;
   int16_t fillval = 0;
@@ -136,7 +141,8 @@ int read_var_chunked_deflate(const char *filename, const char *varname,
   raw = (uint8_t **)calloc(nchunks, sizeof(uint8_t *));
   rawsize = (hsize_t *)calloc(nchunks, sizeof(hsize_t));
   fmask = (unsigned *)calloc(nchunks, sizeof(unsigned));
-  if (!raw || !rawsize || !fmask) goto done;
+  rawaddr = (haddr_t *)calloc(nchunks, sizeof(haddr_t));
+  if (!raw || !rawsize || !fmask || !rawaddr) goto done;
 
   /* --- Serial phase: locate every chunk, then pull its raw bytes. HDF5 is
    * single-locked, so neither half can be parallelized, and this phase — not the
@@ -159,7 +165,7 @@ int read_var_chunked_deflate(const char *filename, const char *varname,
 
 #if H5_VERSION_GE(1, 14, 0)
   {
-    ChunkIndex idx = {rawsize, fmask, nchx, nchy, chy, chx, true};
+    ChunkIndex idx = {rawsize, fmask, rawaddr, nchx, nchy, chy, chx, true};
     double t0i = omp_get_wtime();
     if (H5Dchunk_iter(dset, H5P_DEFAULT, chunk_index_cb, &idx) < 0 || !idx.ok)
       read_ok = false;
@@ -185,22 +191,98 @@ int read_var_chunked_deflate(const char *filename, const char *varname,
 #endif
   if (!read_ok) goto done;
 
-  for (size_t k = 0; k < nchunks; k++) {
-    if (rawsize[k] == 0) { raw[k] = NULL; continue; } /* all-fill region */
-    hsize_t offset[2] = {(hsize_t)((k / nchx) * chy), (hsize_t)((k % nchx) * chx)};
-    raw[k] = (uint8_t *)malloc(rawsize[k]);
-    if (!raw[k]) { read_ok = false; break; }
-    unsigned mask = fmask[k];
-    double t0f = omp_get_wtime();
-    herr_t read_err = H5Dread_chunk(dset, H5P_DEFAULT, offset, &mask, raw[k]);
-    t_fetch += omp_get_wtime() - t0f;
-    if (read_err < 0) { read_ok = false; break; }
-    n_alloc++;
+  /* --- Fetch: leer los bytes crudos de cada chunk. ---
+   *
+   * H5Dread_chunk obliga a ir en serie (HDF5 tiene un lock global), pero el
+   * índice ya nos dio el offset de cada chunk DENTRO DEL ARCHIVO, así que se
+   * pueden leer con pread() en paralelo y saltarse HDF5 por completo. pread es
+   * seguro entre hilos: no comparte el offset del descriptor.
+   *
+   * addr es relativo a la dirección base del archivo, que NO es 0 si el archivo
+   * tiene user block. Se consulta y se suma; con user block 0 (el caso de
+   * netCDF-4) la suma es inocua.
+   *
+   * Si algo impide el camino directo (no se pudo abrir, no hay addr, HDF5 < 1.14
+   * que no llena rawaddr) se cae a H5Dread_chunk, que sigue siendo correcto. */
+  bool use_pread = false;
+  hsize_t base_addr = 0;
+#if H5_VERSION_GE(1, 14, 0)
+  {
+    hid_t fcpl = H5Fget_create_plist(file);
+    if (fcpl >= 0) {
+      hsize_t ub = 0;
+      if (H5Pget_userblock(fcpl, &ub) >= 0) base_addr = ub;
+      H5Pclose(fcpl);
+      /* HPSV_NO_PREAD=1 fuerza H5Dread_chunk, para A/B de rendimiento. */
+      if (!getenv("HPSV_NO_PREAD")) {
+        fd = open(filename, O_RDONLY);
+        use_pread = (fd >= 0);
+      }
+    }
   }
+#endif
+
+  double t0f = omp_get_wtime();
+  if (use_pread) {
+    int failed_read = 0;
+#pragma omp parallel for schedule(static) reduction(+ : n_alloc)
+    for (size_t k = 0; k < nchunks; k++) {
+      if (rawsize[k] == 0 || failed_read) continue; /* all-fill region */
+      if (rawaddr[k] == HADDR_UNDEF) {
+#pragma omp atomic write
+        failed_read = 1;
+        continue;
+      }
+      uint8_t *buf = (uint8_t *)malloc(rawsize[k]);
+      if (!buf) {
+#pragma omp atomic write
+        failed_read = 1;
+        continue;
+      }
+      /* pread puede devolver menos de lo pedido; hay que insistir. */
+      size_t got = 0;
+      bool bad = false;
+      while (got < rawsize[k]) {
+        ssize_t n = pread(fd, buf + got, rawsize[k] - got,
+                          (off_t)(rawaddr[k] + base_addr + got));
+        if (n <= 0) { bad = true; break; }
+        got += (size_t)n;
+      }
+      if (bad) {
+        free(buf);
+#pragma omp atomic write
+        failed_read = 1;
+        continue;
+      }
+      raw[k] = buf;
+      n_alloc++;
+    }
+    if (failed_read) {
+      /* Deshacer lo leído y reintentar por el camino de HDF5. */
+      for (size_t k = 0; k < nchunks; k++) { free(raw[k]); raw[k] = NULL; }
+      n_alloc = 0;
+      use_pread = false;
+      LOG_WARN("Lectura directa de chunks falló; se usa H5Dread_chunk.");
+    }
+  }
+  if (!use_pread) {
+    for (size_t k = 0; k < nchunks; k++) {
+      if (rawsize[k] == 0) { raw[k] = NULL; continue; } /* all-fill region */
+      hsize_t offset[2] = {(hsize_t)((k / nchx) * chy), (hsize_t)((k % nchx) * chx)};
+      raw[k] = (uint8_t *)malloc(rawsize[k]);
+      if (!raw[k]) { read_ok = false; break; }
+      unsigned mask = fmask[k];
+      herr_t read_err = H5Dread_chunk(dset, H5P_DEFAULT, offset, &mask, raw[k]);
+      if (read_err < 0) { read_ok = false; break; }
+      n_alloc++;
+    }
+  }
+  t_fetch = omp_get_wtime() - t0f;
   if (!read_ok) goto done;
-  LOG_TIMING(omp_get_wtime() - t_serial0, "NetCDF chunk index+fetch (serial)");
-  LOG_DEBUG("  %zu chunks (%zu allocated): index %.3f s, fetch %.3f s",
-            nchunks, n_alloc, t_index, t_fetch);
+  LOG_TIMING(omp_get_wtime() - t_serial0, "NetCDF chunk index+fetch");
+  LOG_DEBUG("  %zu chunks (%zu allocated): index %.3f s, fetch %.3f s (%s)",
+            nchunks, n_alloc, t_index, t_fetch,
+            use_pread ? "pread paralelo" : "H5Dread_chunk serial");
 
   /* --- Parallel phase: inflate + unshuffle + scatter. --- */
   const unsigned SHUF_BIT = 0x1u; /* pipeline index 0 skipped */
@@ -283,6 +365,8 @@ done:
   if (dtype >= 0) H5Tclose(dtype);
   if (dcpl >= 0) H5Pclose(dcpl);
   if (space >= 0) H5Sclose(space);
+  free(rawaddr);
+  if (fd >= 0) close(fd);
   if (dset >= 0) H5Dclose(dset);
   if (file >= 0) H5Fclose(file);
   return rc;
