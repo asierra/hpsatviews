@@ -34,14 +34,33 @@ if [[ "$GENERATED" =~ \.(tif|tiff)$ ]] || [[ "$REFERENCE" =~ \.(tif|tiff)$ ]]; t
     REFERENCE_PAGE="${REFERENCE}[0]"
 fi
 
+# Dimensiones distintas no son una diferencia de píxeles sino una regresión
+# estructural, y compare las compara recortando en vez de fallar. Se revisa antes.
+GEN_DIM=$(identify -format "%wx%h" "$GENERATED_PAGE" 2>/dev/null | head -1)
+REF_DIM=$(identify -format "%wx%h" "$REFERENCE_PAGE" 2>/dev/null | head -1)
+if [ -z "$GEN_DIM" ] || [ -z "$REF_DIM" ]; then
+    echo "FAIL: no se pudieron leer las dimensiones de $GENERATED o $REFERENCE" >&2
+    exit 1
+fi
+if [ "$GEN_DIM" != "$REF_DIM" ]; then
+    echo "FAIL: $GENERATED vs $REFERENCE (dimensiones distintas: $GEN_DIM vs $REF_DIM)" >&2
+    exit 1
+fi
+
 TOTAL_PX=$(identify -format "%[fx:w*h]" "$REFERENCE_PAGE" 2>/dev/null | head -1)
 AE_RAW=$(compare -metric AE -fuzz "$FUZZ" "$GENERATED_PAGE" "$REFERENCE_PAGE" null: 2>&1 || true)
-AE=$(printf '%s\n' "$AE_RAW" | head -1 | grep -oE '^[0-9]+' || true)
 
-if [ -z "$AE" ]; then
+# OJO: el AE puede venir en notación científica ("2.26432e+07") cuando la
+# diferencia es grande. Un '^[0-9]+' se queda con el "2" y hace pasar como
+# trivial una regresión catastrófica —fue exactamente lo que dejó escapar una
+# reproyección degenerada—. Se parsea el float completo y se convierte a entero.
+AE_STR=$(printf '%s\n' "$AE_RAW" | head -1 | grep -oE '^[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?' || true)
+
+if [ -z "$AE_STR" ]; then
     echo "FAIL: $GENERATED vs $REFERENCE -> $AE_RAW" >&2
     exit 1
 fi
+AE=$(awk -v v="$AE_STR" 'BEGIN { printf "%.0f", v + 0 }')
 
 MAX_AE=$(awk -v t="$TOTAL_PX" -v p="$TOLERANCE_PCT" 'BEGIN { printf "%d", t * p / 100 }')
 
