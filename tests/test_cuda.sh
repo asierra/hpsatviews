@@ -89,4 +89,12 @@ else
     exit 1
 fi
 
-echo "OK: salida CUDA equivalente a la ruta CPU en los 9 casos."
+# daynite entero en device: pseudocolor nocturno, máscara y mezcla en GPU. Es la
+# cadena más larga del pipeline, así que acumula más redondeo que truecolor; la
+# tolerancia de compare_image.sh (fuzz 2%) la absorbe, y el porcentaje nocturno
+# debe coincidir exactamente porque la máscara es una decisión con umbral.
+../bin/hpsv rgb -v "$ANCHOR_C01" --mode daynite -G -o daynite_cpu.png
+../bin/hpsv rgb -v "$ANCHOR_C01" --mode daynite -G --cuda -o daynite_cuda.png
+./compare_image.sh daynite_cuda.png daynite_cpu.png
+
+echo "OK: salida CUDA equivalente a la ruta CPU en los 10 casos."

@@ -86,6 +86,10 @@ typedef struct {
     ImageData final_image;
     ImageData alpha_mask;
 
+    /// true cuando el composer ya entregó la imagen final mezclada (día/noche),
+    /// para que apply_enhancements() no vuelva a calcular máscara y blend.
+    bool composite_finalized;
+
     /// true cuando se decidió NO calcular la malla lat/lon en CPU porque la va a
     /// producir la GPU (ver compute_navigation_dev). En ese caso nav_lat/nav_lon
     /// no tienen data_in: solo llevan fmin/fmax, que es lo único que la ruta host

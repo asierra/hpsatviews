@@ -14,6 +14,7 @@
 #include "clip_loader.h"
 #include "config.h"
 #ifdef HPSV_CUDA
+#include "cuda_daynite.h"
 #include "cuda_kernels.h"
 #endif
 #include "datanc.h"
@@ -82,7 +83,7 @@ void rgb_context_destroy(RgbContext *ctx) {
 static bool truecolor_cuda_eligible(const RgbOptions *o) {
 #ifdef HPSV_CUDA
     return o->use_cuda && strcmp(o->mode, "truecolor") == 0 &&
-           !o->rayleigh_analytic && !o->use_sharpen && !o->use_piecewise_stretch;
+           !o->rayleigh_analytic && !o->use_sharpen;
 #else
     (void)o;
     return false;
@@ -343,11 +344,21 @@ static bool compose_truecolor_cuda(RgbContext *ctx) {
         }
 
         if (ray_ok) g = create_truecolor_green_from_dev(&b, &r, &nir);
+
+        // Orden idéntico a compose_truecolor(): rayleigh -> verde -> stretch.
+        if (g.d_data && ctx->opts.use_piecewise_stretch) {
+            if (!apply_piecewise_stretch_dev(&r) || !apply_piecewise_stretch_dev(&g) ||
+                !apply_piecewise_stretch_dev(&b)) {
+                ray_ok = false;
+                dataf_dev_destroy(&g);
+            }
+        }
+
         if (g.d_data) {
-            /* Sin piecewise stretch el rango de render es [0, 1.1] por canal
-             * (igual que compose_truecolor()). La gamma por canal normaliza a
-             * [0,1] solo el canal al que se aplica. */
-            const float range_max = 1.1f;
+            /* Con stretch el rango de render queda en [0, 1]; sin él, [0, 1.1]
+             * por canal (igual que compose_truecolor()). La gamma por canal
+             * normaliza a [0,1] solo el canal al que se aplica. */
+            const float range_max = ctx->opts.use_piecewise_stretch ? 1.0f : 1.1f;
             float rmin = 0.0f, rmax = range_max;
             float gmin = 0.0f, gmax = range_max;
             float bmin = 0.0f, bmax = range_max;
@@ -385,6 +396,91 @@ static bool compose_truecolor_cuda(RgbContext *ctx) {
     dataf_dev_destroy(&g);
     return handled;
 }
+
+/* Composite día/noche entero en device. Reutiliza compose_truecolor_cuda() para
+ * el lado diurno —que ya deja la imagen residente en d_final_image— y añade en
+ * GPU las tres piezas que faltaban: pseudocolor nocturno, máscara y mezcla.
+ *
+ * Con esto el composite deja de bajar y volver a subir resultados intermedios:
+ * la única transferencia de salida es la imagen final, y aun esa la aprovecha la
+ * reproyección vía el handoff residente.
+ *
+ * Las luces de ciudad (-l) siguen en CPU: requieren subir el fondo WebP y no
+ * están en la ruta operativa. El gate en run_rgb las excluye. */
+static bool compose_daynite_cuda(RgbContext *ctx) {
+    // Mismas opciones que fuerza compose_daynite() en la ruta CPU.
+    ctx->opts.apply_rayleigh = true;
+    ctx->opts.use_piecewise_stretch = true;
+
+    if (!compose_truecolor_cuda(ctx)) return false; // lado diurno
+    unsigned char *d_day = (unsigned char *)ctx->d_final_image;
+    if (!d_day) return false; // sin imagen residente no hay nada que encadenar
+
+    DataNC *c13 = &ctx->channels[13];
+    if (!c13->fdata.data_in) return false;
+
+    bool ok = false;
+    DataFDev temp = dataf_dev_upload(&c13->fdata);
+    DataFDev dla = {0}, dlo = {0};
+    unsigned char *d_night = NULL, *d_mask = NULL, *d_blend = NULL;
+
+    if (!temp.d_data) goto done;
+    if (!create_nocturnal_pseudocolor_dev(&temp, NULL, 0, &d_night)) goto done;
+
+    // La máscara necesita lat/lon; en daynite no están en device (nav_on_device
+    // solo aplica a truecolor), así que se suben aquí.
+    dla = dataf_dev_upload(&ctx->nav_lat);
+    dlo = dataf_dev_upload(&ctx->nav_lon);
+    if (!dla.d_data || !dlo.d_data) goto done;
+
+    {
+        SolarEphemeris_dn eph = solar_ephemeris_precompute(c13->timestamp);
+        float day_pct = 0.0f;
+        if (!create_daynight_mask_dev(&temp, &dla, &dlo, &eph, ctx->opts.cloud_temp,
+                                      &d_mask, &day_pct))
+            goto done;
+        float night_pct = 100.0f - day_pct;
+
+        // Igual que apply_enhancements(): por debajo del 0.1% nocturno la escena
+        // se considera diurna y se deja el compuesto visible tal cual.
+        if (night_pct > 0.1f) {
+            LOG_INFO("Blending day/night images (night: %.2f%%)", night_pct);
+            if (!blend_images_dev(d_night, d_day, d_mask, temp.width, temp.height,
+                                  &d_blend))
+                goto done;
+
+            // La mezcla sustituye a la imagen diurna, en device y en host.
+            ImageData blended = image_create(temp.width, temp.height, 3);
+            if (!blended.data) goto done;
+            if (!cuda_download_device_image(d_blend, blended.data,
+                                            (size_t)temp.size * 3)) {
+                image_destroy(&blended);
+                goto done;
+            }
+            image_destroy(&ctx->final_image);
+            ctx->final_image = blended;
+            cuda_free_device_image(d_day);
+            ctx->d_final_image = d_blend;
+            d_blend = NULL; // ya es del contexto
+        } else {
+            LOG_INFO("Scene is mostly daytime (%.2f%%), using only visible composite.",
+                     day_pct);
+        }
+    }
+
+    ctx->composite_finalized = true;
+    ok = true;
+
+done:
+    dataf_dev_destroy(&temp);
+    dataf_dev_destroy(&dla);
+    dataf_dev_destroy(&dlo);
+    cuda_free_device_image(d_night);
+    cuda_free_device_image(d_mask);
+    cuda_free_device_image(d_blend);
+    return ok;
+}
+
 #endif /* HPSV_CUDA */
 
 static bool compose_night(RgbContext *ctx) {
@@ -817,7 +913,8 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
 
 static bool apply_enhancements(RgbContext *ctx) {
     // daynite is a special composite mode: blend day (visible) and night (IR) images.
-    if (strcmp(ctx->opts.mode, "daynite") == 0) {
+    // La ruta CUDA ya entregó la mezcla hecha, así que aquí no hay nada que hacer.
+    if (strcmp(ctx->opts.mode, "daynite") == 0 && !ctx->composite_finalized) {
         // Navigation is already resampled to reference resolution in process_geospatial.
         DataF *nav_lat_ptr = &ctx->nav_lat;
         DataF *nav_lon_ptr = &ctx->nav_lon;
@@ -1129,7 +1226,16 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         // Accelerated: true-color, optionally with Rayleigh LUT. Still CPU-only:
         // analytic Rayleigh, ratio sharpening, piecewise stretch, other modes.
         bool truecolor_cuda = truecolor_cuda_eligible(&ctx.opts);
-        if (truecolor_cuda) {
+        // daynite: mismo gate salvo el modo, más las luces de ciudad, que siguen
+        // en CPU (habría que subir el fondo WebP y no están en la ruta operativa).
+        bool daynite_cuda = strcmp(ctx.opts.mode, "daynite") == 0 &&
+                            !ctx.opts.rayleigh_analytic && !ctx.opts.use_sharpen &&
+                            !ctx.opts.use_citylights && ctx.channels[13].fdata.data_in;
+        if (daynite_cuda) {
+            LOG_INFO("Generating 'daynite' composite (CUDA, device-resident)...");
+            cuda_handled = compose_daynite_cuda(&ctx);
+        }
+        if (!cuda_handled && truecolor_cuda) {
             LOG_INFO("Generating 'truecolor' composite (CUDA, device-resident)...");
             cuda_handled = compose_truecolor_cuda(&ctx);
         }

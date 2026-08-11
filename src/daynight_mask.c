@@ -5,6 +5,7 @@
  * This file is part of HPSATVIEWS.
  * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
+#include "daynight_mask.h"
 #include "datanc.h"
 #include "image.h"
 #include "logger.h"
@@ -16,17 +17,10 @@
 
 
 // Time-dependent solar ephemeris (constant for all pixels in one image)
-typedef struct {
-    double t;               // Julian time parameter
-    double RightAscension;
-    double sd;              // sin(Declination)
-    double cd;              // cos(Declination)
-    double Dlam;
-    double hour_angle_base; // 1.7528311 + 6.300388099*t - RightAscension + 0.92*Dlam
-} SolarEphemeris;
 
-static SolarEphemeris solar_ephemeris_precompute(time_t timestamp) {
-    SolarEphemeris eph;
+
+SolarEphemeris_dn solar_ephemeris_precompute(time_t timestamp) {
+    SolarEphemeris_dn eph;
     struct tm ts;
     gmtime_r(&timestamp, &ts);
     int Year = ts.tm_year + 1900;
@@ -94,7 +88,7 @@ static SolarEphemeris solar_ephemeris_precompute(time_t timestamp) {
 // Per-pixel sin(elevation) using precomputed ephemeris.
 // Returns sin(solar_elevation) = cos(SZA), sufficient for threshold comparison
 // without computing the full zenith angle (avoids asin, tan, refraction).
-static inline double sun_sin_elevation(float la, float lo, const SolarEphemeris *eph) {
+static inline double sun_sin_elevation(float la, float lo, const SolarEphemeris_dn *eph) {
     double Longitude = lo * (M_PI / 180.0);
     double Latitude = la * (M_PI / 180.0);
 
@@ -139,7 +133,7 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo, float *d
     double inv_se_range = 1.0 / (se_twil - se_nite);  // para interpolar penumbra
 
     // Precompute time-dependent solar ephemeris ONCE (was repeated per pixel)
-    SolarEphemeris eph = solar_ephemeris_precompute(datanc.timestamp);
+    SolarEphemeris_dn eph = solar_ephemeris_precompute(datanc.timestamp);
 
 #pragma omp parallel for shared(navla_data, navlo_data, temp_data, imout_data)                     \
     reduction(+ : day, nite)
