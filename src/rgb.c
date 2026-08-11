@@ -76,6 +76,20 @@ void rgb_context_destroy(RgbContext *ctx) {
 
 // --- PHASE 2: COMPOSERS (STRATEGY PATTERN) ---
 
+// El archivo del canal de referencia define la rejilla de navegación (lat/lon se
+// calculan a esa resolución, sin remuestrear). Compartido por process_geospatial
+// y la ruta CUDA: en daynite la referencia es C13, no C01, y construir el plan
+// desde el archivo equivocado da una rejilla del tamaño que no es.
+static const char *rgb_ref_filename(const RgbContext *ctx) {
+    char ref_name[8];
+    snprintf(ref_name, sizeof(ref_name), "C%02d", ctx->ref_channel_idx);
+    for (int i = 0; i < ctx->channel_set->count; i++) {
+        if (strcmp(ctx->channel_set->channels[i].name, ref_name) == 0)
+            return ctx->channel_set->channels[i].filename;
+    }
+    return ctx->channel_set->channels[0].filename; // fallback
+}
+
 // Única definición de "esta corrida la compone la GPU": la consultan tanto
 // run_rgb (para despachar) como process_geospatial (para saltarse el cálculo de
 // lat/lon en CPU, que la GPU va a rehacer). Tenerla en dos lugares sería una
@@ -84,6 +98,18 @@ static bool truecolor_cuda_eligible(const RgbOptions *o) {
 #ifdef HPSV_CUDA
     return o->use_cuda && strcmp(o->mode, "truecolor") == 0 &&
            !o->rayleigh_analytic && !o->use_sharpen;
+#else
+    (void)o;
+    return false;
+#endif
+}
+
+// Contraparte para daynite. No incluye apply_rayleigh porque compose_daynite_cuda
+// lo fuerza él mismo; sí excluye las luces de ciudad, que siguen en CPU.
+static bool daynite_cuda_eligible(const RgbOptions *o) {
+#ifdef HPSV_CUDA
+    return o->use_cuda && strcmp(o->mode, "daynite") == 0 && !o->rayleigh_analytic &&
+           !o->use_sharpen && !o->use_citylights;
 #else
     (void)o;
     return false;
@@ -230,7 +256,14 @@ static bool compose_truecolor(RgbContext *ctx) {
  *
  * comp_r = C02 (rojo), comp_b = C01 (azul), comp_g = verde sintetizado de
  * (azul=C01, rojo=C02, nir=C03), igual que compose_truecolor(). */
-static bool compose_truecolor_cuda(RgbContext *ctx) {
+/* nav_keep_la/lo: si no son NULL y la navegación se resolvió en device, reciben
+ * los grids lat/lon en vez de liberarse aquí. daynite los necesita después para
+ * la máscara; sin esto habría que volver a subirlos (medido: 0.042 s, y más caro
+ * de lo normal porque re-registrar páginas ya registradas cuesta 6x). */
+static bool compose_truecolor_cuda(RgbContext *ctx, DataFDev *nav_keep_la,
+                                   DataFDev *nav_keep_lo) {
+    if (nav_keep_la) *nav_keep_la = (DataFDev){0};
+    if (nav_keep_lo) *nav_keep_lo = (DataFDev){0};
     DataF *c01 = &ctx->channels[1].fdata;
     DataF *c02 = &ctx->channels[2].fdata;
     DataF *c03 = &ctx->channels[3].fdata;
@@ -272,8 +305,12 @@ static bool compose_truecolor_cuda(RgbContext *ctx) {
                 if (ctx->nav_on_device) {
                     // Se calcula la malla directamente en device desde el plan de
                     // proyección: ni cómputo en CPU ni subida de los dos grids.
+                    // Rejilla desde el canal de referencia; la efeméride y los
+                    // parámetros del satélite siguen viniendo de C01, igual que
+                    // hace la ruta CPU (compute_navigation_nc sobre el archivo de
+                    // referencia, compute_solar_angles_nc sobre C01).
                     NavPlan plan;
-                    if (nav_build_plan(nav_file, &plan) == 0) {
+                    if (nav_build_plan(rgb_ref_filename(ctx), &plan) == 0) {
                         if (plan.width == b.width && plan.height == b.height) {
                             float la_min, la_max, lo_min, lo_max;
                             have_nav = compute_navigation_dev(&plan, &navla, &navlo,
@@ -306,8 +343,13 @@ static bool compose_truecolor_cuda(RgbContext *ctx) {
                                                          eph.ha_base, sat_lon, sat_h,
                                                          &sza, &vza, &raa);
             }
-            dataf_dev_destroy(&navla);
-            dataf_dev_destroy(&navlo);
+            if (nav_keep_la && nav_keep_lo && navla.d_data && navlo.d_data) {
+                *nav_keep_la = navla; // la propiedad pasa al llamador
+                *nav_keep_lo = navlo;
+            } else {
+                dataf_dev_destroy(&navla);
+                dataf_dev_destroy(&navlo);
+            }
 
             // Respaldo: si se difirió la navegación a la GPU y allá falló, hay que
             // calcularla en CPU antes de caer a la composición host — si no, ni el
@@ -412,7 +454,8 @@ static bool compose_daynite_cuda(RgbContext *ctx) {
     ctx->opts.apply_rayleigh = true;
     ctx->opts.use_piecewise_stretch = true;
 
-    if (!compose_truecolor_cuda(ctx)) return false; // lado diurno
+    DataFDev dla = {0}, dlo = {0};
+    if (!compose_truecolor_cuda(ctx, &dla, &dlo)) return false; // lado diurno
     unsigned char *d_day = (unsigned char *)ctx->d_final_image;
     if (!d_day) return false; // sin imagen residente no hay nada que encadenar
 
@@ -421,17 +464,21 @@ static bool compose_daynite_cuda(RgbContext *ctx) {
 
     bool ok = false;
     DataFDev temp = dataf_dev_upload(&c13->fdata);
-    DataFDev dla = {0}, dlo = {0};
     unsigned char *d_night = NULL, *d_mask = NULL, *d_blend = NULL;
 
     if (!temp.d_data) goto done;
     if (!create_nocturnal_pseudocolor_dev(&temp, NULL, 0, &d_night)) goto done;
 
-    // La máscara necesita lat/lon; en daynite no están en device (nav_on_device
-    // solo aplica a truecolor), así que se suben aquí.
-    dla = dataf_dev_upload(&ctx->nav_lat);
-    dlo = dataf_dev_upload(&ctx->nav_lon);
-    if (!dla.d_data || !dlo.d_data) goto done;
+    // La máscara reutiliza los lat/lon que ya dejó el lado diurno en device. Solo
+    // hay que subirlos si la navegación se resolvió en host (p.ej. porque el
+    // camino device falló y se recalculó en CPU).
+    if (!dla.d_data || !dlo.d_data) {
+        dataf_dev_destroy(&dla);
+        dataf_dev_destroy(&dlo);
+        dla = dataf_dev_upload(&ctx->nav_lat);
+        dlo = dataf_dev_upload(&ctx->nav_lon);
+        if (!dla.d_data || !dlo.d_data) goto done;
+    }
 
     {
         SolarEphemeris_dn eph = solar_ephemeris_precompute(c13->timestamp);
@@ -472,6 +519,14 @@ static bool compose_daynite_cuda(RgbContext *ctx) {
     ok = true;
 
 done:
+    // Si se difirió la navegación y aquí fallamos, el llamador cae a la ruta CPU,
+    // que necesita lat/lon en host para la máscara: hay que reponerlos.
+    if (!ok && ctx->nav_on_device) {
+        LOG_WARN("daynite en device falló; se recalcula la navegación en CPU.");
+        if (compute_navigation_nc(rgb_ref_filename(ctx), &ctx->nav_lat,
+                                  &ctx->nav_lon) == 0)
+            ctx->nav_on_device = false;
+    }
     dataf_dev_destroy(&temp);
     dataf_dev_destroy(&dla);
     dataf_dev_destroy(&dlo);
@@ -824,17 +879,7 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
 static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
     // Compute navigation using the reference channel file (already at the target resolution)
     // to avoid computing at full resolution and then resampling.
-    const char *ref_filename = NULL;
-    char ref_name[8];
-    snprintf(ref_name, sizeof(ref_name), "C%02d", ctx->ref_channel_idx);
-    for (int i = 0; i < ctx->channel_set->count; i++) {
-        if (strcmp(ctx->channel_set->channels[i].name, ref_name) == 0) {
-            ref_filename = ctx->channel_set->channels[i].filename;
-            break;
-        }
-    }
-    if (!ref_filename)
-        ref_filename = ctx->channel_set->channels[0].filename; // fallback
+    const char *ref_filename = rgb_ref_filename(ctx);
     // Si la compone la GPU, la malla lat/lon se calcula allá (compute_navigation_dev)
     // y no tiene caso pagarla también aquí: son ~0.15 s de CPU más dos subidas de
     // ~450 MB. nav_lat/nav_lon quedan sin data_in; el composer les llena fmin/fmax,
@@ -846,7 +891,8 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
     // navegación no se calcularía en ningún lado y fmin/fmax quedarían en cero,
     // colapsando la extensión del reproyectado. Diferir aquí algo que allá no se
     // produce es justo el error que esto evita.
-    if (truecolor_cuda_eligible(&ctx->opts) && ctx->opts.apply_rayleigh) {
+    if ((truecolor_cuda_eligible(&ctx->opts) && ctx->opts.apply_rayleigh) ||
+        daynite_cuda_eligible(&ctx->opts)) {
         ctx->nav_on_device = true;
         ctx->has_navigation = true;
         LOG_DEBUG("Navegación diferida a la GPU (no se calcula lat/lon en CPU).");
@@ -1237,7 +1283,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         }
         if (!cuda_handled && truecolor_cuda) {
             LOG_INFO("Generating 'truecolor' composite (CUDA, device-resident)...");
-            cuda_handled = compose_truecolor_cuda(&ctx);
+            cuda_handled = compose_truecolor_cuda(&ctx, NULL, NULL);
         }
         if (!cuda_handled)
             LOG_WARN("--cuda: this RGB configuration isn't GPU-accelerated yet; using CPU path.");
