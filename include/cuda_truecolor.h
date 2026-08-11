@@ -15,6 +15,8 @@
 
 #include "cuda_dataf.h"
 #include "image.h"
+#include "truecolor.h"
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,6 +46,16 @@ ImageData create_multiband_rgb_from_dev(const DataFDev *r, const DataFDev *g,
                                         float r_max, float g_min, float g_max,
                                         float b_min, float b_max,
                                         unsigned char **d_retain);
+
+/* Stretch piecewise in place sobre un DataFDev. Réplica de
+ * apply_piecewise_stretch() (src/truecolor.c) con la misma curva
+ * GEO2GRID_STRETCH_X/Y. Deja fmin/fmax en [0,1]. false ante fallo CUDA. */
+bool apply_piecewise_stretch_dev(DataFDev *band);
+
+/* Copia a host un buffer de imagen de device. Mantiene la API de CUDA fuera del
+ * código C del pipeline. false ante fallo. */
+bool cuda_download_device_image(const unsigned char *d_image, unsigned char *host,
+                                size_t bytes);
 
 /* Libera un buffer de imagen de device obtenido vía d_retain. Seguro con NULL. */
 void cuda_free_device_image(unsigned char *d_image);

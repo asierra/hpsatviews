@@ -196,9 +196,11 @@ ImageData create_multiband_rgb(const DataF* r_ch, const DataF* g_ch, const DataF
 // Standard geo2grid control points for TrueColor Shadow Boost stretch.
 // Input:  0, 25, 55, 100, 255 (scale 0-255)
 // Output: 0, 90, 140, 175, 255
-static const float GEO2GRID_STRETCH_X[] = {0.0f, 0.09804f, 0.21569f, 0.39216f, 1.0f};
-static const float GEO2GRID_STRETCH_Y[] = {0.0f, 0.35294f, 0.54902f, 0.68627f, 1.0f};
-static const int GEO2GRID_STRETCH_COUNT = 5;
+// Expuestas (no static) para que el kernel CUDA use exactamente la misma curva;
+// duplicarla sería una fuente silenciosa de divergencia CPU/GPU.
+const float GEO2GRID_STRETCH_X[HPSV_STRETCH_COUNT] = {0.0f, 0.09804f, 0.21569f, 0.39216f, 1.0f};
+const float GEO2GRID_STRETCH_Y[HPSV_STRETCH_COUNT] = {0.0f, 0.35294f, 0.54902f, 0.68627f, 1.0f};
+static const int GEO2GRID_STRETCH_COUNT = HPSV_STRETCH_COUNT;
 
 // Linear interpolation helper.
 static inline float interpolate_linear(float val, const float *x, const float *y, int n) {

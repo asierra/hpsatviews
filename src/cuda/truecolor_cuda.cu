@@ -194,6 +194,87 @@ cleanup:
   return imout;
 }
 
+extern "C" bool cuda_download_device_image(const unsigned char *d_image,
+                                           unsigned char *host, size_t bytes) {
+  if (!d_image || !host) return false;
+  cudaError_t e = cudaMemcpy(host, d_image, bytes, cudaMemcpyDeviceToHost);
+  if (e != cudaSuccess) {
+    LOG_ERROR("cuda_download_device_image: %s", cudaGetErrorString(e));
+    return false;
+  }
+  return true;
+}
+
 extern "C" void cuda_free_device_image(unsigned char *d_image) {
   if (d_image) cudaFree(d_image);
+}
+
+/* ---- piecewise stretch ----------------------------------------------------
+ * Port de apply_piecewise_stretch() (src/truecolor.c). La curva es fija (5
+ * puntos) y se toma de GEO2GRID_STRETCH_X/Y, la misma tabla que usa la CPU: se
+ * sube a device en cada llamada porque son 40 bytes.
+ *
+ * No se reduce min/max como sí hace la versión CPU: con stretch activo el rango
+ * de render queda fijado a [0,1] por compose_truecolor(), así que band->fmin y
+ * fmax no se usan. */
+__device__ __forceinline__ float interp_linear_dev(float val, const float *x,
+                                                   const float *y, int n) {
+  if (val <= x[0]) return y[0];
+  if (val >= x[n - 1]) return y[n - 1];
+  for (int i = 0; i < n - 1; i++) {
+    if (val >= x[i] && val < x[i + 1]) {
+      float slope = (y[i + 1] - y[i]) / (x[i + 1] - x[i]);
+      return y[i] + (val - x[i]) * slope;
+    }
+  }
+  return val;
+}
+
+__global__ void piecewise_stretch_kernel(float *data, size_t n, const float *x,
+                                         const float *y, int count) {
+  size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n) return;
+  float val = data[i];
+  if (is_nondata_dev(val)) return; // NonData intacto, igual que en CPU
+  data[i] = interp_linear_dev(val, x, y, count);
+}
+
+extern "C" bool apply_piecewise_stretch_dev(DataFDev *band) {
+  if (!band || !band->d_data) return false;
+
+  bool ok = false;
+  float *d_x = NULL, *d_y = NULL;
+  cudaEvent_t t0 = NULL, t1 = NULL;
+  float ms = 0.0f;
+  unsigned int block = 256;
+  unsigned int grid = (unsigned int)((band->size + block - 1) / block);
+  size_t tbytes = HPSV_STRETCH_COUNT * sizeof(float);
+
+  CUDA_CHECK(cudaEventCreate(&t0));
+  CUDA_CHECK(cudaEventCreate(&t1));
+  CUDA_CHECK(cudaEventRecord(t0));
+
+  CUDA_CHECK(cudaMalloc((void **)&d_x, tbytes));
+  CUDA_CHECK(cudaMalloc((void **)&d_y, tbytes));
+  CUDA_CHECK(cudaMemcpy(d_x, GEO2GRID_STRETCH_X, tbytes, cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d_y, GEO2GRID_STRETCH_Y, tbytes, cudaMemcpyHostToDevice));
+
+  piecewise_stretch_kernel<<<grid, block>>>(band->d_data, band->size, d_x, d_y,
+                                            HPSV_STRETCH_COUNT);
+  CUDA_CHECK(cudaGetLastError());
+
+  CUDA_CHECK(cudaEventRecord(t1));
+  CUDA_CHECK(cudaEventSynchronize(t1));
+  CUDA_CHECK(cudaEventElapsedTime(&ms, t0, t1));
+  LOG_TIMING(ms / 1000.0, "Piecewise stretch (CUDA, device-resident)");
+  band->fmin = 0.0f;
+  band->fmax = 1.0f;
+  ok = true;
+
+cleanup:
+  if (d_x) cudaFree(d_x);
+  if (d_y) cudaFree(d_y);
+  if (t0) cudaEventDestroy(t0);
+  if (t1) cudaEventDestroy(t1);
+  return ok;
 }

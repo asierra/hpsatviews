@@ -26,6 +26,14 @@ void apply_solar_zenith_correction(DataF *data, const DataF *sza);
 /// Applies a piecewise linear contrast stretch in-place to match Geo2grid/Satpy output.
 void apply_piecewise_stretch(DataF *band);
 
+/// Curva del stretch piecewise de geo2grid (5 puntos, interpolación lineal entre
+/// ellos). Expuesta para que el kernel CUDA use exactamente la misma tabla en vez
+/// de una copia: la equivalencia CPU/GPU no debe depender de mantener dos
+/// literales sincronizados a mano.
+#define HPSV_STRETCH_COUNT 5
+extern const float GEO2GRID_STRETCH_X[HPSV_STRETCH_COUNT];
+extern const float GEO2GRID_STRETCH_Y[HPSV_STRETCH_COUNT];
+
 /// Builds a sharpening ratio map from a reference channel.
 DataF dataf_ratio_sharpen_map(const DataF *channel);
 
