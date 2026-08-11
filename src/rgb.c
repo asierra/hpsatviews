@@ -702,7 +702,12 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
     // que es lo único que la ruta host sigue usando (extensión del reproyectado).
     // Si la ruta GPU falla, el composer llama a compute_navigation_nc() como
     // respaldo antes de caer a CPU, así que nadie se queda sin navegación.
-    if (truecolor_cuda_eligible(&ctx->opts)) {
+    // La condición incluye apply_rayleigh porque el composer solo llama a
+    // compute_navigation_dev() dentro del bloque de Rayleigh: sin él la
+    // navegación no se calcularía en ningún lado y fmin/fmax quedarían en cero,
+    // colapsando la extensión del reproyectado. Diferir aquí algo que allá no se
+    // produce es justo el error que esto evita.
+    if (truecolor_cuda_eligible(&ctx->opts) && ctx->opts.apply_rayleigh) {
         ctx->nav_on_device = true;
         ctx->has_navigation = true;
         LOG_DEBUG("Navegación diferida a la GPU (no se calcula lat/lon en CPU).");
