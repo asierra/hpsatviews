@@ -37,6 +37,35 @@ static void unshuffle(const uint8_t *shuf, uint8_t *out, size_t nelem,
   }
 }
 
+#if H5_VERSION_GE(1, 14, 0)
+/* Collects the chunk index in a single walk (see the serial phase below).
+ * H5Dchunk_iter only visits *allocated* chunks, so any entry left at rawsize 0
+ * is an all-fill region — the same thing the per-chunk lookup reports as
+ * HADDR_UNDEF. */
+typedef struct {
+  hsize_t *rawsize;
+  unsigned *fmask;
+  size_t nchx, nchy, chy, chx;
+  bool ok;
+} ChunkIndex;
+
+static int chunk_index_cb(const hsize_t *offset, unsigned filter_mask,
+                          haddr_t addr, hsize_t size, void *op_data) {
+  ChunkIndex *idx = (ChunkIndex *)op_data;
+  (void)addr;
+  size_t cy = (size_t)offset[0] / idx->chy;
+  size_t cx = (size_t)offset[1] / idx->chx;
+  if (cy >= idx->nchy || cx >= idx->nchx) { /* offset outside the grid we sized */
+    idx->ok = false;
+    return -1;
+  }
+  size_t k = cy * idx->nchx + cx;
+  idx->rawsize[k] = size;
+  idx->fmask[k] = filter_mask;
+  return 0;
+}
+#endif
+
 int read_var_chunked_deflate(const char *filename, const char *varname,
                              void *out, size_t nx, size_t ny,
                              size_t elem_size) {
@@ -109,21 +138,34 @@ int read_var_chunked_deflate(const char *filename, const char *varname,
   fmask = (unsigned *)calloc(nchunks, sizeof(unsigned));
   if (!raw || !rawsize || !fmask) goto done;
 
-  /* --- Serial phase: read every raw chunk. HDF5 is single-locked, so this can't
-   * be parallelized, and it is NOT free: on a full-disk 0.5 km band (C02) it was
-   * measured at ~0.87 s of a 0.94 s load, dwarfing the inflate below. It used to
-   * go unattributed because the only timer here started after this loop, so -v
-   * reported the whole load as a 0.07 s "decompress".
+  /* --- Serial phase: locate every chunk, then pull its raw bytes. HDF5 is
+   * single-locked, so neither half can be parallelized, and this phase — not the
+   * inflate below — dominates the load of a full-disk 0.5 km band.
    *
-   * Split into index vs fetch to tell the two candidate causes apart:
-   * H5Dget_chunk_info_by_coord walks the chunk index once per chunk (a cost that
-   * grows with chunk count) whereas H5Dread_chunk is the actual byte movement.
-   * If index dominates, H5Dchunk_iter (HDF5 >= 1.14) walks the index once for
-   * the whole dataset and replaces this loop. --- */
+   * The index half is the expensive one, and it scales quadratically: on C02
+   * (G19 full disk) measured 2304 chunks -> 0.042 s but 9216 chunks -> 0.676 s,
+   * i.e. 4x the chunks for 16x the time, because H5Dget_chunk_info_by_coord
+   * re-walks the dataset's chunk index on every single call. The fetch half via
+   * H5Dread_chunk stays linear (~20 us/chunk) and is not a problem.
+   *
+   * So: get the whole index in one pass with H5Dchunk_iter (HDF5 >= 1.14), then
+   * fetch. Older HDF5 (Rocky 8 ships 1.10.x) keeps the per-chunk lookup, which
+   * is slow but correct. Both fill rawsize[]/fmask[]; rawsize[k] > 0 marks an
+   * allocated chunk, 0 means an all-fill region to be filled in below. --- */
   double t_index = 0.0, t_fetch = 0.0;
   size_t n_alloc = 0;
-  double t_serial0 = omp_get_wtime();
   bool read_ok = true;
+  double t_serial0 = omp_get_wtime();
+
+#if H5_VERSION_GE(1, 14, 0)
+  {
+    ChunkIndex idx = {rawsize, fmask, nchx, nchy, chy, chx, true};
+    double t0i = omp_get_wtime();
+    if (H5Dchunk_iter(dset, H5P_DEFAULT, chunk_index_cb, &idx) < 0 || !idx.ok)
+      read_ok = false;
+    t_index = omp_get_wtime() - t0i;
+  }
+#else
   for (size_t cy = 0; cy < nchy && read_ok; cy++) {
     for (size_t cx = 0; cx < nchx; cx++) {
       size_t k = cy * nchx + cx;
@@ -134,27 +176,26 @@ int read_var_chunked_deflate(const char *filename, const char *varname,
       double t0i = omp_get_wtime();
       herr_t info_err = H5Dget_chunk_info_by_coord(dset, offset, &mask, &addr, &csize);
       t_index += omp_get_wtime() - t0i;
-      if (info_err < 0) {
-        read_ok = false;
-        break;
-      }
-      if (addr == HADDR_UNDEF || csize == 0) {
-        raw[k] = NULL; /* unallocated -> fill value */
-        continue;
-      }
-      raw[k] = (uint8_t *)malloc(csize);
-      if (!raw[k]) { read_ok = false; break; }
-      double t0f = omp_get_wtime();
-      herr_t read_err = H5Dread_chunk(dset, H5P_DEFAULT, offset, &mask, raw[k]);
-      t_fetch += omp_get_wtime() - t0f;
-      if (read_err < 0) {
-        read_ok = false;
-        break;
-      }
+      if (info_err < 0) { read_ok = false; break; }
+      if (addr == HADDR_UNDEF || csize == 0) continue; /* unallocated -> fill */
       rawsize[k] = csize;
       fmask[k] = mask;
-      n_alloc++;
     }
+  }
+#endif
+  if (!read_ok) goto done;
+
+  for (size_t k = 0; k < nchunks; k++) {
+    if (rawsize[k] == 0) { raw[k] = NULL; continue; } /* all-fill region */
+    hsize_t offset[2] = {(hsize_t)((k / nchx) * chy), (hsize_t)((k % nchx) * chx)};
+    raw[k] = (uint8_t *)malloc(rawsize[k]);
+    if (!raw[k]) { read_ok = false; break; }
+    unsigned mask = fmask[k];
+    double t0f = omp_get_wtime();
+    herr_t read_err = H5Dread_chunk(dset, H5P_DEFAULT, offset, &mask, raw[k]);
+    t_fetch += omp_get_wtime() - t0f;
+    if (read_err < 0) { read_ok = false; break; }
+    n_alloc++;
   }
   if (!read_ok) goto done;
   LOG_TIMING(omp_get_wtime() - t_serial0, "NetCDF chunk index+fetch (serial)");
