@@ -101,6 +101,49 @@ static bool load_rayleigh_nav(RgbContext *ctx, RayleighNav *nav,
             break;
         }
     }
+#ifdef HPSV_CUDA
+    // La geometría de vista (sza/vza/raa) es lo más caro de los composers que
+    // siguen en CPU: en un daynite de disco completo son 0.28 s de los 0.67 s del
+    // composite. Los kernels ya existen (los usa truecolor), así que se calculan
+    // en device y se bajan los tres grids para que el resto de la cadena CPU siga
+    // igual. No es el port completo del modo, pero captura la mitad del costo sin
+    // tocar ningún composer.
+    //
+    // Solo aplica cuando lat/lon ya están a la resolución pedida; si hay que
+    // remuestrear, lo hace la ruta CPU, que ya sabe.
+    if (ctx->opts.use_cuda && ctx->has_navigation && ctx->nav_lat.data_in &&
+        ctx->nav_lon.data_in && ctx->nav_lat.width == w && ctx->nav_lat.height == h &&
+        nav_file) {
+        SolarEphemeris eph;
+        float sat_lon = 0.0f, sat_h = 0.0f;
+        if (reader_solar_ephemeris_from_file(nav_file, &eph) == 0 &&
+            reader_read_satellite_params(nav_file, &sat_lon, &sat_h) == 0) {
+            DataFDev dla = dataf_dev_upload(&ctx->nav_lat);
+            DataFDev dlo = dataf_dev_upload(&ctx->nav_lon);
+            DataFDev sza = {0}, vza = {0}, raa = {0};
+            bool ok = dla.d_data && dlo.d_data &&
+                      compute_rayleigh_nav_dev(&dla, &dlo, eph.sd, eph.cd, eph.ha_base,
+                                               sat_lon, sat_h, &sza, &vza, &raa);
+            dataf_dev_destroy(&dla);
+            dataf_dev_destroy(&dlo);
+            if (ok) {
+                ok = dataf_dev_download(&sza, &nav->sza) &&
+                     dataf_dev_download(&vza, &nav->vza) &&
+                     dataf_dev_download(&raa, &nav->raa);
+            }
+            dataf_dev_destroy(&sza);
+            dataf_dev_destroy(&vza);
+            dataf_dev_destroy(&raa);
+            if (ok) return true;
+            // Fallo a medias: soltar lo que se haya bajado y rehacerlo en CPU.
+            dataf_destroy(&nav->sza);
+            dataf_destroy(&nav->vza);
+            dataf_destroy(&nav->raa);
+            LOG_WARN("Geometría de vista en device falló; se calcula en CPU.");
+        }
+    }
+#endif
+
     if (ctx->has_navigation && ctx->nav_lat.data_in && ctx->nav_lon.data_in)
         return rayleigh_load_navigation_from_latlon(nav_file, &ctx->nav_lat,
                                                     &ctx->nav_lon, nav, w, h);

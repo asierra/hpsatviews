@@ -143,6 +143,30 @@ extern "C" DataFDev dataf_dev_alloc(unsigned int width, unsigned int height) {
   return dev;
 }
 
+/* ---- download ------------------------------------------------------------- */
+extern "C" bool dataf_dev_download(const DataFDev *dev, DataF *host_out) {
+  if (!host_out) return false;
+  memset(host_out, 0, sizeof(*host_out));
+  if (!dev || !dev->d_data) return false;
+
+  DataF host = dataf_create(dev->width, dev->height);
+  if (!host.data_in) {
+    LOG_ERROR("dataf_dev_download: host allocation failed.");
+    return false;
+  }
+  cudaError_t e = cudaMemcpy(host.data_in, dev->d_data, dev->size * sizeof(float),
+                             cudaMemcpyDeviceToHost);
+  if (e != cudaSuccess) {
+    LOG_ERROR("dataf_dev_download: %s", cudaGetErrorString(e));
+    dataf_destroy(&host);
+    return false;
+  }
+  host.fmin = dev->fmin;
+  host.fmax = dev->fmax;
+  *host_out = host;
+  return true;
+}
+
 /* ---- destroy -------------------------------------------------------------- */
 extern "C" void dataf_dev_destroy(DataFDev *dev) {
   if (!dev) return;

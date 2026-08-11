@@ -52,6 +52,12 @@ DataFDev dataf_dev_alloc(unsigned int width, unsigned int height);
 /* Libera el buffer de device y deja el struct en cero. Seguro con d_data==NULL. */
 void dataf_dev_destroy(DataFDev *dev);
 
+/* Baja un DataFDev a un DataF de host recién reservado (el llamador lo libera
+ * con dataf_destroy). Sirve para reinsertar en la cadena CPU un resultado
+ * calculado en GPU, cuando el resto del pipeline aún no está portado. Devuelve
+ * false ante fallo, dejando host_out en cero. */
+bool dataf_dev_download(const DataFDev *dev, DataF *host_out);
+
 /* Corrección gamma residente en device, in place. Misma semántica que
  * dataf_apply_gamma() (src/datanc.c): normaliza a [min,max], salida =
  * norm^(1/gamma), NonData intacto. Actualiza fmin/fmax a [0,1] cuando corre.
