@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.1.0] - 2026-08-11
 
+DOI: [10.5281/zenodo.21893553](https://doi.org/10.5281/zenodo.21893553).
+
 Optional CUDA backend and a rewritten I/O path. On the production server
 (NVIDIA A30, 64 threads) a full-disk GOES-19 true colour with Rayleigh
 correction and ratio sharpening renders in 9.25 s on the CPU path and 3.02 s on

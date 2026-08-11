@@ -30,6 +30,9 @@ identifiers:
     value: "10.5281/zenodo.20817973"
     description: "Concept DOI, resolves to the latest version"
   - type: doi
+    value: "10.5281/zenodo.21893553"
+    description: "Archived snapshot of version 1.1.0 on Zenodo"
+  - type: doi
     value: "10.5281/zenodo.21092353"
     description: "Archived snapshot of version 1.0.1 on Zenodo"
 keywords:
