@@ -122,14 +122,73 @@ static char* get_projection_wkt(const DataNC* meta) {
  * NOTA IMPORTANTE: Si la proyección es GEOS, convierte el GeoTransform
  * de Radianes a Metros multiplicando por la altura del satélite.
  */
-static GDALDatasetH create_mem_dataset(int width, 
-                                       int height, 
-                                       int bands, 
-                                       GDALDataType type, 
+/**
+ * Abre un dataset MEM que APUNTA al buffer entrelazado de ImageData en vez de
+ * copiarlo. El driver MEM acepta un puntero de host más los strides, así que
+ * GDAL lee los píxeles donde ya están.
+ *
+ * Esto evita dos costos que antes eran invisibles porque el único timer del
+ * writer arrancaba en GDALCreateCopy: la reserva de un segundo buffer del
+ * tamaño de la imagen, y el de-interleave (una pasada por banda leyendo 1 de
+ * cada `bands` bytes; 0.082 s por 140 MB medido, ~0.11 s en un full-disk).
+ *
+ * El dataset NO es dueño de la memoria: `data` debe seguir viva hasta el
+ * GDALClose, cosa que se cumple porque el ImageData del llamador sobrevive a
+ * toda la escritura. Devuelve NULL si falla, y el llamador cae al camino que
+ * reserva y copia.
+ */
+static GDALDatasetH open_mem_wrapping(GDALDriverH driver, const unsigned char* data,
+                                      int width, int height, int bands) {
+    // Se usa GDALAddBand con DATAPOINTER en vez de la sintaxis de nombre de
+    // archivo "MEM:::DATAPOINTER=...": GDAL bloquea esa última por defecto desde
+    // hace varias versiones (haría que un nombre de archivo no confiable pudiera
+    // apuntar a memoria arbitraria) y exigiría activar GDAL_MEM_ENABLE_OPEN.
+    // AddBand no tiene ese problema porque el puntero no viene de una ruta.
+    GDALDatasetH ds = GDALCreate(driver, "", width, height, 0 /* sin bandas */,
+                                 GDT_Byte, NULL);
+    if (!ds) return NULL;
+
+    char pixoff[32], lineoff[32];
+    snprintf(pixoff, sizeof(pixoff), "%d", bands);            // RGBRGB...: 1 píxel = bands bytes
+    snprintf(lineoff, sizeof(lineoff), "%d", bands * width);  // 1 línea = bands*width bytes
+
+    for (int i = 0; i < bands; i++) {
+        // La banda i arranca en el byte i y avanza de `bands` en `bands`.
+        char ptr[64] = {0};
+        int n = CPLPrintPointer(ptr, (void*)(data + i), (int)sizeof(ptr) - 1);
+        if (n <= 0 || n >= (int)sizeof(ptr)) { GDALClose(ds); return NULL; }
+        ptr[n] = '\0';
+
+        char** opts = NULL;
+        opts = CSLSetNameValue(opts, "DATAPOINTER", ptr);
+        opts = CSLSetNameValue(opts, "PIXELOFFSET", pixoff);
+        opts = CSLSetNameValue(opts, "LINEOFFSET", lineoff);
+        CPLErr e = GDALAddBand(ds, GDT_Byte, opts);
+        CSLDestroy(opts);
+        if (e != CE_None) { GDALClose(ds); return NULL; }
+    }
+    return ds;
+}
+
+/**
+ * @param data         Si no es NULL (y type es GDT_Byte), intenta envolver ese
+ *                     buffer entrelazado sin copiarlo.
+ * @param out_wrapped  Devuelve true si lo logró; en ese caso el dataset ya trae
+ *                     los píxeles y el llamador NO debe escribir las bandas. Si
+ *                     es false (o data era NULL) el dataset viene vacío y hay que
+ *                     llenarlo con GDALRasterIO como siempre.
+ */
+static GDALDatasetH create_mem_dataset(int width,
+                                       int height,
+                                       int bands,
+                                       GDALDataType type,
                                        const DataNC* meta,
-                                       int offset_x, 
-                                       int offset_y) {
-    
+                                       int offset_x,
+                                       int offset_y,
+                                       const unsigned char* data,
+                                       bool* out_wrapped) {
+
+    if (out_wrapped) *out_wrapped = false;
     GDALAllRegister();
     GDALDriverH driver = GDALGetDriverByName("MEM");
     if (!driver) {
@@ -137,7 +196,18 @@ static GDALDatasetH create_mem_dataset(int width,
         return NULL;
     }
 
-    GDALDatasetH ds = GDALCreate(driver, "", width, height, bands, type, NULL);
+    GDALDatasetH ds = NULL;
+    // HPSV_NO_MEM_ZEROCOPY=1 fuerza el camino que copia (para A/B de rendimiento).
+    if (data && type == GDT_Byte && !getenv("HPSV_NO_MEM_ZEROCOPY")) {
+        ds = open_mem_wrapping(driver, data, width, height, bands);
+        if (ds) {
+            if (out_wrapped) *out_wrapped = true;
+        } else {
+            // No es fatal: se cae al camino de reservar y copiar.
+            LOG_WARN("MEM zero-copy no disponible; se copiará la imagen banda por banda.");
+        }
+    }
+    if (!ds) ds = GDALCreate(driver, "", width, height, bands, type, NULL);
     if (!ds) {
         LOG_ERROR("Could not create in-memory dataset.");
         return NULL;
@@ -235,27 +305,41 @@ int write_geotiff_rgb(const char* filename, const ImageData* img, const DataNC* 
 
     // Create in-memory dataset: 3 or 4 bands depending on alpha presence.
     int num_bands = img->bpp;
-    GDALDatasetH ds = create_mem_dataset(img->width, img->height, num_bands, GDT_Byte, meta, offset_x, offset_y);
+    double t_mem0 = omp_get_wtime();
+    bool wrapped = false;
+    GDALDatasetH ds = create_mem_dataset(img->width, img->height, num_bands, GDT_Byte,
+                                         meta, offset_x, offset_y, img->data, &wrapped);
     if (!ds) return -1;
 
     if (product && product[0])
         GDALSetMetadataItem(ds, "product", product, "");
 
-    // Escribir canales RGB (y alpha si existe)
+    // Con zero-copy el dataset ya ve los píxeles; solo queda marcar el alfa.
+    // Sin él hay que de-interleavar: una pasada por banda leyendo 1 de cada
+    // num_bands bytes. Se mide aparte porque el timer de finalize_cog() cubre
+    // solo GDALCreateCopy y dejaba este costo sin atribuir.
     CPLErr err = CE_None;
-    for (int i = 0; i < num_bands; i++) {
-        GDALRasterBandH band = GDALGetRasterBand(ds, i + 1);
-        err = GDALRasterIO(band, GF_Write, 0, 0, img->width, img->height, 
-                           (void*)(img->data + i), 
-                           img->width, img->height, GDT_Byte, 
-                           num_bands, num_bands * img->width); // Interleaved
-        if (err != CE_None) break;
-        
-        // Mark the alpha channel if it is the last of 4 bands.
-        if (i == 3 && num_bands == 4) {
-            GDALSetRasterColorInterpretation(band, GCI_AlphaBand);
+    if (wrapped) {
+        if (num_bands == 4)
+            GDALSetRasterColorInterpretation(GDALGetRasterBand(ds, 4), GCI_AlphaBand);
+    } else {
+        for (int i = 0; i < num_bands; i++) {
+            GDALRasterBandH band = GDALGetRasterBand(ds, i + 1);
+            err = GDALRasterIO(band, GF_Write, 0, 0, img->width, img->height,
+                               (void*)(img->data + i),
+                               img->width, img->height, GDT_Byte,
+                               num_bands, num_bands * img->width); // Interleaved
+            if (err != CE_None) break;
+
+            // Mark the alpha channel if it is the last of 4 bands.
+            if (i == 3 && num_bands == 4) {
+                GDALSetRasterColorInterpretation(band, GCI_AlphaBand);
+            }
         }
     }
+    LOG_TIMING(omp_get_wtime() - t_mem0, "GeoTIFF MEM dataset (%d bandas, %ux%u, %s)",
+               num_bands, img->width, img->height,
+               wrapped ? "zero-copy" : "de-interleave");
 
     if (err != CE_None) {
         GDALClose(ds);
@@ -273,15 +357,22 @@ int write_geotiff_gray(const char* filename, const ImageData* img, const DataNC*
 
     // Create in-memory dataset: 1 or 2 bands depending on alpha presence.
     int num_bands = img->bpp;
-    GDALDatasetH ds = create_mem_dataset(img->width, img->height, num_bands, GDT_Byte, meta, offset_x, offset_y);
+    double t_mem0 = omp_get_wtime();
+    bool wrapped = false;
+    GDALDatasetH ds = create_mem_dataset(img->width, img->height, num_bands, GDT_Byte,
+                                         meta, offset_x, offset_y, img->data, &wrapped);
     if (!ds) return -1;
 
     if (product && product[0])
         GDALSetMetadataItem(ds, "product", product, "");
 
     CPLErr err = CE_None;
-    
-    if (img->bpp == 1) {
+
+    if (wrapped) {
+        // El dataset ya ve los píxeles; solo falta declarar el alfa.
+        if (num_bands == 2)
+            GDALSetRasterColorInterpretation(GDALGetRasterBand(ds, 2), GCI_AlphaBand);
+    } else if (img->bpp == 1) {
         // Grayscale only.
         GDALRasterBandH band = GDALGetRasterBand(ds, 1);
         err = GDALRasterIO(band, GF_Write, 0, 0, img->width, img->height, 
@@ -310,6 +401,9 @@ int write_geotiff_gray(const char* filename, const ImageData* img, const DataNC*
             GDALSetRasterColorInterpretation(alpha_band, GCI_AlphaBand);
         }
     }
+    LOG_TIMING(omp_get_wtime() - t_mem0, "GeoTIFF MEM dataset (%d banda%s, %ux%u, %s)",
+               num_bands, num_bands == 1 ? "" : "s", img->width, img->height,
+               wrapped ? "zero-copy" : "copia");
 
     if (err != CE_None) {
         GDALClose(ds);
@@ -326,7 +420,11 @@ int write_geotiff_indexed(const char* filename, const ImageData* img, const Colo
         return -1;
     }
 
-    GDALDatasetH ds = create_mem_dataset(img->width, img->height, 1, GDT_Byte, meta, offset_x, offset_y);
+    // Sin zero-copy a propósito: es una sola banda (la copia es contigua, no hay
+    // de-interleave que ahorrar) y este camino además cuelga una tabla de color
+    // de la banda, así que no vale la pena tocarlo.
+    GDALDatasetH ds = create_mem_dataset(img->width, img->height, 1, GDT_Byte, meta,
+                                         offset_x, offset_y, NULL, NULL);
     if (!ds) return -1;
 
     if (product && product[0])
