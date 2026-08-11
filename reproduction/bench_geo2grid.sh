@@ -7,8 +7,9 @@
 #   reproduction/bench_geo2grid.sh <anchor.nc>
 #
 # Env overrides:
-#   G2G_HOME    geo2grid bundle root (must contain bin/geo2grid.sh).
-#               Default: /data/cspp/geo2grid_v_1_2
+#   GEO2GRID_HOME  geo2grid bundle root (must contain bin/geo2grid.sh).
+#               Already exported on the LANOT servers; the fallback default is
+#               /data/cspp/geo2grid_v_1_2 (the dev box).
 #   WORKERS     geo2grid --num-workers values to sweep. Default: derived from
 #               nproc (4 8 16 32 ... nproc). See "Fairness" below.
 #   REPS        Timed runs per configuration. Default 2.
@@ -40,13 +41,13 @@ set -u
 ANCHOR="${1:?Usage: $0 <anchor.nc>   (any ABI L1b channel of the scene)}"
 [ -r "$ANCHOR" ] || { echo "No such file: $ANCHOR" >&2; exit 1; }
 
-G2G_HOME="${G2G_HOME:-/data/cspp/geo2grid_v_1_2}"
-G2G="$G2G_HOME/bin/geo2grid.sh"
+GEO2GRID_HOME="${GEO2GRID_HOME:-/data/cspp/geo2grid_v_1_2}"
+G2G="$GEO2GRID_HOME/bin/geo2grid.sh"
 REPS="${REPS:-2}"
 NCPU="$(nproc)"
 HPSV="$(cd "$(dirname "$0")/.." && pwd)/bin/hpsv"
 
-[ -x "$G2G" ]  || { echo "geo2grid not found at $G2G (set G2G_HOME)" >&2; exit 1; }
+[ -x "$G2G" ]  || { echo "geo2grid not found at $G2G (set GEO2GRID_HOME)" >&2; exit 1; }
 [ -x "$HPSV" ] || { echo "hpsv not built: $HPSV (run 'make' first)" >&2; exit 1; }
 
 # Default worker sweep: powers of two up to the core count, plus the core count.
@@ -100,7 +101,7 @@ echo "GPU       : $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/nul
 echo "hpsv      : $("$HPSV" --version 2>/dev/null | head -1 || echo '?') @ $(git -C "$(dirname "$HPSV")/.." rev-parse --short HEAD 2>/dev/null || echo 'no git')"
 if ldd "$HPSV" 2>/dev/null | grep -q cudart; then HAS_CUDA=1; else HAS_CUDA=0; fi
 echo "            CUDA build: $([ $HAS_CUDA = 1 ] && echo yes || echo 'no (GPU row will be skipped)')"
-echo "geo2grid  : $G2G_HOME"
+echo "geo2grid  : $GEO2GRID_HOME"
 echo "scene     : $(basename "$C01" | sed -E 's/_e[0-9]+_c[0-9]+\.nc//')"
 echo "product   : true color + Rayleigh + ratio sharpening, 0.5 km, GeoTIFF"
 echo "reps      : $REPS   sweep: --num-workers$WORKERS"
