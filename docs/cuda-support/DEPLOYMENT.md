@@ -141,8 +141,15 @@ Notas de recursos compartidos:
 | Servidor | CPU | GPU | `CUDA_ARCH` | Distro / lib HDF5 |
 |---|---|---|---|---|
 | tsom04 | Xeon Gold 6226R (32 hilos) | Tesla T4, compartida | `sm_75` | (verificar) |
-| A30 (ESC4000-E10) | Xeon Gold 6326 (Ice Lake) | A30, **dedicada** | `sm_80` | Rocky 10 → `hdf5` |
+| **tahan** | Xeon (32 hilos) | **A30, dedicada** | `sm_80` | Rocky → `hdf5`, HDF5 1.14.5 |
 
-Para el workload objetivo (full-disk truecolor+Rayleigh, GeoTIFF): la **A30 es el
-mejor candidato** (FP64 fuerte, dedicada). En la T4 el `--cuda` podría solo
-empatar por su FP64 flojo — medir antes de decidir.
+**Medido en tahan (2026-08-10), no estimado:** con `--cuda` un disco completo
+`truecolor --rayleigh -G -t` tarda **0.93 s** y `daynite -G -t` **0.91 s**. La
+predicción de que la A30 sería el buen candidato se confirmó, y por la razón que
+se esperaba: su FP64 1:2 hace que la geometría de vista pase de 1.06 s a 0.037 s,
+mientras que en la T4 (1:32) ese mismo kernel es el más lento del pipeline.
+
+Requisitos que conviene verificar en el host: **HDF5 ≥ 1.14** habilita el
+recorrido único del índice de chunks (`H5Dchunk_iter`) y la lectura con `pread`
+paralelo; con versiones anteriores el lector cae a un camino correcto pero
+bastante más lento en bandas de 0.5 km.
