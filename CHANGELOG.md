@@ -7,10 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-11
+
 Optional CUDA backend and a rewritten I/O path. On the production server
 (NVIDIA A30, 64 threads) a full-disk GOES-19 true colour with Rayleigh
-correction and ratio sharpening renders in 9.34 s on the CPU path, against
-30.84 s for geo2grid 1.3 on the same host and scene.
+correction and ratio sharpening renders in 9.25 s on the CPU path and 3.02 s on
+the GPU, against 30.63 s for geo2grid 1.3 on the same host and scene. The
+like-for-like figure is the CPU one, 3.31×; geo2grid has no GPU path to compare
+against.
 
 ### Added
 - An optional CUDA backend, opt-in at build time (`make CUDA=1
@@ -28,8 +32,8 @@ correction and ratio sharpening renders in 9.34 s on the CPU path, against
   that disqualify true colour from the accelerated path: until now the flag
   silently sent the whole composite back to the CPU, which mattered because
   sharpening is exactly what is needed to match geo2grid's product, so every
-  cross-tool GPU measurement had really been measuring OpenMP. On this
-  development box a sharpened CONUS scene went from 6.43 s to 3.42 s.
+  cross-tool GPU measurement had really been measuring OpenMP. On the A30
+  production host a sharpened full disk went from 6.96 s to 3.02 s.
 - `reproduction/bench_geo2grid.sh` and `reproduction/compare_g2g_product.sh`:
   a cross-tool benchmark against geo2grid (SSEC/CIMSS) and a check that both
   tools produce the same product. The benchmark sweeps geo2grid's
@@ -122,6 +126,7 @@ Initial public release. DOI: [10.5281/zenodo.20817974](https://doi.org/10.5281/z
 - Bilingual (English/Spanish) CLI help, man pages, and documentation.
 - End-to-end regression test suite and GitHub Actions CI.
 
-[Unreleased]: https://github.com/asierra/hpsatviews/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/asierra/hpsatviews/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/asierra/hpsatviews/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/asierra/hpsatviews/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/asierra/hpsatviews/releases/tag/v1.0.0

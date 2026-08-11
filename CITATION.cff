@@ -17,8 +17,8 @@ authors:
     affiliation: >
       Laboratorio Nacional de Observación de la Tierra (LANOT),
       Universidad Nacional Autónoma de México (UNAM)
-version: 1.0.1
-date-released: "2026-06-30"
+version: 1.1.0
+date-released: "2026-08-11"
 license: GPL-3.0-or-later
 repository-code: "https://github.com/asierra/hpsatviews"
 url: "https://github.com/asierra/hpsatviews"

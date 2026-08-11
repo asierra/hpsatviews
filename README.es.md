@@ -754,7 +754,7 @@ archivo un botón "Cite this repository" en la página principal del repo.
 @software{aguilar_sierra_hpsatviews,
   author    = {Aguilar Sierra, Alejandro},
   title     = {hpsatviews: High Performance Satellite Views},
-  version   = {1.0.1},
+  version   = {1.1.0},
   year      = {2026},
   publisher = {Zenodo},
   doi       = {10.5281/zenodo.21092353},
