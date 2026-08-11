@@ -1,0 +1,24 @@
+# El .gitignore raíz excluye *.png, *.jpg, *.tif y *.pdf (salidas generadas).
+# Aquí se rescatan las figuras del manuscrito: sin ellas el .tex no compila
+# desde un clon limpio, y el campo C3 del metadato de SoftwareX pide una
+# cápsula reproducible.
+
+# Las tres figuras que el .tex referencia.
+!processing_workflow.png
+!reprojection.jpg
+!radiometric.jpg
+
+# Los seis paneles que alimentan radiometric.jpg. Pesan ~170 KB entre todos y
+# permiten reconstruir el panel con crea_panel.sh sin volver a bajar los NetCDF
+# de origen ni regenerar los .tif intermedios.
+!a_otis.jpg
+!b_ash.jpg
+!c_clahe.jpg
+!d_ctp.jpg
+!e_airmass.jpg
+!f_severestorm.jpg
+
+# Lo que sigue fuera, a propósito:
+#   *.tif          intermedios de create_fig2.sh, ~220 MB entre todos
+#   lbl_*.jpg      paneles etiquetados, los regenera crea_panel.sh
+#   *.pdf          el manuscrito compilado es un artefacto de build
