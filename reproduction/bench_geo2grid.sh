@@ -175,5 +175,7 @@ echo "in the header. Re-run on each host: these ratios do not transfer."
 if [ "${KEEP:-0}" = "1" ]; then
     echo
     echo "Outputs kept in $WORKDIR. To check the two tools agree on the product:"
+    echo "  reproduction/compare_g2g_product.sh $WORKDIR/g2g_best.tif $WORKDIR/hpsv_gpu.tif"
+    echo "and the CPU route as well, since the two hpsv paths are not bit-identical:"
     echo "  reproduction/compare_g2g_product.sh $WORKDIR/g2g_best.tif $WORKDIR/hpsv_cpu.tif"
 fi
