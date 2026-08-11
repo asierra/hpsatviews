@@ -18,6 +18,7 @@ static const char *HPSATVIEWS_HELP =
 "  -o, --out <f>       Output file. Accepts patterns (see below).\n"
 "  -t, --geotiff       GeoTIFF output (default: PNG).\n"
 "  -c, --clip <val>    Crop by key name or coordinates.\n"
+"      --list-clips    List the predefined clip keys and exit.\n"
 "  -G, --geographics   Reprojection to Lat/Lon.\n"
 "  -B, --both          Save both the native and the reprojected image.\n"
 "                      Appends '_geo' to the reprojected file name.\n"

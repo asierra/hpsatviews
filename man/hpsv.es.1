@@ -1,4 +1,4 @@
-.TH HPSV 1 "January 2026" "1.0" "HPSatViews Manual"
+.TH HPSV 1 "agosto de 2026" "hpsatviews 1.1.0" "Manual del usuario"
 .SH NOMBRE
 hpsv \- High Performance Satellite Views processing tool
 
@@ -340,6 +340,36 @@ antes de la reproyección.
 HPSATVIEWS está implementado en C (C11) y paralelizado mediante OpenMP.
 El diseño prioriza velocidad, eficiencia de memoria y escalabilidad
 en sistemas multi–núcleo.
+
+.SH ENTORNO
+Cada optimización puede desactivarse en tiempo de ejecución, sin recompilar,
+para evaluar un servidor nuevo contra la ruta simple. Asigne 1 a la variable.
+.TP
+.B HPSV_NO_PINNED_UPLOAD
+Usa una transferencia host–device paginable en vez de fijar (\fIpin\fR) el búfer
+del host. Es la primera que conviene probar en una máquina nueva: registrar un
+búfer de 470 MB cuesta 0.010 s en el servidor con A30 pero 0.048 s en un
+escritorio con RTX 5060 Ti, donde resulta contraproducente.
+.TP
+.B HPSV_NO_DEVICE_HANDOFF
+Vuelve a subir el compuesto para la reproyección en lugar de reutilizar el que ya
+está residente en el dispositivo.
+.TP
+.B HPSV_NO_PREAD
+Lee los chunks HDF5 con
+.BR H5Dread_chunk ()
+en vez de
+.BR pread ()
+en paralelo.
+.TP
+.B HPSV_NO_MEM_ZEROCOPY
+Copia los píxeles al dataset GDAL en memoria en vez de envolver el búfer
+entrelazado que ya existe.
+.TP
+.B HPSV_DISABLE_FAST_READ
+Lee las variables NetCDF con
+.BR nc_get_var ()
+en vez del lector de chunks paralelo.
 
 .SH REQUISITOS
 .TP

@@ -1,4 +1,4 @@
-.TH HPSATVIEWS 1 "2025" "HPSATVIEWS" "User Commands"
+.TH HPSV 1 "August 2026" "hpsatviews 1.1.0" "User Commands"
 .SH NAME
 hpsatviews \- High-performance generation of satellite visual products from GOES imagery
 
@@ -336,6 +336,34 @@ prior to reprojection.
 HPSATVIEWS is implemented in C (C11) and parallelized using OpenMP.
 The design prioritizes speed, memory efficiency, and scalability
 on multi-core systems.
+
+.SH ENVIRONMENT
+Each optimization can be disabled at run time, without rebuilding, so that a new
+host can be evaluated against the plain path. Set the variable to 1.
+.TP
+.B HPSV_NO_PINNED_UPLOAD
+Use a pageable host-to-device transfer instead of pinning the host buffer.
+Worth checking first on a new machine: registering a 470 MB buffer costs 0.010 s
+on an A30 host but 0.048 s on a desktop RTX 5060 Ti, where it is a net loss.
+.TP
+.B HPSV_NO_DEVICE_HANDOFF
+Re-upload the composite for the reprojection instead of reusing the copy that is
+already resident on the device.
+.TP
+.B HPSV_NO_PREAD
+Read HDF5 chunks with
+.BR H5Dread_chunk ()
+instead of parallel
+.BR pread ().
+.TP
+.B HPSV_NO_MEM_ZEROCOPY
+Copy the pixels into the in-memory GDAL dataset instead of wrapping the existing
+interleaved buffer.
+.TP
+.B HPSV_DISABLE_FAST_READ
+Read NetCDF variables with
+.BR nc_get_var ()
+instead of the parallel chunked reader.
 
 .SH REQUIREMENTS
 .TP

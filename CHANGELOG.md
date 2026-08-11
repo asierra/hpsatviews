@@ -7,7 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+Optional CUDA backend and a rewritten I/O path. On the production server
+(NVIDIA A30, 64 threads) a full-disk GOES-19 true colour with Rayleigh
+correction and ratio sharpening renders in 9.34 s on the CPU path, against
+30.84 s for geo2grid 1.3 on the same host and scene.
+
 ### Added
+- An optional CUDA backend, opt-in at build time (`make CUDA=1
+  CUDA_ARCH=sm_XX`) and at run time (`--cuda`). The design is device-resident:
+  each channel is uploaded once and the whole composition — navigation grid,
+  view geometry, Rayleigh LUT correction, synthetic green, piecewise stretch,
+  RGB composition, and the reprojection that consumes the result — is chained
+  on the GPU without intermediate round trips. Options with no kernel fall back
+  to the CPU transparently, and the OpenMP path remains the reference
+  implementation.
+- A CUDA kernel for ratio sharpening (`apply_ratio_sharpen_dev`). It fuses the
+  three CPU passes — 2×2 block mean, ratio map, and the two multiplications into
+  green and blue — into one kernel that recomputes each block mean in place,
+  allocating nothing. This also removes `--sharpen` from the list of options
+  that disqualify true colour from the accelerated path: until now the flag
+  silently sent the whole composite back to the CPU, which mattered because
+  sharpening is exactly what is needed to match geo2grid's product, so every
+  cross-tool GPU measurement had really been measuring OpenMP. On this
+  development box a sharpened CONUS scene went from 6.43 s to 3.42 s.
+- `reproduction/bench_geo2grid.sh` and `reproduction/compare_g2g_product.sh`:
+  a cross-tool benchmark against geo2grid (SSEC/CIMSS) and a check that both
+  tools produce the same product. The benchmark sweeps geo2grid's
+  `--num-workers` and reports its best time, because its default of 4 workers
+  understates it badly on a many-core host, and it runs hpsv with
+  `-f --sharpen --stretch` so both tools emit the same 0.5 km sharpened
+  composite.
+- `AOD` recognized as an L2 product variable in `src/reader_nc.c`.
 - CUDA coverage for the `daynite` composite: nocturnal pseudocolour, day/night
   mask and blend now run on the GPU (`src/cuda/daynite_cuda.cu`), together with
   the piecewise stretch and the lat/lon navigation grid. A full-disk
@@ -31,6 +61,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   leading-digits match, so a value in scientific notation (`2.26432e+07`) was
   read as `2` and a 22-million-pixel regression passed as trivial. It also never
   compared image dimensions. Both fixed; the comparator now fails on either.
+- `rgb -m truecolor -G --cuda` without `--rayleigh` collapsed the reprojected
+  output to 10×10 pixels. Navigation was deferred whenever the CUDA true-colour
+  composer was eligible, but that composer only computes it inside the Rayleigh
+  block, so without `--rayleigh` no one produced it and the reprojection extent
+  stayed at zero. Navigation is now deferred only when the composer will
+  actually produce it.
 - The satellite geometry log reported `perspective_point_height` in kilometres
   when the value is in metres.
 

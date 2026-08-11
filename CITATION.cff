@@ -6,8 +6,9 @@ abstract: >
   High-performance command-line tool for processing GOES-R geostationary
   satellite imagery (ABI L1b/L2). Generates grayscale, pseudocolor, and RGB
   composite views (true color, ash, airmass, day/night blend) from NetCDF data.
-  Optimized with OpenMP parallelization and pre-compiled Rayleigh correction
-  LUTs for near-real-time throughput on commodity hardware.
+  Optimized with OpenMP parallelization, an optional CUDA backend, and
+  pre-compiled Rayleigh correction LUTs for near-real-time throughput on
+  commodity hardware.
 authors:
   - family-names: Aguilar Sierra
     given-names: Alejandro

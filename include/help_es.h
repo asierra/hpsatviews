@@ -19,6 +19,7 @@ static const char *HPSATVIEWS_HELP =
 "  -o, --out <f>       Archivo de salida. Acepta patrones (ver abajo).\n"
 "  -t, --geotiff       Salida en GeoTIFF (PNG por omisión).\n"
 "  -c, --clip <val>    Recorte por clave o coordenadas.\n"
+"      --list-clips    Lista las claves de recorte predefinidas y termina.\n"
 "  -G, --geographics   Reproyección a Lat/Lon.\n"
 "  -B, --both          Guardar el producto en proyección nativa y también el\n"
 "                      reproyectado a geográficas. El reproyectado lleva sufijo _geo.\n"
