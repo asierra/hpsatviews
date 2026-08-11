@@ -143,8 +143,10 @@ Notas de recursos compartidos:
 | tsom04 | Xeon Gold 6226R (32 hilos) | Tesla T4, compartida | `sm_75` | (verificar) |
 | **tahan** | Xeon (32 hilos) | **A30, dedicada** | `sm_80` | Rocky → `hdf5`, HDF5 1.14.5 |
 
-**Medido en tahan (2026-08-10), no estimado:** con `--cuda` un disco completo
-`truecolor --rayleigh -G -t` tarda **0.93 s** y `daynite -G -t` **0.91 s**. La
+**Medido en tahan (2026-08-11) con este mismo script:** `truecolor --rayleigh`
+de disco completo tarda **2.53 s** en el build CPU y **1.17 s** en el build CUDA
+(**2.16×**), ambos desde la misma revisión. `daynite -G -t` con `--cuda`
+renderiza en 0.91 s. La
 predicción de que la A30 sería el buen candidato se confirmó, y por la razón que
 se esperaba: su FP64 1:2 hace que la geometría de vista pase de 1.06 s a 0.037 s,
 mientras que en la T4 (1:32) ese mismo kernel es el más lento del pipeline.

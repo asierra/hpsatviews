@@ -605,21 +605,27 @@ intermediate round trips. Options without a GPU kernel (`--ray-analytic`,
 
 #### Results
 
-Measured on GOES-19 full-disk L1b, default tiled GeoTIFF output, on an NVIDIA
-A30 (sm_80) with a 32-thread Xeon.
+Measured with `reproduction/bench_server.sh`, which builds and times both modes
+from the same source revision on the target host: GOES-19 full-disk L1b,
+`truecolor --rayleigh`, default tiled GeoTIFF, NVIDIA A30 (sm_80) with a
+64-thread Xeon. Times are for the whole process, so they include start-up and
+CUDA context creation.
 
-| Product (full disk) | CUDA build |
+| Build | Wall time |
 |---|---:|
-| `truecolor --rayleigh -G` | **0.93 s** |
-| `daynite -G` | **0.91 s** |
+| CPU (OpenMP, no CUDA) | 2.53 s |
+| CUDA | **1.17 s** |
+| | **2.16×** |
 
-The CPU-build comparison is deliberately left out until it is re-measured on the
-same source revision. Several of the largest wins of this cycle (the chunk-index
-walk, the parallel chunk read, the zero-copy GeoTIFF write) are CPU-side and
-benefit **both** builds, so quoting an older CPU figure against a current CUDA
-one would credit the GPU with work it did not do. `reproduction/bench_server.sh`
-builds and times both modes on the target host, which is the number that
-matters.
+Measuring both builds from the same revision matters more than it may look. Over
+this development cycle the CPU build alone went from 3.76 s to 2.53 s, purely
+from the I/O work of §6.5, which benefits both. Quoting the older CPU figure
+against the current CUDA one would have shown ~4× and credited the GPU with a
+second of work it did not do.
+
+`daynite -G` is the other operational product; on the same host it renders in
+0.91 s under `--cuda` (measured from log timestamps, so excluding the ~0.2 s of
+process start-up included above).
 
 **Per-stage** (the compute the GPU replaces, full disk):
 

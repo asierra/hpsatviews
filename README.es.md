@@ -608,21 +608,27 @@ forma transparente.
 
 #### Resultados
 
-Medido sobre GOES-19 disco completo L1b, salida GeoTIFF tileada por defecto, en
-una NVIDIA A30 (sm_80) con un Xeon de 32 hilos.
+Medido con `reproduction/bench_server.sh`, que compila y cronometra ambos modos
+desde la misma revisión del código en el host objetivo: GOES-19 disco completo
+L1b, `truecolor --rayleigh`, GeoTIFF tileado por defecto, NVIDIA A30 (sm_80) con
+un Xeon de 64 hilos. Los tiempos son del proceso completo, así que incluyen el
+arranque y la creación del contexto CUDA.
 
-| Producto (disco completo) | Build CUDA |
+| Build | Tiempo total |
 |---|---:|
-| `truecolor --rayleigh -G` | **0.93 s** |
-| `daynite -G` | **0.91 s** |
+| CPU (OpenMP, sin CUDA) | 2.53 s |
+| CUDA | **1.17 s** |
+| | **2.16×** |
 
-La comparación contra el build CPU se omite a propósito hasta re-medirla sobre la
-misma revisión del código. Varias de las mayores ganancias de este ciclo (el
-recorrido del índice de chunks, la lectura paralela, la escritura GeoTIFF sin
-copia) son del lado CPU y benefician a **ambos** builds, así que contrastar una
-cifra vieja de CPU contra una actual de CUDA le atribuiría a la GPU trabajo que no
-hizo. `reproduction/bench_server.sh` compila y cronometra ambos modos en el host
-objetivo, que es el número que importa.
+Medir ambos builds desde la misma revisión importa más de lo que parece. A lo
+largo de este ciclo el build CPU por sí solo pasó de 3.76 s a 2.53 s, únicamente
+por el trabajo de I/O de §6.5, que beneficia a los dos. Contrastar la cifra vieja
+de CPU contra la actual de CUDA habría dado ~4× y le habría atribuido a la GPU un
+segundo de trabajo que no hizo.
+
+`daynite -G` es el otro producto operativo; en el mismo host renderiza en 0.91 s
+con `--cuda` (medido con las marcas del log, así que sin los ~0.2 s de arranque
+del proceso que sí incluye la tabla de arriba).
 
 **Por etapa** (el cómputo que reemplaza la GPU, disco completo):
 
