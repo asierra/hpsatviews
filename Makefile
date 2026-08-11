@@ -104,6 +104,7 @@ all: directories $(TARGET)
 	@echo "========================================"
 	@echo " Build Complete: $(TARGET)"
 	@echo " Mode: $(if $(DEBUG),Debug,Release (HPC Optimized))"
+	@echo " GPU:  $(if $(filter 1,$(CUDA)),CUDA $(CUDA_ARCH),sin CUDA (compila con CUDA=1))"
 	@echo "========================================"
 
 # Regla para enlazar el ejecutable
