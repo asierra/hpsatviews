@@ -258,7 +258,10 @@ datos nazcan en device sin H2D. **Se pospuso por mal costo/beneficio hoy:**
 Si algún día se retoma el wall-time, el mejor lever es **paralelizar/acelerar la
 escritura PNG** (~4–5 s, hoy un hilo), no nvCOMP.
 
-## Pendiente — checklist para la estación de trabajo (RTX 5060 Ti)
+## Checklist para la estación de trabajo (RTX 5060 Ti) — COMPLETADO 2026-07-13
+
+> Se conserva como referencia del procedimiento de validación en una GPU nueva.
+> El despliegue en servidor está en la sección de 2026-08-10.
 
 0. **En la laptop, antes de nada:** `sudo apt-get install libnetcdf-dev
    libpng-dev libgdal-dev libwebp-dev`, luego `make` y
@@ -290,7 +293,7 @@ escritura PNG** (~4–5 s, hoy un hilo), no nvCOMP.
 | `create_single_gray()` | `src/gray.c` | ✅ portado (residente) | `create_single_gray_from_dev`; opera sobre `DataFDev`. |
 | Corrección gamma | `dataf_apply_gamma()` en `src/datanc.c` (llamada desde `processing.c` y `rgb.c`) | ✅ portado (residente) | `dataf_dev_apply_gamma`, in place sobre `DataFDev`. Cuesta 9 ms en la cadena (471 MP): prueba de amortización. Falta la ruta gamma de `rgb.c` (3 canales). |
 | Álgebra de bandas (`--expr`) | `dataf_op_dataf()` / `dataf_op_scalar()` en `src/datanc.c` (el parser en `parse_expr.c` solo produce el `LinearCombo`; la evaluación son ops elemento-a-elemento) | Pendiente | No hace falta compilar expresiones a kernels: basta portar las 2 ops elemento-a-elemento, o un kernel único que evalúe el `LinearCombo` (≤10 términos) por píxel, que además evita N pasadas por memoria. |
-| Composición RGB / green sintético | `src/truecolor.c` | ✅ portado (residente) | `create_truecolor_green_from_dev` + `create_multiband_rgb_from_dev` (`src/cuda/truecolor_cuda.cu`). El truecolor **por defecto** corre entero en GPU vía `compose_truecolor_cuda` (`src/rgb.c`): sube C01/C02/C03 una vez, green + gamma×3 + compose en device, baja una imagen RGB. Modos/flags avanzados (Rayleigh/sharpen/stretch/custom, no-truecolor) → `LOG_WARN` + CPU. 0 px diff (default, +gamma, y fallback de rayleigh). |
+| Composición RGB / green sintético | `src/truecolor.c` | ✅ portado (residente) | `create_truecolor_green_from_dev` + `create_multiband_rgb_from_dev` (`src/cuda/truecolor_cuda.cu`). El truecolor **por defecto** corre entero en GPU vía `compose_truecolor_cuda` (`src/rgb.c`): sube C01/C02/C03 una vez, green + gamma×3 + compose en device, baja una imagen RGB. **Actualizado 2026-08-10:** stretch y daynite también portados; siguen en CPU `--ray-analytic`, sharpen, custom, `--citylights` y los modos RGB restantes → `LOG_WARN` + CPU. 0 px diff (default, +gamma, y fallback de rayleigh). |
 | `create_single_grayb()` (byte) | `src/gray.c` | Pendiente (hoy: WARN + CPU) | Solo si aparece un caso de uso L2-byte pesado; probablemente no vale la pena. |
 
 ### Nivel 2 — stencil / vecindad local (memoria compartida)
@@ -305,7 +308,7 @@ escritura PNG** (~4–5 s, hoy un hilo), no nvCOMP.
 | Función origen | Ubicación real | Estado | Notas |
 |---|---|---|---|
 | Reproyección geos → lat/lon | `src/reprojection.c` | ✅ portado | `reproject_image_analytical_cuda` (`src/cuda/reproject_cuda.cu` + `include/cuda_reproject.h`). Se extrajo `reproject_build_plan()` (setup de proyección) como fuente única CPU/GPU; el kernel es un hilo por píxel de salida (nearest bpp=1, bilineal bpp>1), todo en double → **0 px diff** (no solo tolerancia). Despacho en `processing.c` y `rgb.c` (`-G`/`-B`) bajo `cfg->use_cuda`. Sin memoria de textura (el bilineal manual casa exacto con CPU; textura daría redondeo distinto). **Kernel: 2.28 s → 0.30 s (~7.5×)**; wall full-disk truecolor `--rayleigh -G`: CPU 19 s → CUDA 7.7 s (~2.5×). |
-| Corrección Rayleigh (LUT) + solar zenith | `src/rayleigh.c`, `src/truecolor.c` | ✅ portado (residente) | `luts_rayleigh_correction_dev` + `apply_solar_zenith_correction_dev` (`src/cuda/rayleigh_cuda.cu` + `include/cuda_rayleigh.h`). La LUT se parsea en host (se expuso `rayleigh_lut_load_from_memory`) y su tabla (~65 KB) sube a memoria global; lookup trilineal por hilo. Se encadena sobre los `DataFDev` ya subidos en `compose_truecolor_cuda`: solar×3 → LUT(C01, redband=C02) → LUT(C02). **Kernel: 0.124 s (CPU 13 MP) → 0.006 s (GPU 118 MP)**, ~180×. 0 px diff (CONUS). El truecolor `--rayleigh` corre entero en GPU; solo `--ray-analytic`/sharpen/stretch siguen en CPU. **Primera cadena RGB que gana a OpenMP.** |
+| Corrección Rayleigh (LUT) + solar zenith | `src/rayleigh.c`, `src/truecolor.c` | ✅ portado (residente) | `luts_rayleigh_correction_dev` + `apply_solar_zenith_correction_dev` (`src/cuda/rayleigh_cuda.cu` + `include/cuda_rayleigh.h`). La LUT se parsea en host (se expuso `rayleigh_lut_load_from_memory`) y su tabla (~65 KB) sube a memoria global; lookup trilineal por hilo. Se encadena sobre los `DataFDev` ya subidos en `compose_truecolor_cuda`: solar×3 → LUT(C01, redband=C02) → LUT(C02). **Kernel: 0.124 s (CPU 13 MP) → 0.006 s (GPU 118 MP)**, ~180×. 0 px diff (CONUS). El truecolor `--rayleigh` corre entero en GPU; **desde 2026-08-10 el stretch también**, así que solo `--ray-analytic` y sharpen quedan fuera. **Primera cadena RGB que gana a OpenMP.** |
 
 Para cada kernel nuevo, repetir el patrón ya establecido: firma drop-in en
 `cuda_kernels.h`, implementación en `src/cuda/`, despacho `#ifdef HPSV_CUDA +
@@ -329,6 +332,56 @@ cfg->use_cuda` en el sitio de llamada, y caso de comparación CPU/GPU en
   OpenMP sobre datos reales de `sample_data/` dentro de la tolerancia de
   `compare_image.sh` — no solo "compila y corre".
 - **Métrica de rendimiento:** CUDA vs OpenMP multi-hilo real, no vs serial.
+
+## Despliegue y optimización en servidor A30 (2026-08-10/11)
+
+Servidor **tahan**: NVIDIA A30 (sm_80, FP64 1:2), nvcc 13.3, HDF5 1.14.5, Xeon
+32 hilos. **La conclusión pesimista de la Tesla T4 no generalizaba:** su FP64 1:32
+penalizaba la navegación y la reproyección, que son en doble; en la A30 CUDA gana
+claro. Re-medir por host sigue siendo obligatorio.
+
+**Portado en esta ronda:** malla lat/lon en device (`compute_navigation_dev`,
+con `nav_build_plan()` como setup compartido CPU/GPU), stretch piecewise, y
+**daynite entero** — pseudocolor nocturno, máscara día/noche y mezcla
+(`src/cuda/daynite_cuda.cu`). El composite ya no baja ni vuelve a subir
+resultados intermedios; la imagen compuesta queda residente y la consume la
+reproyección.
+
+**Optimizaciones de I/O (benefician también al build CPU):**
+
+- `H5Dchunk_iter` en vez de `H5Dget_chunk_info_by_coord` por chunk: la búsqueda
+  por llamada hacía el costo **cuadrático** en número de chunks (2304 → 0.042 s
+  pero 9216 → 0.676 s). Recorrido único: 0.676 → 0.001 s.
+- Lectura de chunks con `pread` paralelo usando los offsets que da ese mismo
+  recorrido, esquivando el lock global de HDF5: fetch total 0.238 → 0.123 s.
+- Dataset MEM de GDAL envolviendo el buffer entrelazado (`GDALAddBand` +
+  `DATAPOINTER`, **no** la sintaxis `MEM:::` que GDAL bloquea por defecto):
+  0.348 → 0.217 s, porque además de quitar el de-interleave alivia la presión de
+  memoria de la escritura.
+
+**Cuatro costos reales no cubiertos por ningún timer** aparecieron en esta ronda
+(índice de chunks, uploads H2D, de-interleave del GeoTIFF, escritura PNG). Ante
+una etapa sospechosa, verificar primero **qué cubre su `[PERF]`** antes de
+optimizar lo que ya mide.
+
+**Transferencias:** `cudaHostRegister` sobre el buffer existente gana ~28% en la
+A30 (0.043 → 0.031 s por 470 MB), pero `cudaHostAlloc` PIERDE (fijar páginas en
+la reserva cuesta más que la copia entera y no se amortiza: cada DataF se sube
+una vez). El costo de registrar depende mucho del host —0.010 s en la A30, 0.048 s
+en la RTX 5060 Ti, donde pierde—, por eso `HPSV_NO_PINNED_UPLOAD=1`.
+
+**Dos bugs encontrados en el camino, ajenos a CUDA:**
+
+- `create_nocturnal_pseudocolor()` escribía los píxeles dentro del `if
+  (!IS_NONDATA(f))`, así que los de fuera del disco conservaban basura de
+  `malloc`. La salida dependía del historial de asignaciones del proceso.
+- `compare_image.sh` truncaba el AE en notación científica (`2.26432e+07` → `2`),
+  de modo que una regresión de 22 M píxeles pasaba como trivial. Dejó escapar una
+  reproyección degenerada que colapsaba la salida a 10×10 px.
+
+**Pendiente:** descompresión NetCDF en GPU sigue siendo la palanca principal (el
+perfil actual es ~38% lectura, ~31% escritura, <20% cómputo). Luces de ciudad y
+los modos RGB restantes siguen en CPU.
 
 ## Referencias
 
