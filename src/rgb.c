@@ -26,6 +26,7 @@
 #include "processing.h"
 #include "rayleigh.h"
 #include "reader_nc.h"
+#include "nav_plan.h"
 #include "reader_webp.h"
 #include "reprojection.h"
 #include "rgb.h"
@@ -73,6 +74,20 @@ void rgb_context_destroy(RgbContext *ctx) {
 }
 
 // --- PHASE 2: COMPOSERS (STRATEGY PATTERN) ---
+
+// Única definición de "esta corrida la compone la GPU": la consultan tanto
+// run_rgb (para despachar) como process_geospatial (para saltarse el cálculo de
+// lat/lon en CPU, que la GPU va a rehacer). Tenerla en dos lugares sería una
+// fuente de desincronización silenciosa.
+static bool truecolor_cuda_eligible(const RgbOptions *o) {
+#ifdef HPSV_CUDA
+    return o->use_cuda && strcmp(o->mode, "truecolor") == 0 &&
+           !o->rayleigh_analytic && !o->use_sharpen && !o->use_piecewise_stretch;
+#else
+    (void)o;
+    return false;
+#endif
+}
 
 // Locates the C01 file and loads Rayleigh viewing geometry (sza/vza/raa) at the
 // given target resolution, reusing pre-computed lat/lon when available. Shared
@@ -194,11 +209,6 @@ static bool compose_truecolor_cuda(RgbContext *ctx) {
         // CUDA error) aborts to a full CPU compose so Rayleigh is never dropped.
         bool ray_ok = true;
         if (ctx->opts.apply_rayleigh) {
-            // Device nav needs lat/lon already at the channel resolution (true
-            // after process_geospatial).
-            bool nav_res_ok = ctx->has_navigation && ctx->nav_lat.data_in &&
-                              ctx->nav_lat.width == b.width &&
-                              ctx->nav_lat.height == b.height;
             const char *nav_file = NULL;
             for (int i = 0; i < ctx->channel_set->count; i++) {
                 if (strcmp(ctx->channel_set->channels[i].name, "C01") == 0) {
@@ -211,18 +221,61 @@ static bool compose_truecolor_cuda(RgbContext *ctx) {
             float sat_lon = 0.0f, sat_h = 0.0f;
             DataFDev navla = {0}, navlo = {0}, sza = {0}, vza = {0}, raa = {0};
             bool nav_ready = false;
-            if (nav_res_ok && nav_file &&
-                reader_solar_ephemeris_from_file(nav_file, &eph) == 0 &&
+            bool have_nav = false;
+
+            if (nav_file && reader_solar_ephemeris_from_file(nav_file, &eph) == 0 &&
                 reader_read_satellite_params(nav_file, &sat_lon, &sat_h) == 0) {
-                navla = dataf_dev_upload(&ctx->nav_lat);
-                navlo = dataf_dev_upload(&ctx->nav_lon);
-                if (navla.d_data && navlo.d_data)
+                if (ctx->nav_on_device) {
+                    // Se calcula la malla directamente en device desde el plan de
+                    // proyección: ni cómputo en CPU ni subida de los dos grids.
+                    NavPlan plan;
+                    if (nav_build_plan(nav_file, &plan) == 0) {
+                        if (plan.width == b.width && plan.height == b.height) {
+                            float la_min, la_max, lo_min, lo_max;
+                            have_nav = compute_navigation_dev(&plan, &navla, &navlo,
+                                                              &la_min, &la_max,
+                                                              &lo_min, &lo_max);
+                            if (have_nav) {
+                                // Lo único que la ruta host sigue necesitando.
+                                ctx->nav_lat.fmin = la_min; ctx->nav_lat.fmax = la_max;
+                                ctx->nav_lon.fmin = lo_min; ctx->nav_lon.fmax = lo_max;
+                            }
+                        } else {
+                            LOG_WARN("Navegación en device: resolución %zux%zu != canal %ux%u.",
+                                     plan.width, plan.height, b.width, b.height);
+                        }
+                        nav_plan_destroy(&plan);
+                    }
+                } else {
+                    // Device nav needs lat/lon already at the channel resolution
+                    // (true after process_geospatial).
+                    if (ctx->has_navigation && ctx->nav_lat.data_in &&
+                        ctx->nav_lat.width == b.width && ctx->nav_lat.height == b.height) {
+                        navla = dataf_dev_upload(&ctx->nav_lat);
+                        navlo = dataf_dev_upload(&ctx->nav_lon);
+                        have_nav = (navla.d_data && navlo.d_data);
+                    }
+                }
+
+                if (have_nav)
                     nav_ready = compute_rayleigh_nav_dev(&navla, &navlo, eph.sd, eph.cd,
                                                          eph.ha_base, sat_lon, sat_h,
                                                          &sza, &vza, &raa);
             }
             dataf_dev_destroy(&navla);
             dataf_dev_destroy(&navlo);
+
+            // Respaldo: si se difirió la navegación a la GPU y allá falló, hay que
+            // calcularla en CPU antes de caer a la composición host — si no, ni el
+            // Rayleigh de CPU ni la extensión del reproyectado tendrían de dónde salir.
+            if (!nav_ready && ctx->nav_on_device) {
+                LOG_WARN("Navegación en device falló; se recalcula en CPU.");
+                if (compute_navigation_nc(nav_file, &ctx->nav_lat, &ctx->nav_lon) == 0) {
+                    ctx->nav_on_device = false;
+                } else {
+                    ctx->has_navigation = false;
+                }
+            }
 
             if (nav_ready) {
                 RayleighLUTDev lut1 = rayleigh_lut_dev_load(1);
@@ -643,7 +696,17 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
     }
     if (!ref_filename)
         ref_filename = ctx->channel_set->channels[0].filename; // fallback
-    if (compute_navigation_nc(ref_filename, &ctx->nav_lat, &ctx->nav_lon) == 0) {
+    // Si la compone la GPU, la malla lat/lon se calcula allá (compute_navigation_dev)
+    // y no tiene caso pagarla también aquí: son ~0.15 s de CPU más dos subidas de
+    // ~450 MB. nav_lat/nav_lon quedan sin data_in; el composer les llena fmin/fmax,
+    // que es lo único que la ruta host sigue usando (extensión del reproyectado).
+    // Si la ruta GPU falla, el composer llama a compute_navigation_nc() como
+    // respaldo antes de caer a CPU, así que nadie se queda sin navegación.
+    if (truecolor_cuda_eligible(&ctx->opts)) {
+        ctx->nav_on_device = true;
+        ctx->has_navigation = true;
+        LOG_DEBUG("Navegación diferida a la GPU (no se calcula lat/lon en CPU).");
+    } else if (compute_navigation_nc(ref_filename, &ctx->nav_lat, &ctx->nav_lon) == 0) {
         ctx->has_navigation = true;
     } else {
         LOG_WARN("Could not load navigation data.");
@@ -660,7 +723,9 @@ static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {
     }
 
     // Resample navigation if it differs from the reference channel (rare in practice).
-    if (ctx->has_navigation && ctx->ref_channel_idx > 0) {
+    // No aplica a la navegación en device: allá se calcula ya a la resolución del
+    // canal de referencia, sin remuestreo intermedio.
+    if (ctx->has_navigation && !ctx->nav_on_device && ctx->ref_channel_idx > 0) {
         size_t nav_width = ctx->nav_lat.width;
         size_t ref_width = ctx->channels[ctx->ref_channel_idx].fdata.width;
 
@@ -861,6 +926,7 @@ static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
     ctx->opts.rayleigh_analytic = cfg->rayleigh_analytic;
     ctx->opts.use_piecewise_stretch = cfg->use_piecewise_stretch;
     ctx->opts.use_sharpen = cfg->use_sharpen;
+    ctx->opts.use_cuda = cfg->use_cuda;
     ctx->opts.use_citylights = cfg->use_citylights;
     ctx->opts.use_alpha = cfg->use_alpha;
     ctx->opts.use_full_res = cfg->use_full_res;
@@ -1014,9 +1080,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     if (cfg->use_cuda) {
         // Accelerated: true-color, optionally with Rayleigh LUT. Still CPU-only:
         // analytic Rayleigh, ratio sharpening, piecewise stretch, other modes.
-        bool truecolor_cuda = strcmp(ctx.opts.mode, "truecolor") == 0 &&
-                              !ctx.opts.rayleigh_analytic &&
-                              !ctx.opts.use_sharpen && !ctx.opts.use_piecewise_stretch;
+        bool truecolor_cuda = truecolor_cuda_eligible(&ctx.opts);
         if (truecolor_cuda) {
             LOG_INFO("Generating 'truecolor' composite (CUDA, device-resident)...");
             cuda_handled = compose_truecolor_cuda(&ctx);

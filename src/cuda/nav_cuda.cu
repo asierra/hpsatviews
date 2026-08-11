@@ -216,3 +216,193 @@ cleanup:
   *raa_out = raa;
   return true;
 }
+
+/* ---- lat/lon en device (port del bucle de compute_navigation_nc) ----------
+ * Misma aritmética en double que la ruta CPU, incluido el precómputo de
+ * sin/cos por columna y por fila: cada hilo lee 4 dobles en vez de hacer 4
+ * llamadas trigonométricas. Eso evita además que la diferencia de 1 ULP entre
+ * las trig de CUDA y las de glibc se aplique de forma distinta por píxel.
+ *
+ * Además del grid, reduce el mínimo/máximo de lat y lon, que es lo único que la
+ * ruta CPU necesitaba de vuelta en host (fija la extensión del reproyectado).
+ * La reducción se hace en double, como en CPU, y solo sobre píxeles dentro del
+ * disco; los de fuera quedan en NonData y no participan. */
+__global__ void sincos_axis_kernel(const double *ang, double *sn, double *cs,
+                                   size_t n) {
+  size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n) return;
+  sn[i] = sin(ang[i]);
+  cs[i] = cos(ang[i]);
+}
+
+__global__ void latlon_kernel(const double *snx, const double *csx,
+                              const double *sny, const double *csy,
+                              float *la_out, float *lo_out, double *partials,
+                              unsigned int width, unsigned int height,
+                              double H, double lambda_0, double sm_maj2,
+                              double sm_min2, double ratio, double H2_maj2,
+                              double rad2deg) {
+  extern __shared__ double sh[]; /* 4 * blockDim: lamin, lamax, lomin, lomax */
+  double *sh_lamin = sh;
+  double *sh_lamax = sh + blockDim.x;
+  double *sh_lomin = sh + 2 * blockDim.x;
+  double *sh_lomax = sh + 3 * blockDim.x;
+
+  size_t n = (size_t)width * height;
+  size_t k = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+
+  double lamin = 1e10, lamax = -1e10, lomin = 1e10, lomax = -1e10;
+
+  if (k < n) {
+    size_t j = k / width, i = k % width;
+    double sny_j = sny[j], csy_j = csy[j];
+    double csy2 = csy_j * csy_j, rat_sny2 = ratio * sny_j * sny_j;
+    double snx_i = snx[i], csx_i = csx[i];
+
+    double a = snx_i * snx_i + csx_i * csx_i * (csy2 + rat_sny2);
+    double b = -2.0 * H * csx_i * csy_j;
+    double disc = b * b - 4.0 * a * H2_maj2;
+    if (disc < 0.0) {
+      la_out[k] = HPSV_NONDATA_DEV;
+      lo_out[k] = HPSV_NONDATA_DEV;
+    } else {
+      double rs = (-b - sqrt(disc)) / (2.0 * a);
+      double px = rs * csx_i * csy_j;
+      double py = -rs * snx_i;
+      double pz = rs * csx_i * sny_j;
+      double la = atan2(sm_maj2 * pz,
+                        sm_min2 * sqrt((H - px) * (H - px) + py * py)) * rad2deg;
+      double lo = (lambda_0 - atan2(py, H - px)) * rad2deg;
+      la_out[k] = (float)la;
+      lo_out[k] = (float)lo;
+      lamin = lamax = la;
+      lomin = lomax = lo;
+    }
+  }
+
+  sh_lamin[threadIdx.x] = lamin;
+  sh_lamax[threadIdx.x] = lamax;
+  sh_lomin[threadIdx.x] = lomin;
+  sh_lomax[threadIdx.x] = lomax;
+  __syncthreads();
+
+  for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
+    if (threadIdx.x < s) {
+      sh_lamin[threadIdx.x] = fmin(sh_lamin[threadIdx.x], sh_lamin[threadIdx.x + s]);
+      sh_lamax[threadIdx.x] = fmax(sh_lamax[threadIdx.x], sh_lamax[threadIdx.x + s]);
+      sh_lomin[threadIdx.x] = fmin(sh_lomin[threadIdx.x], sh_lomin[threadIdx.x + s]);
+      sh_lomax[threadIdx.x] = fmax(sh_lomax[threadIdx.x], sh_lomax[threadIdx.x + s]);
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) {
+    partials[4 * blockIdx.x + 0] = sh_lamin[0];
+    partials[4 * blockIdx.x + 1] = sh_lamax[0];
+    partials[4 * blockIdx.x + 2] = sh_lomin[0];
+    partials[4 * blockIdx.x + 3] = sh_lomax[0];
+  }
+}
+
+extern "C" bool compute_navigation_dev(const NavPlan *plan, DataFDev *lat_out,
+                                       DataFDev *lon_out, float *lat_min,
+                                       float *lat_max, float *lon_min,
+                                       float *lon_max) {
+  if (!plan || !plan->x_rad || !plan->y_rad || !lat_out || !lon_out) return false;
+
+  const double rad2deg = 180.0 / HPSV_PI;
+  unsigned int w = (unsigned int)plan->width, h = (unsigned int)plan->height;
+  size_t n = (size_t)w * h;
+
+  DataFDev la = dataf_dev_alloc(w, h);
+  DataFDev lo = dataf_dev_alloc(w, h);
+
+  bool ok = false;
+  double *d_x = NULL, *d_y = NULL, *d_snx = NULL, *d_csx = NULL;
+  double *d_sny = NULL, *d_csy = NULL, *d_partials = NULL, *partials = NULL;
+  cudaEvent_t t0 = NULL, t1 = NULL;
+  float ms = 0.0f;
+  unsigned int block = 256;
+  unsigned int grid = (unsigned int)((n + block - 1) / block);
+  size_t shbytes = 4 * block * sizeof(double);
+
+  if (!la.d_data || !lo.d_data) goto cleanup;
+
+  CUDA_CHECK(cudaEventCreate(&t0));
+  CUDA_CHECK(cudaEventCreate(&t1));
+  CUDA_CHECK(cudaEventRecord(t0));
+
+  /* Los ejes son diminutos (w+h dobles) comparados con el grid. */
+  CUDA_CHECK(cudaMalloc((void **)&d_x, w * sizeof(double)));
+  CUDA_CHECK(cudaMalloc((void **)&d_y, h * sizeof(double)));
+  CUDA_CHECK(cudaMalloc((void **)&d_snx, w * sizeof(double)));
+  CUDA_CHECK(cudaMalloc((void **)&d_csx, w * sizeof(double)));
+  CUDA_CHECK(cudaMalloc((void **)&d_sny, h * sizeof(double)));
+  CUDA_CHECK(cudaMalloc((void **)&d_csy, h * sizeof(double)));
+  CUDA_CHECK(cudaMalloc((void **)&d_partials, 4 * grid * sizeof(double)));
+  CUDA_CHECK(cudaMemcpy(d_x, plan->x_rad, w * sizeof(double), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d_y, plan->y_rad, h * sizeof(double), cudaMemcpyHostToDevice));
+
+  sincos_axis_kernel<<<(w + 255) / 256, 256>>>(d_x, d_snx, d_csx, w);
+  CUDA_CHECK(cudaGetLastError());
+  sincos_axis_kernel<<<(h + 255) / 256, 256>>>(d_y, d_sny, d_csy, h);
+  CUDA_CHECK(cudaGetLastError());
+
+  latlon_kernel<<<grid, block, shbytes>>>(
+      d_snx, d_csx, d_sny, d_csy, la.d_data, lo.d_data, d_partials, w, h,
+      plan->H, plan->lambda_0, plan->sm_maj * plan->sm_maj,
+      plan->sm_min * plan->sm_min,
+      (plan->sm_maj * plan->sm_maj) / (plan->sm_min * plan->sm_min),
+      plan->H * plan->H - plan->sm_maj * plan->sm_maj, rad2deg);
+  CUDA_CHECK(cudaGetLastError());
+
+  /* Cerrar la reducción en host: son 4 dobles por bloque (unos pocos MB en un
+   * disco completo), así que no vale la pena un segundo kernel. */
+  partials = (double *)malloc(4 * grid * sizeof(double));
+  if (!partials) goto cleanup;
+  CUDA_CHECK(cudaMemcpy(partials, d_partials, 4 * grid * sizeof(double),
+                        cudaMemcpyDeviceToHost));
+
+  {
+    double lamin = 1e10, lamax = -1e10, lomin = 1e10, lomax = -1e10;
+    for (unsigned int i = 0; i < grid; i++) {
+      if (partials[4 * i + 0] < lamin) lamin = partials[4 * i + 0];
+      if (partials[4 * i + 1] > lamax) lamax = partials[4 * i + 1];
+      if (partials[4 * i + 2] < lomin) lomin = partials[4 * i + 2];
+      if (partials[4 * i + 3] > lomax) lomax = partials[4 * i + 3];
+    }
+    if (lamin > 1e9) { /* ningún píxel dentro del disco */
+      *lat_min = -90.0f; *lat_max = 90.0f;
+      *lon_min = -180.0f; *lon_max = 180.0f;
+      LOG_WARN("No valid navigation pixels in compute_navigation_dev; using default extents.");
+    } else {
+      *lat_min = (float)lamin; *lat_max = (float)lamax;
+      *lon_min = (float)lomin; *lon_max = (float)lomax;
+    }
+  }
+
+  CUDA_CHECK(cudaEventRecord(t1));
+  CUDA_CHECK(cudaEventSynchronize(t1));
+  CUDA_CHECK(cudaEventElapsedTime(&ms, t0, t1));
+  LOG_TIMING(ms / 1000.0, "Navigation lat/lon (CUDA, device-resident, %ux%u)", w, h);
+  ok = true;
+
+cleanup:
+  free(partials);
+  if (d_x) cudaFree(d_x);
+  if (d_y) cudaFree(d_y);
+  if (d_snx) cudaFree(d_snx);
+  if (d_csx) cudaFree(d_csx);
+  if (d_sny) cudaFree(d_sny);
+  if (d_csy) cudaFree(d_csy);
+  if (d_partials) cudaFree(d_partials);
+  if (t0) cudaEventDestroy(t0);
+  if (t1) cudaEventDestroy(t1);
+  if (!ok) {
+    dataf_dev_destroy(&la);
+    dataf_dev_destroy(&lo);
+    return false;
+  }
+  *lat_out = la;
+  *lon_out = lo;
+  return true;
+}

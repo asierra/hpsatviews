@@ -42,6 +42,8 @@ typedef struct {
     bool rayleigh_analytic;        ///< Use analytical formula instead of LUT
     bool use_piecewise_stretch;
     bool use_sharpen;
+    bool use_cuda;                 ///< Espejo de ProcessConfig.use_cuda, para decidir
+                                   ///< la ruta GPU desde funciones que solo ven RgbContext
     bool use_citylights;
     bool use_alpha;
     bool force_geotiff;
@@ -83,6 +85,12 @@ typedef struct {
 
     ImageData final_image;
     ImageData alpha_mask;
+
+    /// true cuando se decidió NO calcular la malla lat/lon en CPU porque la va a
+    /// producir la GPU (ver compute_navigation_dev). En ese caso nav_lat/nav_lon
+    /// no tienen data_in: solo llevan fmin/fmax, que es lo único que la ruta host
+    /// sigue necesitando (la extensión del reproyectado).
+    bool nav_on_device;
 
     /// Copia de final_image que quedó residente en GPU tras la composición CUDA
     /// (void* para no arrastrar tipos de CUDA a este header; es unsigned char*).

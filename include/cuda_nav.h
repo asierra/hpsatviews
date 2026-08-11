@@ -13,10 +13,25 @@
 #define HPSATVIEWS_CUDA_NAV_H_
 
 #include "cuda_dataf.h"
+#include "nav_plan.h"
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* Computa la malla lat/lon directamente en device desde el plan de proyección,
+ * evitando calcularla en CPU (~0.15 s en un disco completo) y subir dos grids de
+ * ~450 MB. Réplica del bucle de compute_navigation_nc() en la misma aritmética
+ * double, con el mismo precómputo de sin/cos por eje.
+ *
+ * Devuelve además el min/max de lat y lon, que es lo único que la ruta host
+ * seguía necesitando de la navegación: fija la extensión del reproyectado.
+ * Reserva lat_out/lon_out (el llamador los libera con dataf_dev_destroy).
+ * Devuelve false ante fallo, sin reservar nada. */
+bool compute_navigation_dev(const NavPlan *plan, DataFDev *lat_out,
+                            DataFDev *lon_out, float *lat_min, float *lat_max,
+                            float *lon_min, float *lon_max);
 
 /* Computa sza/vza/raa en device a partir de lat/lon (ya en device) y los
  * parámetros escalares leídos en host: la efeméride solar (sd/cd/ha_base, ver
