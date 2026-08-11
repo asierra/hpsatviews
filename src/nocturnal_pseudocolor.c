@@ -63,11 +63,17 @@ ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* 
           g = (unsigned char)(g * (1 - w) + w * fondo->data[pf + 1]);
           b = (unsigned char)(b * (1 - w) + w * fondo->data[pf + 2]);
         }
-
-        imout.data[po] = r;
-        imout.data[po + 1] = g;
-        imout.data[po + 2] = b;
       }
+
+      // Las escrituras van FUERA del if: los píxeles NonData (fuera del disco)
+      // deben quedar en el negro que ya tienen r/g/b. Estando dentro, no se
+      // escribían nunca y conservaban la basura de malloc —image_create() no
+      // inicializa—, que daynite luego mezclaba en la imagen final. El valor
+      // dependía del historial de asignaciones del proceso, así que la salida
+      // cambiaba según qué se hubiera reservado y liberado antes.
+      imout.data[po] = r;
+      imout.data[po + 1] = g;
+      imout.data[po + 2] = b;
     }
   }
 
