@@ -47,8 +47,9 @@ typedef struct {
 /// ephemeris. Returns 0 on success.
 int reader_solar_ephemeris_from_file(const char *filename, SolarEphemeris *out);
 
-/// Reads the sub-satellite longitude (deg) and orbital altitude (km) from a
-/// GOES file's goes_imager_projection variable. Returns 0 on success.
-int reader_read_satellite_params(const char *filename, float *sat_lon, float *sat_height_km);
+/// Reads the sub-satellite longitude (deg) and orbital altitude (metros, tal
+/// como viene en perspective_point_height) from a GOES file's
+/// goes_imager_projection variable. Returns 0 on success.
+int reader_read_satellite_params(const char *filename, float *sat_lon, float *sat_height_m);
 
 #endif /* HPSATVIEWS_READER_NC_H_ */

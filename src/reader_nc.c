@@ -770,7 +770,7 @@ int reader_solar_ephemeris_from_file(const char *filename, SolarEphemeris *out) 
     return 0;
 }
 
-int reader_read_satellite_params(const char *filename, float *sat_lon, float *sat_height_km) {
+int reader_read_satellite_params(const char *filename, float *sat_lon, float *sat_height_m) {
     int ncid, varid, retval;
     if ((retval = nc_open(filename, NC_NOWRITE, &ncid)))
         ERR(retval);
@@ -778,7 +778,7 @@ int reader_read_satellite_params(const char *filename, float *sat_lon, float *sa
         ERR(retval);
     if ((retval = nc_get_att_float(ncid, varid, "longitude_of_projection_origin", sat_lon)))
         ERR(retval);
-    if ((retval = nc_get_att_float(ncid, varid, "perspective_point_height", sat_height_km)))
+    if ((retval = nc_get_att_float(ncid, varid, "perspective_point_height", sat_height_m)))
         ERR(retval);
     if ((retval = nc_close(ncid)))
         ERR(retval);
@@ -864,17 +864,20 @@ int compute_satellite_angles_nc(const char *filename, const DataF *navla, const 
     if ((retval = nc_inq_varid(ncid, "goes_imager_projection", &varid)))
         ERR(retval);
 
-    float sat_lon, sat_height_km;
+    // perspective_point_height viene en METROS en los productos GOES ABI
+    // (~35 786 024 m); el nombre "_km" anterior era el origen de la unidad
+    // incorrecta en el log de abajo.
+    float sat_lon, sat_height_m;
     if ((retval = nc_get_att_float(ncid, varid, "longitude_of_projection_origin", &sat_lon)))
         ERR(retval);
-    if ((retval = nc_get_att_float(ncid, varid, "perspective_point_height", &sat_height_km)))
+    if ((retval = nc_get_att_float(ncid, varid, "perspective_point_height", &sat_height_m)))
         ERR(retval);
 
     if ((retval = nc_close(ncid)))
         ERR(retval);
 
-    LOG_INFO("Computing satellite geometry (sub-point: %.1f°E, altitude: %.0f km)", sat_lon,
-             sat_height_km);
+    LOG_INFO("Computing satellite geometry (sub-point: %.1f°E, altitude: %.0f m)", sat_lon,
+             sat_height_m);
 
     *vza = dataf_create(navla->width, navla->height);
     *vaa = dataf_create(navla->width, navla->height);
@@ -896,7 +899,7 @@ int compute_satellite_angles_nc(const char *filename, const DataF *navla, const 
             vaa->data_in[i] = NonData;
         } else {
             double vzen, vazi;
-            compute_satellite_view_angles(la, lo, sat_lon, sat_height_km, &vzen, &vazi);
+            compute_satellite_view_angles(la, lo, sat_lon, sat_height_m, &vzen, &vazi);
             vza->data_in[i] = (float)vzen;
             vaa->data_in[i] = (float)vazi;
         }
