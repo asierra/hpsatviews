@@ -12,6 +12,7 @@
 #include <string.h>
 
 #include "logger.h"
+#include <omp.h>
 #include "image.h"
 
 /**
@@ -100,15 +101,25 @@ static int write_png_core(const char *filename, const ImageData *image, png_byte
     row_pointers[y] = image->data + (y * image->width * image->bpp);
   }
 
-  // Escribir los datos de la imagen.
+  // Escribir los datos de la imagen. Medido aparte: en una escena de disco
+  // completo esta llamada es de lejos el mayor costo del pipeline (libpng
+  // comprime en un solo hilo) y no aparecía en ningún [PERF], así que había que
+  // deducirla restando marcas de tiempo del log.
+  double t0 = omp_get_wtime();
   png_write_image(png, row_pointers);
   png_write_end(png, NULL);
+  double elapsed = omp_get_wtime() - t0;
 
   // Limpieza.
   free(row_pointers);
   png_destroy_write_struct(&png, &info);
   fclose(fp);
 
+  LOG_TIMING(elapsed, "PNG written: %s", filename);
+  LOG_DEBUG("  %.0f MB de píxeles a %.0f MB/s (1 hilo, zlib nivel 1)",
+            (double)image->width * image->height * image->bpp / (1024.0 * 1024.0),
+            (double)image->width * image->height * image->bpp /
+                (1024.0 * 1024.0) / (elapsed > 0 ? elapsed : 1e-9));
   LOG_INFO("PNG saved: %s (%ux%u, %u bpp)", filename, image->width, image->height, image->bpp);
   return 0;
 }
