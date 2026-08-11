@@ -551,66 +551,127 @@ used by geo2grid.
 
 Implemented in C11 (ISO/IEC 9899:2011) with OpenMP parallelization, HPSATVIEWS prioritizes high performance, efficient memory use, and scalability on multi-core systems.
 
-I/O is optimized on all builds: NetCDF variables are read by pulling the raw
-HDF5 chunks and decompressing them in parallel with libdeflate (rather than
-HDF5's single-threaded filter pipeline), and PNG output uses a fast
-compression/filter setting tuned for high-entropy satellite imagery. On a
-full-disk scene these cut variable decompression by roughly 9× and PNG writing
-by roughly 5×. GeoTIFF output is written multi-threaded and, by default, as a
-fast tiled file **without** the Cloud-Optimized overview pyramid — that pyramid
-is ~90% of the GeoTIFF write cost and is wasted work when the file is an
+I/O is optimized on all builds, and on a full-disk scene it is what dominates the
+wall time once the compute is on the GPU.
+
+**Reading.** NetCDF variables are read by pulling the raw HDF5 chunks and
+decompressing them in parallel with libdeflate, rather than going through HDF5's
+single-threaded filter pipeline. Two further refinements matter at full-disk
+scale: the chunk index is walked **once** with `H5Dchunk_iter` (HDF5 ≥ 1.14)
+instead of one lookup per chunk — the per-call lookup makes the total cost grow
+quadratically with the chunk count, which on a 0.5 km band (9216 chunks) meant
+0.68 s of pure index walking — and the chunk bytes are then read with parallel
+`pread`, using the file offsets that same index walk provides, which sidesteps
+HDF5's global lock. Older HDF5 keeps the per-chunk path, which is slower but
+correct.
+
+**Writing.** GeoTIFF output is written multi-threaded and, by default, as a fast
+tiled file **without** the Cloud-Optimized overview pyramid — that pyramid is
+~90% of the GeoTIFF write cost and is wasted work when the file is an
 intermediate that gets cropped or reprocessed downstream. Pass `--cog` to emit a
-full Cloud Optimized GeoTIFF when the GeoTIFF is the final product.
+full Cloud Optimized GeoTIFF when the GeoTIFF is the final product. The in-memory
+GDAL dataset wraps the existing interleaved pixel buffer instead of copying it
+into per-band planes, which removes both a full-size allocation and a
+cache-hostile de-interleave pass.
+
+**Prefer GeoTIFF for large scenes.** PNG output uses a fast compression/filter
+setting tuned for high-entropy satellite imagery, but libpng still compresses on
+a single thread (~90 MB/s measured). On a full-disk render that makes PNG writing
+roughly 10× more expensive than the equivalent GeoTIFF — 2.4 s versus 0.22 s in
+the measurements below. Use `-t`/`.tif` for anything full-disk; PNG is fine for
+smaller sectors.
 
 ### 6.6 GPU acceleration (CUDA)
 
 An optional CUDA backend offloads the heaviest per-pixel stages to an NVIDIA
 GPU. It is **opt-in and non-invasive**: the default build needs no CUDA toolkit
 and the OpenMP/CPU path remains the reference implementation. Build with
-`make CUDA=1` and select it at run time with `--cuda`. Output is validated to be
-identical to the CPU path (bit-for-bit on the sample data; within the test
-tolerance for FMA-level rounding).
+`make CUDA=1 CUDA_ARCH=sm_XX` and select it at run time with `--cuda`.
 
-`--cuda` reports the device it selected (`CUDA device 0: Tesla T4 (sm_75, 40 SMs,
-14912/15360 MiB free)`) — worth keeping in the logs on a shared server — and
-fails fast, before any I/O, if no GPU is usable or the binary was built for a
+`--cuda` reports the device it selected (`CUDA device 0: NVIDIA A30 (sm_80,
+56 SMs, 23928/24163 MiB free)`) — worth keeping in the logs on a shared server —
+and fails fast, before any I/O, if no GPU is usable or the binary was built for a
 different `CUDA_ARCH` than the GPU present. See
 [`docs/cuda-support/DEPLOYMENT.md`](docs/cuda-support/DEPLOYMENT.md).
 
-The device-resident design uploads each channel once and chains the whole
-composition on the GPU — synthetic green, Rayleigh LUT correction (with the
-viewing geometry computed on-device), gamma and the RGB compose — so the
-transfer cost is paid once rather than per operation. Modes and options without a
-GPU kernel (`--ray-analytic`, `--sharpen`, `--stretch`, non-true-color modes)
-transparently fall back to the CPU.
+The design is **device-resident**: each channel is uploaded once and the whole
+composition is chained on the GPU — lat/lon navigation, viewing geometry,
+Rayleigh LUT correction, synthetic green, piecewise stretch, the RGB compose and,
+for `daynite`, the nocturnal pseudocolour, the day/night mask and the blend. The
+composed image also stays on the device to feed the reprojection, so a full
+`daynite -G` render moves the four input channels in and one image out, with no
+intermediate round trips. Options without a GPU kernel (`--ray-analytic`,
+`--sharpen`, `--citylights`, other RGB modes) fall back to the CPU transparently.
 
-Benchmarks below: GOES-19 full-disk L1b, working resolution 10848×10848 (118 MP),
-NVIDIA RTX 5060 Ti vs. OpenMP on 6 CPU cores, same build version (both include
-the I/O optimizations of §6.5).
+#### Results
 
-**End-to-end wall time** (default tiled GeoTIFF output)
+Measured on GOES-19 full-disk L1b, default tiled GeoTIFF output, on an NVIDIA
+A30 (sm_80) with a 32-thread Xeon.
 
-| Product (full disk) | CPU build | CUDA build | Speedup |
-|---|---:|---:|:--:|
-| `truecolor --rayleigh` | ~19 s | ~9.2 s | **~2×** |
-| `truecolor` (no Rayleigh) | ~9 s | ~9 s | ~1× |
+| Product (full disk) | CUDA build |
+|---|---:|
+| `truecolor --rayleigh -G` | **0.93 s** |
+| `daynite -G` | **0.91 s** |
 
-The benefit concentrates in compute-heavy paths. Without Rayleigh, no viewing
-geometry is computed and the composition is trivial, so the pipeline is
-I/O-bound and the GPU makes little end-to-end difference — the remaining wall
-time is reading, resampling and encoding, not arithmetic.
+The CPU-build comparison is deliberately left out until it is re-measured on the
+same source revision. Several of the largest wins of this cycle (the chunk-index
+walk, the parallel chunk read, the zero-copy GeoTIFF write) are CPU-side and
+benefit **both** builds, so quoting an older CPU figure against a current CUDA
+one would credit the GPU with work it did not do. `reproduction/bench_server.sh`
+builds and times both modes on the target host, which is the number that
+matters.
 
-**Per-stage acceleration** (the compute the GPU replaces, full disk)
+**Per-stage** (the compute the GPU replaces, full disk):
 
-| Stage | CPU (OpenMP) | CUDA | Speedup |
-|---|---:|---:|:--:|
-| Viewing geometry (solar + satellite + azimuth) | ~8 s | 0.33 s | **~24×** |
-| Rayleigh LUT correction (per channel) | ~1.1 s | 0.006 s | **~180×** |
-| Synthetic green + RGB compose | ~0.5 s | ~0.03 s | — |
-| Reprojection to lat/lon (with `-G`/`-B`) | ~2.3 s | 0.30 s | **~7.5×** |
+| Stage | CPU (OpenMP) | CUDA |
+|---|---:|---:|
+| Viewing geometry (solar + satellite + azimuth) | 1.06 s | 0.037 s |
+| lat/lon navigation grid | 0.146 s | 0.013 s |
+| Rayleigh LUT correction (per channel) | 0.11 s | 0.005 s |
+| Nocturnal pseudocolour (`daynite`) | 0.089 s | 0.012 s |
+| Day/night mask (`daynite`) | 0.058 s | 0.004 s |
+| Reprojection to lat/lon (`-G`/`-B`) | 0.28 s | 0.074 s |
 
-The per-stage speedups are large, but end-to-end gains are bounded by the I/O
-stages that dominate a full-disk render.
+Two caveats worth stating plainly:
+
+- **These numbers do not transfer between machines.** On a Tesla T4, whose
+  double-precision throughput is 1/32 of single, the same code is barely faster
+  than a strong CPU, because the navigation and reprojection maths are in double.
+  The A30 (1/2) is a different story. Re-measure on the target host before
+  enabling `--cuda` in production; `reproduction/bench_server.sh` does exactly
+  that.
+- **The remaining wall time is I/O, not arithmetic.** After the work above, a
+  full-disk `daynite -G` spends roughly 38% reading the four channels and 31%
+  encoding the GeoTIFF, and under 20% computing. Further GPU work has little left
+  to win.
+
+#### Numerical equivalence
+
+The CPU path is the reference. GPU output is verified against it by
+`tests/test_cuda.sh` (10 cases, run with `CUDA=1 tests/run_all_tests.sh`), and
+differences stay at the level of floating-point rounding: identical output for
+plain true colour and for the reprojection, and for the longest chain
+(`daynite`) 903 differing pixels out of 12.8 M, all of them **±1 in the 8-bit
+output** and none surviving a 2% tolerance. The sources are FMA contraction and
+CUDA's maths library differing from glibc by 1–2 ULP. Threshold decisions that
+would be visible if they disagreed — such as the day/night classification — match
+exactly.
+
+#### Escape hatches
+
+Each optimisation above can be switched off at run time, which is how you tell
+whether it pays on a given host without rebuilding:
+
+| Variable | Forces |
+|---|---|
+| `HPSV_NO_PINNED_UPLOAD=1` | pageable H2D instead of pinning the host buffer |
+| `HPSV_NO_DEVICE_HANDOFF=1` | re-uploading the composite for the reprojection |
+| `HPSV_NO_PREAD=1` | `H5Dread_chunk` instead of parallel `pread` |
+| `HPSV_NO_MEM_ZEROCOPY=1` | copying pixels into the GDAL dataset |
+| `HPSV_DISABLE_FAST_READ=1` | `nc_get_var` instead of the chunked reader |
+
+Pinning is the one most worth checking: registering a 470 MB buffer costs 0.010 s
+on the A30 host but 0.048 s on a desktop RTX 5060 Ti, where it is a net loss.
 
 ---
 
@@ -619,9 +680,12 @@ stages that dominate a full-disk render.
 HPSATVIEWS is under active development, functionally stable, with progressive expansion of capabilities and documentation.
 
 **Future work:** support for more satellites, not just GOES. The optional CUDA
-backend (§6.6) already accelerates the compute-heavy stages; extending it to
-GPU-side NetCDF decompression (so decoded data is born on the device, avoiding
-the host round-trip) and to reprojection is under consideration.
+backend (§6.6) now covers the whole compute path for the operational products,
+including reprojection, so the remaining wall time on a full-disk render is
+dominated by reading NetCDF and encoding the output rather than by arithmetic.
+GPU-side NetCDF decompression — so decoded data is born on the device — is the
+main lever left, and is under consideration; the city-lights composite and the
+less common RGB modes still run on the CPU.
 
 Want to contribute, report a problem, or get support? See
 [CONTRIBUTING.md](CONTRIBUTING.md). This project follows the
