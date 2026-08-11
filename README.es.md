@@ -633,7 +633,8 @@ arranque y la creación del contexto CUDA.
 Medir ambos builds desde la misma revisión importa más de lo que parece. A lo
 largo de este ciclo el build CPU por sí solo pasó de 3.76 s a 2.53 s, únicamente
 por el trabajo de I/O de §6.5, que beneficia a los dos. Contrastar la cifra vieja
-de CPU contra la actual de CUDA habría dado ~4× y le habría atribuido a la GPU un
+de CPU contra la actual de CUDA habría dado 3.21× en vez de 2.16× —una
+sobreestimación del 49%— y le habría atribuido a la GPU un
 segundo de trabajo que no hizo.
 
 `daynite -G` es el otro producto operativo; en el mismo host renderiza en 0.91 s

@@ -1,4 +1,8 @@
 @startuml
+' Las etapas opcionales van como actividades sombreadas con su bandera de CLI,
+' no como rombos de decisión: cuatro rombos con su punto de fusión estiraban el
+' diagrama a una proporción 1:2.9 que no cabía en una página (LaTeX avisaba
+' "Float too large for page"). El switch sí se conserva: es bifurcación real.
 skinparam DefaultFontSize 13
 skinparam ActivityPadding 8
 skinparam ArrowColor #444
@@ -18,25 +22,16 @@ case (  rgb  )
   :Compose RGB\n//truecolor · night · ash · …//;
 endswitch
 
-if (Rayleigh correction?) then (yes)
-  :Apply Rayleigh\ncorrection (LUT);
-endif
-
-if (CLAHE?) then (yes)
-  :Enhance contrast\n(CLAHE);
-endif
+#EAEAEA:Apply Rayleigh correction (LUT)\n//optional — --rayleigh//;
+#EAEAEA:Enhance contrast (CLAHE)\n//optional — --clahe//;
 
 :Normalize to 8-bit;
 
-if (Reproject?  //-G//) then (yes)
-  :Fixed grid →\nLat/Lon equirectangular;
-endif
+#EAEAEA:Fixed grid → Lat/Lon equirectangular\n//optional — -G//;
 
 :Write PNG or GeoTIFF;
 
-if (JSON sidecar?  //-j//) then (yes)
-  :Write metadata JSON;
-endif
+#EAEAEA:Write metadata JSON\n//optional — -j//;
 
 stop
 @enduml

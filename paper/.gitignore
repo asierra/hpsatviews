@@ -18,7 +18,14 @@
 !e_airmass.jpg
 !f_severestorm.jpg
 
+# La clase y el estilo bibliográfico de AMS son suyos, no nuestros: se bajan del
+# AMS LaTeX Package (V6.1) y no se redistribuyen desde aquí. Hacen falta para
+# compilar hpsatviews_jtech.tex; ver la cabecera de ese archivo.
+ametsocV6*.cls
+ametsocV6*.bst
+
 # Lo que sigue fuera, a propósito:
 #   *.tif          intermedios de create_fig2.sh, ~220 MB entre todos
 #   lbl_*.jpg      paneles etiquetados, los regenera crea_panel.sh
-#   *.pdf          el manuscrito compilado es un artefacto de build
+#   *.pdf          el manuscrito compilado es un artefacto de build, y también
+#                  amsdocsV6.1.pdf, el instructivo de AMS que se consulta local

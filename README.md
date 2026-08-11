@@ -629,7 +629,8 @@ CUDA context creation.
 Measuring both builds from the same revision matters more than it may look. Over
 this development cycle the CPU build alone went from 3.76 s to 2.53 s, purely
 from the I/O work of §6.5, which benefits both. Quoting the older CPU figure
-against the current CUDA one would have shown ~4× and credited the GPU with a
+against the current CUDA one would have shown 3.21× instead of 2.16× — a 49%
+overstatement — and credited the GPU with a
 second of work it did not do.
 
 `daynite -G` is the other operational product; on the same host it renders in

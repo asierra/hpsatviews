@@ -95,9 +95,13 @@ GOES-R ABI \sep Satellite image processing \sep Real-time pipelines
 \midrule
 C1 & Current code version & v1.1.0 \\
 C2 & Permanent link to code/repository used for this code version &
-\url{https://github.com/asierra/hpsatviews} \\
+\url{https://doi.org/10.5281/zenodo.21893553} (archived v1.1.0; development
+repository at \url{https://github.com/asierra/hpsatviews}) \\
 C3 & Permanent link to Reproducible Capsule &
-\textit{(to be completed by author)} \\
+\url{https://doi.org/10.5281/zenodo.21893553} --- the archive carries the
+\texttt{reproduction/} scripts that fetch the public NOAA sample data and
+re-run the benchmarks of Section~\ref{sec:performance}, the regression suite
+under \texttt{tests/}, and the figure sources under \texttt{paper/}. \\
 C4 & Legal Code License & GNU General Public License v3.0 (GPL-3.0) \\
 C5 & Code versioning system used & git \\
 C6 & Software code languages, tools, and services used &
@@ -255,12 +259,13 @@ full-disk load time.
 
 \begin{figure}[!ht]
     \centering
-    \includegraphics[width=0.55\textwidth]{processing_workflow.png}
+    \includegraphics[width=0.60\textwidth]{processing_workflow.png}
     \caption{Core processing workflow of \texttt{hpsatviews}. The execution
-    path diverges based on the requested command, followed by sequential,
-    optional stages for Rayleigh atmospheric correction, CLAHE contrast
-    enhancement, and geographic reprojection before writing the final image
-    output and an optional JSON metadata sidecar.}
+    path diverges based on the requested command, followed by sequential
+    stages for Rayleigh atmospheric correction, CLAHE contrast enhancement,
+    and geographic reprojection before writing the final image output and a
+    JSON metadata sidecar. Shaded stages are optional and are shown with the
+    flag that enables them.}
     \label{fig:workflow}
 \end{figure}
 
@@ -497,8 +502,12 @@ and none by more than one digital number. Both checks are scripted
 (\texttt{reproduction/compare\_g2g\_product.sh} and \texttt{tests/test\_cuda.sh})
 and run as part of the regression suite.
 
-The software reached its first public release (v1.0.0) in June 2026, archived
-on Zenodo under a persistent DOI. The optional GPU backend now accelerates the
+The software reached its first public release (v1.0.0) in June 2026 and its
+current release (v1.1.0), the one measured throughout this paper, in August
+2026; every release is archived on Zenodo, with
+\href{https://doi.org/10.5281/zenodo.20817973}{10.5281/zenodo.20817973} as the
+concept DOI resolving to the latest version. The optional GPU backend now
+accelerates the
 Rayleigh-correction, viewing-geometry, compositing, and reprojection stages
 previously identified as the most computationally intensive; ongoing work
 extends support to additional satellite platforms beyond the GOES-R series and
