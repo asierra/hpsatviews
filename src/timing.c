@@ -32,7 +32,7 @@
 
 /* Schema version: bump when columns are added or reordered, so a campaign
  * spanning a change can still be split cleanly at analysis time. */
-#define TIMING_SCHEMA 1
+#define TIMING_SCHEMA 3
 
 #define TIMING_PATH_MAX 1024
 #define TIMING_LINE_MAX 8192
@@ -199,26 +199,63 @@ static const char *git_commit(void) {
 #endif
 }
 
-static void write_header(int fd) {
-    char hdr[TIMING_LINE_MAX];
+/* Builds the header's column list, the single source of truth for both the
+ * emitted header and the schema check below. */
+static void header_columns(char *buf, size_t n) {
     size_t len = 0;
-    len += (size_t)snprintf(hdr, sizeof(hdr),
-                            "#hpsv-timing schema=%d\n", TIMING_SCHEMA);
-
     const char *cols =
         "t_start_utc,t_end_utc,host,build,path,hpsv_version,git_commit,gpu,"
         "hdf5_ver,netcdf_ver,gdal_ver,"
         "scene_id,sat,scene,subcmd,product,nx,ny,full_res,geo,"
         "in_path,in_bytes,n_channels,in_mtime_utc,latency_s,t_total";
-    len += (size_t)snprintf(hdr + len, sizeof(hdr) - len, "%s", cols);
-
+    len += (size_t)snprintf(buf, n, "%s", cols);
     for (int s = 0; s < TM_STAGE_COUNT; s++)
-        len += (size_t)snprintf(hdr + len, sizeof(hdr) - len, ",t_%s", kStageName[s]);
+        len += (size_t)snprintf(buf + len, n - len, ",t_%s", kStageName[s]);
     for (int s = 0; s < TM_STAGE_COUNT; s++)
-        len += (size_t)snprintf(hdr + len, sizeof(hdr) - len, ",n_%s", kStageName[s]);
+        len += (size_t)snprintf(buf + len, n - len, ",n_%s", kStageName[s]);
+    snprintf(buf + len, n - len, ",load1,omp_threads,mem_peak_mb,exit_code");
+}
 
-    snprintf(hdr + len, sizeof(hdr) - len,
-             ",load1,omp_threads,mem_peak_mb,exit_code\n");
+/* A campaign spans binaries, and appending a wider row under an older header
+ * misaligns every column after the new one — silently, and only noticed at
+ * analysis time. So a file written under a different schema is never appended
+ * to: the rows go to a sibling file named after this schema instead. */
+static const char *effective_path(void) {
+    static char path[TIMING_PATH_MAX + 32];
+    static bool resolved = false;
+    if (resolved) return path;
+    resolved = true;
+    snprintf(path, sizeof(path), "%s", g_csv_path);
+
+    FILE *f = fopen(g_csv_path, "r");
+    if (f == NULL) return path;            /* new file, we write the header */
+    char first[128] = "";
+    char *got = fgets(first, sizeof(first), f);
+    fclose(f);
+    if (got == NULL || first[0] == '\0') return path;  /* empty file */
+
+    int found = 0;
+    if (sscanf(first, "#hpsv-timing schema=%d", &found) == 1 &&
+        found == TIMING_SCHEMA)
+        return path;                        /* same schema, safe to append */
+
+    const char *dot = strrchr(g_csv_path, '.');
+    size_t stem = (dot != NULL) ? (size_t)(dot - g_csv_path) : strlen(g_csv_path);
+    snprintf(path, sizeof(path), "%.*s.schema%d%s",
+             (int)stem, g_csv_path, TIMING_SCHEMA, (dot != NULL) ? dot : "");
+    LOG_WARN("Timing CSV '%s' was written under schema %d, not %d; "
+             "appending to '%s' instead to keep the columns aligned.",
+             g_csv_path, found, TIMING_SCHEMA, path);
+    return path;
+}
+
+static void write_header(int fd) {
+    char hdr[TIMING_LINE_MAX];
+    size_t len = (size_t)snprintf(hdr, sizeof(hdr),
+                                  "#hpsv-timing schema=%d\n", TIMING_SCHEMA);
+    header_columns(hdr + len, sizeof(hdr) - len);
+    len = strlen(hdr);
+    snprintf(hdr + len, sizeof(hdr) - len, "\n");
 
     if (write(fd, hdr, strlen(hdr)) < 0)
         LOG_WARN("Could not write timing CSV header: %s", strerror(errno));
@@ -367,9 +404,10 @@ int timing_emit(const TimingRow *row) {
     line[len++] = '\n';
     line[len] = '\0';
 
-    int fd = open(g_csv_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    const char *out_path = effective_path();
+    int fd = open(out_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd < 0) {
-        LOG_WARN("Could not open timing CSV '%s': %s", g_csv_path, strerror(errno));
+        LOG_WARN("Could not open timing CSV '%s': %s", out_path, strerror(errno));
         return -1;
     }
 
