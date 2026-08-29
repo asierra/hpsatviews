@@ -292,12 +292,13 @@ Generates a grayscale view of channel C13.
   `hpsv` processes can share one file without interleaving. Intended for
   measuring an operational deployment over weeks; off unless a path is given.
 
-  Stages (`t_read`, `t_decode`, `t_nav`, `t_geom`, `t_correct`, `t_compose`,
-  `t_enhance`, `t_reproject`, `t_write`, `t_xfer`, `t_other`) are identical in
+  Stages (`t_init`, `t_open`, `t_read`, `t_decode`, `t_unpack`, `t_nav`,
+  `t_geom`, `t_correct`, `t_compose`, `t_enhance`, `t_reproject`, `t_write`,
+  `t_xfer`, `t_other`) are identical in
   the OpenMP and CUDA builds, so the two can be compared column by column;
   `t_nav` and `t_geom` are kept apart because they are the double-precision
-  work, which is what makes a GPU pay or not on a given device. Stage times do
-  not add up to `t_total` — the remainder is untimed orchestration.
+  work, which is what makes a GPU pay or not on a given device. Stage times account for ~97% of
+  `t_total`; the small remainder is untimed orchestration.
 
 * `-v, --verbose`
   Enables verbose mode, showing detailed processing information.

@@ -264,6 +264,7 @@ static int datanc_unpack_grid(int ncid, int varid, size_t total_size, DataNC *da
     }
     if (!fast_loaded && nc_get_var(ncid, varid, datatmp) != NC_NOERR) { free(datatmp); return -1; }
 
+    double t_unpack = omp_get_wtime();
     if (cfg->var_type == NC_BYTE || cfg->var_type == NC_UBYTE) {
         datanc->is_float = false;
         datanc->bdata = datab_create(datanc->fdata.width, datanc->fdata.height);
@@ -314,6 +315,9 @@ static int datanc_unpack_grid(int ncid, int varid, size_t total_size, DataNC *da
         }
         datanc->fdata.fmin = local_min; datanc->fdata.fmax = local_max;
     }
+    /* Not bookkeeping: this is where radiances become brightness temperatures
+     * (Planck inversion) or reflectances (kappa0), for every pixel. */
+    LOG_TIMING_STAGE(TM_UNPACK, omp_get_wtime() - t_unpack, "Calibration/unpack");
     free(datatmp);
     return 0;
 }
@@ -328,6 +332,7 @@ int load_nc_sf(const char *filename, DataNC *datanc) {
         datanc->proj_info.valid = false;
     }
     
+    double t_open = omp_get_wtime();
     if (nc_open(filename, NC_NOWRITE, &ncid) != NC_NOERR) {
         LOG_ERROR("Error opening NetCDF: %s", filename);
         return -1;
@@ -340,6 +345,7 @@ int load_nc_sf(const char *filename, DataNC *datanc) {
     }
 
     if (datanc_read_metadata(ncid, varid, datanc, &cfg) != 0) goto cleanup;
+    LOG_TIMING_STAGE(TM_OPEN, omp_get_wtime() - t_open, "NetCDF open + metadata");
 
     size_t total_size = (size_t)datanc->fdata.width * (size_t)datanc->fdata.height;
     LOG_INFO("NetCDF dimensions: %ux%u (total: %zu)", datanc->fdata.width, datanc->fdata.height, total_size);

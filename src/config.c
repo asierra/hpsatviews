@@ -13,6 +13,7 @@
 #ifdef HPSV_CUDA
 #include "cuda_device.h"
 #endif
+#include <omp.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -375,8 +376,13 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
     // rgb: only the default true-color path is GPU-accelerated so far; run_rgb()
     // warns and falls back to CPU for any other mode/option, so no blanket
     // message here.
-    if (cfg->use_cuda && !cuda_report_device()) {
-        return false;
+    if (cfg->use_cuda) {
+        /* The first CUDA call creates the context, a fixed startup cost that
+         * belongs to the run and would otherwise sit outside every stage. */
+        double t_init = omp_get_wtime();
+        bool ok = cuda_report_device();
+        LOG_TIMING_STAGE(TM_INIT, omp_get_wtime() - t_init, "CUDA context");
+        if (!ok) return false;
     }
 #else
     if (cfg->use_cuda) {

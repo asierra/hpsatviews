@@ -46,8 +46,8 @@ static double g_stage[TM_STAGE_COUNT];
 static int    g_calls[TM_STAGE_COUNT];
 
 static const char *const kStageName[TM_STAGE_COUNT] = {
-    "read", "decode", "nav", "geom", "correct", "compose",
-    "enhance", "reproject", "write", "xfer", "other"
+    "init", "open", "read", "decode", "unpack", "nav", "geom", "correct",
+    "compose", "enhance", "reproject", "write", "xfer", "other"
 };
 
 const char *timing_stage_name(TimingStage stage) {

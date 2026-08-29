@@ -293,13 +293,14 @@ Genera una vista en escala de grises del canal C13.
   concurrentes pueden compartir el mismo archivo sin entremezclarse. Pensado
   para medir un despliegue operativo durante semanas; apagado si no se da ruta.
 
-  Las etapas (`t_read`, `t_decode`, `t_nav`, `t_geom`, `t_correct`,
-  `t_compose`, `t_enhance`, `t_reproject`, `t_write`, `t_xfer`, `t_other`) son
+  Las etapas (`t_init`, `t_open`, `t_read`, `t_decode`, `t_unpack`, `t_nav`,
+  `t_geom`, `t_correct`, `t_compose`, `t_enhance`, `t_reproject`, `t_write`,
+  `t_xfer`, `t_other`) son
   idénticas en el build OpenMP y en el CUDA, de modo que los dos se comparan
   columna contra columna; `t_nav` y `t_geom` van aparte porque son el trabajo
   en doble precisión, que es lo que determina si una GPU conviene o no en un
-  dispositivo dado. Los tiempos por etapa no suman `t_total`: el resto es
-  orquestación sin cronometrar.
+  dispositivo dado. Los tiempos por etapa cubren ~97% de `t_total`; el resto,
+  pequeño, es orquestación sin cronometrar.
 
 * `-v, --verbose`
   Activa el modo verboso, mostrando información detallada del procesamiento.

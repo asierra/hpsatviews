@@ -29,8 +29,11 @@
  * are the double-precision work: separating them is what makes the record
  * able to explain why the same code has a different bottleneck per device. */
 typedef enum {
-    TM_READ = 0,      /* file I/O, HDF5 chunk index retrieval, raw chunk fetch */
+    TM_INIT = 0,      /* process startup: CUDA context creation (0 on OpenMP)  */
+    TM_OPEN,          /* netCDF open, product identification, attribute reads  */
+    TM_READ,          /* file I/O, HDF5 chunk index retrieval, raw chunk fetch */
     TM_DECODE,        /* chunk decompression (libdeflate / netCDF fallback)    */
+    TM_UNPACK,        /* scale/offset, fill values, Planck and kappa0 calibration */
     TM_NAV,           /* fixed-grid to lat/lon geolocation          (FP64)     */
     TM_GEOM,          /* solar and satellite viewing geometry       (FP64)     */
     TM_CORRECT,       /* Rayleigh (LUT or analytic), solar zenith normalization*/
