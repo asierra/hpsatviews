@@ -42,6 +42,7 @@ typedef enum {
     TM_REPROJECT,     /* fixed grid to geographic equirectangular              */
     TM_WRITE,         /* PNG/GeoTIFF encoding and output                       */
     TM_XFER,          /* host-device transfers; always 0 in the OpenMP build   */
+    TM_MEM,           /* allocation, first touch and release of the large grids */
     TM_OTHER,         /* timed work that fits no stage above                   */
     TM_STAGE_COUNT
 } TimingStage;
@@ -85,6 +86,11 @@ bool timing_enabled(void);
  * be fed any number of times (per channel, per band) and the row reports the
  * sum together with the call count. No-op while disabled. */
 void timing_add(TimingStage stage, double seconds);
+
+/* Total input bytes read, accumulated as each channel file is opened. The
+ * anchor's size alone understates it several-fold: a full-disk composite
+ * pulls its siblings too, and C02 at 0.5 km dwarfs the rest. */
+void timing_add_bytes(long long bytes);
 
 double      timing_stage_seconds(TimingStage stage);
 int         timing_stage_calls(TimingStage stage);

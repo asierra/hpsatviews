@@ -22,6 +22,7 @@ float NonData = 1.0e+32;
 // Constructor for DataF structure
 DataF dataf_create(unsigned int width, unsigned int height) {
     DataF data;
+    double t_mem = omp_get_wtime();
 
     // Initialize all fields
     data.width = width;
@@ -41,6 +42,7 @@ DataF dataf_create(unsigned int width, unsigned int height) {
         data.data_in = NULL;
     }
 
+    timing_add(TM_MEM, omp_get_wtime() - t_mem);
     return data;
 }
 
@@ -48,7 +50,11 @@ DataF dataf_create(unsigned int width, unsigned int height) {
 void dataf_destroy(DataF *data) {
     if (data != NULL) {
         if (data->data_in != NULL) {
+            /* Releasing a full-resolution grid is not free: C02 at 0.5 km is
+             * a 1.88 GB buffer and the kernel reclaims it here. */
+            double t_mem = omp_get_wtime();
             free(data->data_in);
+            timing_add(TM_MEM, omp_get_wtime() - t_mem);
             data->data_in = NULL;
         }
         // Reset all fields to safe values

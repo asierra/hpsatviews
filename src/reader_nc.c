@@ -11,6 +11,7 @@
 #include "reader_nc_chunk.h"
 #include "logger.h"
 #include "timing.h"
+#include <sys/stat.h>
 #include <math.h>
 #include <netcdf.h>
 #include <omp.h>
@@ -346,6 +347,10 @@ int load_nc_sf(const char *filename, DataNC *datanc) {
 
     if (datanc_read_metadata(ncid, varid, datanc, &cfg) != 0) goto cleanup;
     LOG_TIMING_STAGE(TM_OPEN, omp_get_wtime() - t_open, "NetCDF open + metadata");
+    {   /* Every sibling channel counts toward the run's input volume. */
+        struct stat st_in;
+        if (stat(filename, &st_in) == 0) timing_add_bytes((long long)st_in.st_size);
+    }
 
     size_t total_size = (size_t)datanc->fdata.width * (size_t)datanc->fdata.height;
     LOG_INFO("NetCDF dimensions: %ux%u (total: %zu)", datanc->fdata.width, datanc->fdata.height, total_size);

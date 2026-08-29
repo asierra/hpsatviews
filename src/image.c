@@ -17,6 +17,7 @@
 
 ImageData image_create(unsigned int width, unsigned int height, unsigned int bpp) {
     ImageData image;
+    double t_mem = omp_get_wtime();
 
     image.width = width;
     image.height = height;
@@ -41,13 +42,16 @@ ImageData image_create(unsigned int width, unsigned int height, unsigned int bpp
         }
     }
 
+    timing_add(TM_MEM, omp_get_wtime() - t_mem);
     return image;
 }
 
 void image_destroy(ImageData *image) {
     if (image != NULL) {
         if (image->data != NULL) {
+            double t_mem = omp_get_wtime();
             free(image->data);
+            timing_add(TM_MEM, omp_get_wtime() - t_mem);
             image->data = NULL;
         }
         image->width = 0;

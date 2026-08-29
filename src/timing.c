@@ -44,10 +44,11 @@ static double g_start_epoch = 0.0; /* wall clock at enable, for the ISO stamp */
 
 static double g_stage[TM_STAGE_COUNT];
 static int    g_calls[TM_STAGE_COUNT];
+static long long g_bytes = 0;
 
 static const char *const kStageName[TM_STAGE_COUNT] = {
     "init", "open", "read", "decode", "unpack", "nav", "geom", "correct",
-    "compose", "enhance", "reproject", "write", "xfer", "other"
+    "compose", "enhance", "reproject", "write", "xfer", "mem", "other"
 };
 
 const char *timing_stage_name(TimingStage stage) {
@@ -72,6 +73,7 @@ void timing_enable(const char *csv_path) {
 
     memset(g_stage, 0, sizeof(g_stage));
     memset(g_calls, 0, sizeof(g_calls));
+    g_bytes = 0;
     g_t0 = omp_get_wtime();
     g_start_epoch = now_epoch();
     g_enabled = true;
@@ -87,6 +89,12 @@ void timing_add(TimingStage stage, double seconds) {
     g_stage[stage] += seconds;
 #pragma omp atomic
     g_calls[stage] += 1;
+}
+
+void timing_add_bytes(long long bytes) {
+    if (!g_enabled || bytes <= 0) return;
+#pragma omp atomic
+    g_bytes += bytes;
 }
 
 double timing_stage_seconds(TimingStage stage) {
@@ -325,7 +333,8 @@ int timing_emit(const TimingRow *row) {
     csv_field(line, sizeof(line), &len, row->geo);
 
     csv_field(line, sizeof(line), &len, row->in_path);
-    csv_num(line, sizeof(line), &len, "%lld", row->in_bytes);
+    csv_num(line, sizeof(line), &len, "%lld",
+            (g_bytes > 0) ? g_bytes : row->in_bytes);
     csv_num(line, sizeof(line), &len, "%d", row->n_channels);
     if (row->in_mtime_utc > 0.0) {
         char mtime[40];

@@ -285,7 +285,7 @@ Generates a grayscale view of channel C13.
 
 * `--timing-csv <file>`
   Appends one row per run to `<file>`: per-stage times, the scene signature,
-  the input's size and arrival time, the build (`openmp`/`cuda`) and whether
+  the total bytes read across every channel and the input's arrival time, the build (`openmp`/`cuda`) and whether
   the run actually took the GPU path, the library versions, load average and
   exit code. The header is written when the file is empty, and the row is
   emitted under an exclusive lock in a single write, so several concurrent
@@ -294,7 +294,7 @@ Generates a grayscale view of channel C13.
 
   Stages (`t_init`, `t_open`, `t_read`, `t_decode`, `t_unpack`, `t_nav`,
   `t_geom`, `t_correct`, `t_compose`, `t_enhance`, `t_reproject`, `t_write`,
-  `t_xfer`, `t_other`) are identical in
+  `t_xfer`, `t_mem`, `t_other`) are identical in
   the OpenMP and CUDA builds, so the two can be compared column by column;
   `t_nav` and `t_geom` are kept apart because they are the double-precision
   work, which is what makes a GPU pay or not on a given device. Stage times account for ~97% of

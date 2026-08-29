@@ -285,7 +285,7 @@ Genera una vista en escala de grises del canal C13.
 
 * `--timing-csv <archivo>`
   Agrega al archivo una fila por corrida: tiempos por etapa, la firma de la
-  escena, el tamaño y la hora de llegada de la entrada, el build
+  escena, los bytes totales leídos entre todos los canales y la hora de llegada de la entrada, el build
   (`openmp`/`cuda`) y si la corrida realmente tomó la ruta GPU, las versiones
   de las bibliotecas, la carga del sistema y el código de salida. El
   encabezado se escribe cuando el archivo está vacío, y la fila se emite bajo
@@ -295,7 +295,7 @@ Genera una vista en escala de grises del canal C13.
 
   Las etapas (`t_init`, `t_open`, `t_read`, `t_decode`, `t_unpack`, `t_nav`,
   `t_geom`, `t_correct`, `t_compose`, `t_enhance`, `t_reproject`, `t_write`,
-  `t_xfer`, `t_other`) son
+  `t_xfer`, `t_mem`, `t_other`) son
   idénticas en el build OpenMP y en el CUDA, de modo que los dos se comparan
   columna contra columna; `t_nav` y `t_geom` van aparte porque son el trabajo
   en doble precisión, que es lo que determina si una GPU conviene o no en un
