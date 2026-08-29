@@ -21,6 +21,11 @@ CUDA_HOME ?= /usr/local/cuda
 # --- Idioma (en por defecto | es opcional) ---
 HPSV_LANG ?= en
 
+# Commit del que salió el binario, para el registro de --timing-csv: una
+# campaña de medición sobre dos servidores necesita poder detectar deriva de
+# versión entre ellos. Vacío si no se compila dentro del repositorio.
+GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null)
+
 # Banderas base: C11 estándar, advertencias, OpenMP
 CFLAGS_COMMON = -Wall -Wextra -std=c11 -fopenmp -D_POSIX_C_SOURCE=200809L \
                 -D_DEFAULT_SOURCE -MMD -MP $(shell gdal-config --cflags) \
@@ -39,6 +44,10 @@ endif
 
 # --- Flags de idioma ---
 CFLAGS_LANG =
+
+ifneq ($(GIT_COMMIT),)
+    CFLAGS_COMMON += -DHPSV_GIT_COMMIT=\"$(GIT_COMMIT)\"
+endif
 
 ifeq ($(HPSV_LANG),es)
     CFLAGS_LANG += -DHPSV_LANG_ES

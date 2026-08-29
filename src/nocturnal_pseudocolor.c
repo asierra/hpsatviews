@@ -14,6 +14,7 @@
 #include "image.h"
 #include "palette.h"
 #include "logger.h"
+#include "timing.h"
 
 ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* fondo) {
   if (!temp_data || !temp_data->data_in) {
@@ -78,7 +79,7 @@ ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* 
   }
 
   double end = omp_get_wtime();
-  LOG_TIMING(end - start, "Nocturnal pseudocolor");
+  LOG_TIMING_STAGE(TM_COMPOSE, end - start, "Nocturnal pseudocolor");
 
   return imout;
 }

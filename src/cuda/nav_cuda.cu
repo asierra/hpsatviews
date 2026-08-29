@@ -18,6 +18,7 @@
 extern "C" {
 #include "cuda_nav.h"
 #include "logger.h"
+#include "timing.h"
 }
 
 #define HPSV_NONDATA_DEV 1.0e+32f
@@ -196,7 +197,7 @@ extern "C" bool compute_rayleigh_nav_dev(const DataFDev *navla,
    * falso; la contraparte real de este kernel son los [PERF] "Solar geometry" +
    * "Satellite geometry" del CPU (el RAA del CPU va sin medir dentro de
    * compute_relative_azimuth). */
-  LOG_TIMING(ms / 1000.0,
+  LOG_TIMING_STAGE(TM_GEOM, ms / 1000.0,
              "Solar+satellite geometry (CUDA, device-resident: solar+sat+raa)");
   ok = true;
 
@@ -383,7 +384,7 @@ extern "C" bool compute_navigation_dev(const NavPlan *plan, DataFDev *lat_out,
   CUDA_CHECK(cudaEventRecord(t1));
   CUDA_CHECK(cudaEventSynchronize(t1));
   CUDA_CHECK(cudaEventElapsedTime(&ms, t0, t1));
-  LOG_TIMING(ms / 1000.0, "Navigation lat/lon (CUDA, device-resident, %ux%u)", w, h);
+  LOG_TIMING_STAGE(TM_NAV, ms / 1000.0, "Navigation lat/lon (CUDA, device-resident, %ux%u)", w, h);
   ok = true;
 
 cleanup:

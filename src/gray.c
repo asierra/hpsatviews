@@ -8,6 +8,7 @@
 #include "datanc.h"
 #include "image.h"
 #include "logger.h"
+#include "timing.h"
 #include "reader_cpt.h"
 #include <omp.h>
 #include <stdbool.h>
@@ -74,7 +75,7 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha,
   }
 
   double end = omp_get_wtime();
-  LOG_TIMING(end - start, "Single Gray");
+  LOG_TIMING_STAGE(TM_COMPOSE, end - start, "Single Gray");
   return imout;
 }
 
@@ -131,6 +132,6 @@ ImageData create_single_grayb(DataB c01, bool invert_value, bool use_alpha, cons
     }
   }
   double end = omp_get_wtime();
-  LOG_TIMING(end - start, "Single Gray (byte)");
+  LOG_TIMING_STAGE(TM_COMPOSE, end - start, "Single Gray (byte)");
   return imout;
 }

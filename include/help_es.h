@@ -43,6 +43,8 @@ static const char *HPSATVIEWS_HELP =
 "  --cuda              Usa kernels GPU (CUDA): color verdadero (con Rayleigh),\n"
 "                      gray y pseudocolor. Usa CPU en los modos no soportados.\n"
 #endif
+"  --timing-csv ARCH   Agrega al archivo una fila por corrida con los tiempos\n"
+"                      por etapa (crea el encabezado; admite concurrencia).\n"
 "  -v, --verbose       Activa mensajes de diagnóstico detallados (DEBUG).\n"
 "\n"
 "Patrones para --out y nombrado automático:\n"

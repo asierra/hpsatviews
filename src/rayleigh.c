@@ -12,6 +12,7 @@
 #include <omp.h>
 #include "datanc.h"
 #include "logger.h"
+#include "timing.h"
 #include "rayleigh.h"
 #include "rayleigh_lut_embedded.h"
 #include "reader_nc.h"
@@ -239,7 +240,7 @@ void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lam
     }
 
     double end_time = omp_get_wtime();
-    LOG_TIMING(end_time - start_time, "Analytic Rayleigh (λ=%.3fμm, %zu px)", lambda_um, valid_pixels);
+    LOG_TIMING_STAGE(TM_CORRECT, end_time - start_time, "Analytic Rayleigh (λ=%.3fμm, %zu px)", lambda_um, valid_pixels);
     
     if (valid_pixels > 0) {
         LOG_DEBUG("  mean %.4f -> %.4f, clamped %.1f%%",
@@ -508,7 +509,7 @@ void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t 
     }
 
     double end_time = omp_get_wtime();
-    LOG_TIMING(end_time - start_time, "Rayleigh LUT C%02d (%zu px)", channel, valid_pixels);
+    LOG_TIMING_STAGE(TM_CORRECT, end_time - start_time, "Rayleigh LUT C%02d (%zu px)", channel, valid_pixels);
     LOG_DEBUG("  night=%zu clamped=%zu mean=%.4f->%.4f corr_max=%.4f",
              night_pixels, negative_pixels,
              valid_pixels > 0 ? sum_original/valid_pixels : 0.0,

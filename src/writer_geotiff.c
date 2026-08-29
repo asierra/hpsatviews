@@ -7,6 +7,7 @@
  */
 #include "writer_geotiff.h"
 #include "logger.h"
+#include "timing.h"
 #include <gdal.h>
 #include <cpl_string.h>
 #include <ogr_srs_api.h>
@@ -277,7 +278,7 @@ static int finalize_cog(GDALDatasetH mem_ds, const char* filename, bool cog) {
 
     double t0 = omp_get_wtime();
     GDALDatasetH cog_ds = GDALCreateCopy(cog_driver, filename, mem_ds, FALSE, opts, NULL, NULL);
-    LOG_TIMING(omp_get_wtime() - t0, "%s written: %s", cog ? "COG (overviews)" : "GeoTIFF", filename);
+    LOG_TIMING_STAGE(TM_WRITE, omp_get_wtime() - t0, "%s written: %s", cog ? "COG (overviews)" : "GeoTIFF", filename);
     CSLDestroy(opts);
     GDALClose(mem_ds);
 
@@ -337,7 +338,7 @@ int write_geotiff_rgb(const char* filename, const ImageData* img, const DataNC* 
             }
         }
     }
-    LOG_TIMING(omp_get_wtime() - t_mem0, "GeoTIFF MEM dataset (%d bandas, %ux%u, %s)",
+    LOG_TIMING_STAGE(TM_WRITE, omp_get_wtime() - t_mem0, "GeoTIFF MEM dataset (%d bandas, %ux%u, %s)",
                num_bands, img->width, img->height,
                wrapped ? "zero-copy" : "de-interleave");
 
@@ -401,7 +402,7 @@ int write_geotiff_gray(const char* filename, const ImageData* img, const DataNC*
             GDALSetRasterColorInterpretation(alpha_band, GCI_AlphaBand);
         }
     }
-    LOG_TIMING(omp_get_wtime() - t_mem0, "GeoTIFF MEM dataset (%d banda%s, %ux%u, %s)",
+    LOG_TIMING_STAGE(TM_WRITE, omp_get_wtime() - t_mem0, "GeoTIFF MEM dataset (%d banda%s, %ux%u, %s)",
                num_bands, num_bands == 1 ? "" : "s", img->width, img->height,
                wrapped ? "zero-copy" : "copia");
 

@@ -8,6 +8,7 @@
 #include "image.h"
 #include "datanc.h"
 #include "logger.h"
+#include "timing.h"
 #include <math.h>
 #include <omp.h>
 #include <stdio.h>
@@ -122,7 +123,7 @@ ImageData blend_images(ImageData bg, ImageData fg, ImageData mask) {
         imout.data[p + 2] = (unsigned char)(w * bg.data[p + 2] + (1 - w) * fg.data[p + 2]);
     }
     double end = omp_get_wtime();
-    LOG_TIMING(end - start, "Image blend");
+    LOG_TIMING_STAGE(TM_COMPOSE, end - start, "Image blend");
     return imout;
 }
 
@@ -294,6 +295,7 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
         LOG_ERROR("Invalid parameters for CLAHE.");
         return;
     }
+    double start = omp_get_wtime();
     ImageData lum = (im.bpp < 3) ? im : extract_luminance_rgb(&im);
 
     int tile_width = im.width / tiles_x;
@@ -398,6 +400,7 @@ void image_apply_clahe(ImageData im, int tiles_x, int tiles_y, float clip_limit)
         apply_luminance_to_rgb(&im, &lum);
         image_destroy(&lum);
     }
+    LOG_TIMING_STAGE(TM_ENHANCE, omp_get_wtime() - start, "CLAHE (tiles=%dx%d)", tiles_x, tiles_y);
     LOG_INFO("CLAHE applied: tiles=%dx%d, clip_limit=%.2f", tiles_x, tiles_y, clip_limit);
 }
 
@@ -454,7 +457,7 @@ ImageData image_upsample_bilinear(const ImageData *src, int factor) {
     }
 
     double end = omp_get_wtime();
-    LOG_TIMING(end - start, "Bilinear upsampling (factor=%d)", factor);
+    LOG_TIMING_STAGE(TM_ENHANCE, end - start, "Bilinear upsampling (factor=%d)", factor);
 
     return result;
 }
@@ -509,7 +512,7 @@ ImageData image_downsample_boxfilter(const ImageData *src, int factor) {
     }
 
     double end = omp_get_wtime();
-    LOG_TIMING(end - start, "Box filter downsampling (factor=%d)", factor);
+    LOG_TIMING_STAGE(TM_ENHANCE, end - start, "Box filter downsampling (factor=%d)", factor);
 
     return result;
 }

@@ -18,6 +18,7 @@
 
 #include "reader_nc_chunk.h"
 #include "logger.h"
+#include "timing.h"
 
 #include <fcntl.h>
 #include <hdf5.h>
@@ -279,7 +280,7 @@ int read_var_chunked_deflate(const char *filename, const char *varname,
   }
   t_fetch = omp_get_wtime() - t0f;
   if (!read_ok) goto done;
-  LOG_TIMING(omp_get_wtime() - t_serial0, "NetCDF chunk index+fetch");
+  LOG_TIMING_STAGE(TM_READ, omp_get_wtime() - t_serial0, "NetCDF chunk index+fetch");
   LOG_DEBUG("  %zu chunks (%zu allocated): index %.3f s, fetch %.3f s (%s)",
             nchunks, n_alloc, t_index, t_fetch,
             use_pread ? "pread paralelo" : "H5Dread_chunk serial");
@@ -351,7 +352,7 @@ int read_var_chunked_deflate(const char *filename, const char *varname,
   }
 
   if (!failed) {
-    LOG_TIMING(omp_get_wtime() - t0, "NetCDF chunked decompress (libdeflate)");
+    LOG_TIMING_STAGE(TM_DECODE, omp_get_wtime() - t0, "NetCDF chunked decompress (libdeflate)");
     rc = 0;
   }
 

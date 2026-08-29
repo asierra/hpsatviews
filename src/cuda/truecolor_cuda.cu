@@ -16,6 +16,7 @@
 extern "C" {
 #include "cuda_truecolor.h"
 #include "logger.h"
+#include "timing.h"
 }
 
 /* NonData de host (src/datanc.c) = 1.0e+32; satisface is_nondata_dev (>=1e30). */
@@ -80,7 +81,7 @@ extern "C" DataFDev create_truecolor_green_from_dev(const DataFDev *blue,
   CUDA_CHECK(cudaEventRecord(t1));
   CUDA_CHECK(cudaEventSynchronize(t1));
   CUDA_CHECK(cudaEventElapsedTime(&ms, t0, t1));
-  LOG_TIMING(ms / 1000.0, "Synthetic green (CUDA, device-resident)");
+  LOG_TIMING_STAGE(TM_COMPOSE, ms / 1000.0, "Synthetic green (CUDA, device-resident)");
   ok = true;
 
 cleanup:
@@ -173,7 +174,7 @@ extern "C" ImageData create_multiband_rgb_from_dev(const DataFDev *r,
   CUDA_CHECK(cudaEventRecord(t1));
   CUDA_CHECK(cudaEventSynchronize(t1));
   CUDA_CHECK(cudaEventElapsedTime(&ms, t0, t1));
-  LOG_TIMING(ms / 1000.0, "Multiband RGB (CUDA, device-resident: kernel + D2H)");
+  LOG_TIMING_STAGE(TM_COMPOSE, ms / 1000.0, "Multiband RGB (CUDA, device-resident: kernel + D2H)");
   ok = true;
 
 cleanup:
@@ -266,7 +267,7 @@ extern "C" bool apply_piecewise_stretch_dev(DataFDev *band) {
   CUDA_CHECK(cudaEventRecord(t1));
   CUDA_CHECK(cudaEventSynchronize(t1));
   CUDA_CHECK(cudaEventElapsedTime(&ms, t0, t1));
-  LOG_TIMING(ms / 1000.0, "Piecewise stretch (CUDA, device-resident)");
+  LOG_TIMING_STAGE(TM_ENHANCE, ms / 1000.0, "Piecewise stretch (CUDA, device-resident)");
   band->fmin = 0.0f;
   band->fmax = 1.0f;
   ok = true;
@@ -364,7 +365,7 @@ extern "C" bool apply_ratio_sharpen_dev(const DataFDev *red, DataFDev *green,
   CUDA_CHECK(cudaEventRecord(t1));
   CUDA_CHECK(cudaEventSynchronize(t1));
   CUDA_CHECK(cudaEventElapsedTime(&ms, t0, t1));
-  LOG_TIMING(ms / 1000.0, "Ratio sharpening (CUDA, device-resident)");
+  LOG_TIMING_STAGE(TM_ENHANCE, ms / 1000.0, "Ratio sharpening (CUDA, device-resident)");
   ok = true;
 
 cleanup:

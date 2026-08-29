@@ -12,6 +12,7 @@
 
 #include "truecolor.h"
 #include "logger.h"
+#include "timing.h"
 #include "rayleigh.h"
 #include "reader_nc.h"
 #include "rgb.h"
@@ -59,7 +60,7 @@ DataF create_truecolor_synthetic_green(const DataF *c_blue, const DataF *c_red, 
         }
     }
 
-    LOG_TIMING(omp_get_wtime() - start, "Synthetic green");
+    LOG_TIMING_STAGE(TM_COMPOSE, omp_get_wtime() - start, "Synthetic green");
 
     // Keep default min/max if no valid data was found.
     if (local_min < 1e29f) {
@@ -105,7 +106,7 @@ void apply_solar_zenith_correction(DataF *data, const DataF *sza) {
         }
     }
 
-    LOG_TIMING(omp_get_wtime() - start, "Solar zenith correction");
+    LOG_TIMING_STAGE(TM_CORRECT, omp_get_wtime() - start, "Solar zenith correction");
 
     if (local_min < 1e29f) {
         data->fmin = local_min;
@@ -185,7 +186,7 @@ ImageData create_multiband_rgb(const DataF* r_ch, const DataF* g_ch, const DataF
         imout.data[idx + 2] = b_byte;
     }
 
-    LOG_TIMING(omp_get_wtime() - start, "Multiband RGB");
+    LOG_TIMING_STAGE(TM_COMPOSE, omp_get_wtime() - start, "Multiband RGB");
 
     return imout;
 }
@@ -227,6 +228,7 @@ void apply_piecewise_stretch(DataF *band) {
     if (!band || !band->data_in || !x_norm || !y_norm || count < 2) return;
 
     size_t n = band->size;
+    double start = omp_get_wtime();
     
     // Compute min/max for quick range statistics.
     float local_min = 1.0f; 
@@ -251,6 +253,7 @@ void apply_piecewise_stretch(DataF *band) {
     band->fmin = local_min;
     band->fmax = local_max;
 
+    LOG_TIMING_STAGE(TM_ENHANCE, omp_get_wtime() - start, "Piecewise stretch");
     LOG_DEBUG("Piecewise stretch applied, new range: [%.4f, %.4f]", local_min, local_max);
 }
 
@@ -259,6 +262,7 @@ DataF dataf_ratio_sharpen_map(const DataF *channel) {
     if (!channel || !channel->data_in)
         return dataf_create(0, 0);
 
+    double start = omp_get_wtime();
     DataF mean = dataf_mean_2x2(channel);
     if (!mean.data_in)
         return dataf_create(0, 0);
@@ -296,6 +300,7 @@ DataF dataf_ratio_sharpen_map(const DataF *channel) {
 
     ratio.fmin = (rmin < 1e29f) ? rmin : 0.5f;
     ratio.fmax = (rmax > -1e29f) ? rmax : 1.5f;
+    LOG_TIMING_STAGE(TM_ENHANCE, omp_get_wtime() - start, "Ratio sharpening map");
     LOG_INFO("Ratio sharpening map: min=%.4f, max=%.4f", ratio.fmin, ratio.fmax);
     return ratio;
 }

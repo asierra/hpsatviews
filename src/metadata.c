@@ -78,11 +78,18 @@ static const char *SECTOR_NAMES[] = {
     [SECTOR_M2]      = "m2",
 };
 
-static const char* get_sat_name(SatelliteID id) {
+const char* metadata_sat_name(SatelliteID id) {
     if (id >= SAT_UNKNOWN && id <= SAT_GOES19) {
         return SAT_NAMES[id];
     }
     return "unknown";
+}
+
+const char* metadata_sector_name(SectorID id) {
+    if (id >= SECTOR_UNKNOWN && id <= SECTOR_M2) {
+        return SECTOR_NAMES[id];
+    }
+    return "";
 }
 
 MetadataContext* metadata_create(void) {
@@ -109,7 +116,7 @@ void metadata_from_nc(MetadataContext *ctx, const DataNC *nc) {
     }
 
     // 2. Copy satellite name.
-	ctx->satellite = get_sat_name(nc->sat_id);
+	ctx->satellite = metadata_sat_name(nc->sat_id);
 	LOG_DEBUG("Satellite ID %d name %s", nc->sat_id, ctx->satellite);
 
     // 3. Sector

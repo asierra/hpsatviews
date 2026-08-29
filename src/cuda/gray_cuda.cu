@@ -21,6 +21,7 @@
 extern "C" {
 #include "cuda_dataf.h"
 #include "logger.h"
+#include "timing.h"
 }
 
 /* ---- Macro de chequeo de errores CUDA ----
@@ -127,7 +128,7 @@ extern "C" ImageData create_single_gray_from_dev(const DataFDev *dev,
   CUDA_CHECK(cudaEventRecord(t1));
   CUDA_CHECK(cudaEventSynchronize(t1));
   CUDA_CHECK(cudaEventElapsedTime(&ms, t0, t1));
-  LOG_TIMING(ms / 1000.0, "Single Gray (CUDA, device-resident: kernel + D2H)");
+  LOG_TIMING_STAGE(TM_COMPOSE, ms / 1000.0, "Single Gray (CUDA, device-resident: kernel + D2H)");
 
   ok = true;
 

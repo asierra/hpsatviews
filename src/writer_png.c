@@ -12,6 +12,7 @@
 #include <string.h>
 
 #include "logger.h"
+#include "timing.h"
 #include <omp.h>
 #include "image.h"
 
@@ -115,7 +116,7 @@ static int write_png_core(const char *filename, const ImageData *image, png_byte
   png_destroy_write_struct(&png, &info);
   fclose(fp);
 
-  LOG_TIMING(elapsed, "PNG written: %s", filename);
+  LOG_TIMING_STAGE(TM_WRITE, elapsed, "PNG written: %s", filename);
   LOG_DEBUG("  %.0f MB de píxeles a %.0f MB/s (1 hilo, zlib nivel 1)",
             (double)image->width * image->height * image->bpp / (1024.0 * 1024.0),
             (double)image->width * image->height * image->bpp /

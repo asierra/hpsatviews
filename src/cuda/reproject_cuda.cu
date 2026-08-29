@@ -18,6 +18,7 @@ extern "C" {
 #include "cuda_reproject.h"
 #include "reprojection.h"
 #include "logger.h"
+#include "timing.h"
 }
 
 #define HPSV_PI 3.14159265358979323846
@@ -172,7 +173,7 @@ extern "C" ImageData reproject_image_analytical_cuda(
   CUDA_CHECK(cudaEventSynchronize(t1));
   CUDA_CHECK(cudaEventElapsedTime(&ms, t0, t1));
   /* LOG_TIMING concatena fmt con un literal, así que la variante va como %s. */
-  LOG_TIMING(ms / 1000.0, "Analytic reprojection (CUDA, %s)",
+  LOG_TIMING_STAGE(TM_REPROJECT, ms / 1000.0, "Analytic reprojection (CUDA, %s)",
              d_src_owned ? "incl. transferencias" : "fuente residente: sin H2D");
   ok = true;
 

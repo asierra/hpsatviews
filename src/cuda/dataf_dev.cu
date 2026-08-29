@@ -20,6 +20,7 @@
 extern "C" {
 #include "cuda_dataf.h"
 #include "logger.h"
+#include "timing.h"
 }
 
 /* Reloj de pared: el costo de esta función es host-side (cudaHostRegister y
@@ -107,7 +108,7 @@ extern "C" DataFDev dataf_dev_upload(const DataF *host) {
     return dev;
   }
 
-  LOG_TIMING(elapsed, "DataF upload (cudaMalloc + H2D%s)",
+  LOG_TIMING_STAGE(TM_XFER, elapsed, "DataF upload (cudaMalloc + H2D%s)",
              pinned ? ", pinned" : "");
   /* Ancho de banda efectivo y costo del registro: es lo que permite decidir por
    * host si conviene pinnear (comparar contra una corrida con
@@ -227,7 +228,7 @@ extern "C" void dataf_dev_apply_gamma(DataFDev *dev, float gamma, float min_val,
     LOG_ERROR("dataf_dev_apply_gamma: %s", cudaGetErrorString(e));
     return;
   }
-  LOG_TIMING(ms / 1000.0, "Gamma (CUDA, device-resident)");
+  LOG_TIMING_STAGE(TM_ENHANCE, ms / 1000.0, "Gamma (CUDA, device-resident)");
 
   /* Tras gamma el rango normalizado es [0,1], igual que la versión CPU. */
   dev->fmin = 0.0f;

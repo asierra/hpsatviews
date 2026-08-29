@@ -19,6 +19,7 @@ extern "C" {
 #include "cuda_rayleigh.h"
 #include "rayleigh.h"
 #include "logger.h"
+#include "timing.h"
 }
 
 #define HPSV_PI_F 3.14159265358979323846f
@@ -172,7 +173,7 @@ extern "C" void apply_solar_zenith_correction_dev(DataFDev *data,
     LOG_ERROR("apply_solar_zenith_correction_dev: %s", cudaGetErrorString(e));
     return;
   }
-  LOG_TIMING(ms / 1000.0, "Solar zenith correction (CUDA, device-resident)");
+  LOG_TIMING_STAGE(TM_CORRECT, ms / 1000.0, "Solar zenith correction (CUDA, device-resident)");
 }
 
 /* ---- Rayleigh LUT correction --------------------------------------------- */
@@ -270,6 +271,6 @@ extern "C" void luts_rayleigh_correction_dev(DataFDev *img, const DataFDev *sza,
    * lanza un hilo por píxel del grid completo, así que se reporta el grid y se
    * dice "grid" para no invitar a comparar los dos números. Contar válidos en
    * device exigiría una reducción que perturbaría lo que se está midiendo. */
-  LOG_TIMING(ms / 1000.0, "Rayleigh LUT C%02d (%zu px grid, CUDA, device-resident)",
+  LOG_TIMING_STAGE(TM_CORRECT, ms / 1000.0, "Rayleigh LUT C%02d (%zu px grid, CUDA, device-resident)",
              lut->channel, img->size);
 }

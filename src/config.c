@@ -6,6 +6,7 @@
  * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #include "config.h"
+#include "timing.h"
 #include "args.h"
 #include "clip_loader.h"
 #include "logger.h"
@@ -363,6 +364,10 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
     // GPU acceleration (opt-in; requires a binary built with CUDA=1).
     cfg->build_cog = ap_found(parser, "cog");
     cfg->use_cuda = ap_found(parser, "cuda");
+
+    // Per-run timing record, off unless a path is given.
+    cfg->timing_csv = ap_get_str_value(parser, "timing-csv");
+    timing_enable(cfg->timing_csv);
 #ifdef HPSV_CUDA
     // Resolve and report the GPU up front: on a shared server the run should
     // record which device it got, and an unusable device (none present, or a

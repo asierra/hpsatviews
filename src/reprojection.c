@@ -10,6 +10,7 @@
 #include "datanc.h"
 #include "reader_nc.h"
 #include "logger.h"
+#include "timing.h"
 #include <float.h>
 #include <limits.h>
 #include <stddef.h>
@@ -379,7 +380,7 @@ ImageData reproject_image_analytical(const ImageData* src_image, const DataNC* d
              valid_pixels, err_horizon, err_bounds);
 
     double elapsed = omp_get_wtime() - t_start;
-    LOG_TIMING(elapsed, "Analytic reprojection finished");
+    LOG_TIMING_STAGE(TM_REPROJECT, elapsed, "Analytic reprojection finished");
 
     return geo_image;
 }

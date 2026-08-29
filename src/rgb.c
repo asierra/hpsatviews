@@ -31,6 +31,7 @@
 #include "reader_webp.h"
 #include "reprojection.h"
 #include "rgb.h"
+#include "timing.h"
 #include "truecolor.h"
 #include "writer_geotiff.h"
 #include "writer_png.h"
@@ -1542,6 +1543,22 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     status = 0;
 
 cleanup:
+    // Emitted before rgb_context_destroy(), which frees the channels the row
+    // reads its scene identity from.
+    if (timing_enabled()) {
+        TimingRow trow = {0};
+        int loaded = 0;
+        for (int i = 1; i <= 16; i++) {
+            if (ctx.channels[i].fdata.data_in || ctx.channels[i].bdata.data_in) loaded++;
+        }
+        timing_row_from_nc(&trow, &ctx.channels[ctx.ref_channel_idx], cfg);
+        if (ctx.opts.mode && ctx.opts.mode[0]) trow.product = ctx.opts.mode;
+        trow.nx = (int)ctx.final_image.width;
+        trow.ny = (int)ctx.final_image.height;
+        trow.n_channels = loaded;
+        trow.exit_code = status;
+        timing_emit(&trow);
+    }
     rgb_context_destroy(&ctx);
     if (custom_channels) {
         for (int i = 0; custom_channels[i] != NULL; i++) {

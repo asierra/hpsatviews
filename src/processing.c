@@ -6,6 +6,7 @@
  * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #include "processing.h"
+#include "timing.h"
 #include "args.h"
 #include "config.h"
 #include "logger.h"
@@ -592,6 +593,16 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     status = 0;
 
 cleanup:
+
+    if (timing_enabled()) {
+        TimingRow trow = {0};
+        timing_row_from_nc(&trow, &c01, cfg);
+        trow.nx = (int)final_image.width;
+        trow.ny = (int)final_image.height;
+        trow.n_channels = expr_mode ? num_required_channels : 1;
+        trow.exit_code = status;
+        timing_emit(&trow);
+    }
 
     if (nav_loaded) {
         dataf_destroy(&navla_full);

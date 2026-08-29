@@ -9,6 +9,7 @@
 #include "datanc.h"
 #include "image.h"
 #include "logger.h"
+#include "timing.h"
 #include <math.h>
 #include <omp.h>
 #include <stdio.h>
@@ -173,7 +174,7 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo, float *d
     }
     *dnratio = (nite == 0) ? 100 : 100.0 * day / navla.size;
     double end = omp_get_wtime();
-    LOG_TIMING(end - start, "Day/night mask");
+    LOG_TIMING_STAGE(TM_COMPOSE, end - start, "Day/night mask");
 
     return imout;
 }

@@ -62,6 +62,9 @@ typedef struct {
     bool force_geotiff;
     const char *output_path_override; // NULL for automatic naming
 
+    // Measurement
+    const char *timing_csv;     // --timing-csv: per-run CSV record (NULL = off)
+
 } ProcessConfig;
 
 // Forward declaration to avoid including args.h here.

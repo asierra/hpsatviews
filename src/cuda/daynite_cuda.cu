@@ -18,6 +18,7 @@
 extern "C" {
 #include "cuda_daynite.h"
 #include "logger.h"
+#include "timing.h"
 #include "palette.h"
 }
 
@@ -106,7 +107,7 @@ extern "C" bool create_nocturnal_pseudocolor_dev(const DataFDev *temp,
   CUDA_CHECK(cudaEventRecord(t1));
   CUDA_CHECK(cudaEventSynchronize(t1));
   CUDA_CHECK(cudaEventElapsedTime(&ms, t0, t1));
-  LOG_TIMING(ms / 1000.0, "Nocturnal pseudocolor (CUDA, device-resident)");
+  LOG_TIMING_STAGE(TM_COMPOSE, ms / 1000.0, "Nocturnal pseudocolor (CUDA, device-resident)");
   ok = true;
 
 cleanup:
@@ -233,7 +234,7 @@ extern "C" bool create_daynight_mask_dev(const DataFDev *temp, const DataFDev *n
   CUDA_CHECK(cudaEventRecord(t1));
   CUDA_CHECK(cudaEventSynchronize(t1));
   CUDA_CHECK(cudaEventElapsedTime(&ms, t0, t1));
-  LOG_TIMING(ms / 1000.0, "Day/night mask (CUDA, device-resident)");
+  LOG_TIMING_STAGE(TM_COMPOSE, ms / 1000.0, "Day/night mask (CUDA, device-resident)");
   // Misma fórmula que la CPU, incluido el caso degenerado sin píxeles nocturnos.
   *dnratio = (counts[1] == 0) ? 100.0f : (float)(100.0 * (double)counts[0] / (double)n);
   ok = true;
@@ -288,7 +289,7 @@ extern "C" bool blend_images_dev(const unsigned char *d_bg, const unsigned char 
   CUDA_CHECK(cudaEventRecord(t1));
   CUDA_CHECK(cudaEventSynchronize(t1));
   CUDA_CHECK(cudaEventElapsedTime(&ms, t0, t1));
-  LOG_TIMING(ms / 1000.0, "Image blend (CUDA, device-resident)");
+  LOG_TIMING_STAGE(TM_COMPOSE, ms / 1000.0, "Image blend (CUDA, device-resident)");
   ok = true;
 
 cleanup:

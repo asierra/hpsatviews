@@ -15,6 +15,7 @@
 
 #include "datanc.h"
 #include "logger.h"
+#include "timing.h"
 
 float NonData = 1.0e+32;
 
@@ -204,7 +205,7 @@ DataF downsample_boxfilter(DataF datanc_big, int factor) {
         }
     }
     double end = omp_get_wtime();
-    LOG_TIMING(end - start, "Downsampling boxfilter (factor=%d)", factor);
+    LOG_TIMING_STAGE(TM_ENHANCE, end - start, "Downsampling boxfilter (factor=%d)", factor);
     return datanc;
 }
 
@@ -478,7 +479,7 @@ void dataf_apply_gamma(DataF *data, float gamma, float min_val, float max_val) {
         data->data_in[i] = powf(norm, inv_gamma);
     }
 
-    LOG_TIMING(omp_get_wtime() - start, "Gamma");
+    LOG_TIMING_STAGE(TM_ENHANCE, omp_get_wtime() - start, "Gamma");
 
     // Range is now [0, 1] after gamma normalization.
     data->fmin = 0.0f;

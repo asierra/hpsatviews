@@ -50,6 +50,12 @@ void metadata_set_clip(MetadataContext *ctx, bool clipped);
 /// Records the final image bounding box (lon_min, lat_max, lon_max, lat_min).
 void metadata_set_geometry(MetadataContext *ctx, float x1, float y1, float x2, float y2);
 
+/// Canonical satellite name ("G16") for an identifier; "unknown" if out of range.
+const char* metadata_sat_name(SatelliteID id);
+
+/// Canonical sector name ("fd", "conus", "m1", "m2"); empty string if unknown.
+const char* metadata_sector_name(SectorID id);
+
 /// Populates metadata from a loaded DataNC.
 void metadata_from_nc(MetadataContext *ctx, const DataNC *nc);
 
