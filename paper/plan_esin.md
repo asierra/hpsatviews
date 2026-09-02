@@ -271,3 +271,60 @@ No bloquean, pero un revisor de informática las va a pedir:
 - **`plan_jtech.md` en bucéfalo**: revisar si tiene pendientes que este plan no
   recoja.
 - **Cobertura del APC por el acuerdo UNAM**, si se opta por acceso abierto.
+
+---
+
+## 11. Estado — retomar aquí
+
+Última sesión: **2026-09-02**, en lanot7. Todo empujado a `origin/main` en el
+commit `d71c032`.
+
+### Hecho
+
+Paso 1 del orden de trabajo, completo:
+
+- `git mv hpsatviews_jtech.tex hpsatviews_esin.tex` — la historia sigue al
+  archivo, y la versión de JTECH se recupera del repo si hace falta.
+- Suelta la clase de AMS. Compila con `article`, **sin una sola macro propia de
+  clase en el cuerpo**, para que el paso a `sn-jnl` sea nada más el preámbulo.
+- Reorganizado en la estructura que ESIN prescribe para methodology article:
+  `Methods` con `Algorithm` / `Implementation` / `Testing`. Tres niveles de
+  encabezado, que es el tope de la revista.
+- Andamiaje con TODOs: bloque completo de *Statements and Declarations* (Funding
+  ya redactado, el resto pendiente), *List of abbreviations*, línea de keywords,
+  y las tres alternativas de título comentadas sobre el título actual.
+- El *significance statement* de AMS quedó comentado, no borrado: sirve casi tal
+  cual para la carta de presentación.
+- `.gitignore` al día: fuera AMS, dentro `sn-jnl` y los artefactos de LaTeX.
+
+Verificado: `pdflatex` + `bibtex` compilan limpio, 15 páginas, sin referencias ni
+citas indefinidas. Toda la prosa referencia secciones por `\ref`, ninguna por
+número escrito a mano, así que la reorganización no rompió ninguna referencia
+cruzada.
+
+### Lo primero al llegar a bucéfalo
+
+**Rescatar `lanot/tmp/plan_jtech.md`**, que vive en esa máquina y no en el repo.
+Revisar si tiene pendientes que este plan no recoja e incorporarlos aquí. Fue
+justo por estar fuera del repo que se perdió de vista; no repetir el patrón.
+
+Si quieres el build de envío en bucéfalo: `sudo apt install texlive-publishers`,
+y cambiar la línea de `\documentclass` según la cabecera del `.tex`.
+
+### Siguiente paso
+
+Paso 2, **Methods/Algorithm** — la sección vacía, el único hueco de escritura
+real. En paralelo conviene arrancar el paso 3, la bibliografía, que es lo más
+largo.
+
+### Nota sobre el trabajo que venía de bucéfalo
+
+Los commits `a3cf22b`, `76e146a` y `3d68276` añadieron `--timing-csv`, que
+acumula tiempos en 11 etapas y los escribe en CSV para comparar el build de
+OpenMP contra el de CUDA columna por columna. Es la instrumentación que alimenta
+la tabla de tiempo por etapa de Resultados, y abarata la curva de escalamiento
+fuerte de OpenMP que la §7 deja como medición preventiva opcional.
+
+`CLAUDE.md` trae ahora una advertencia asociada: una etapa cronometrada en un
+build y no en el otro sesga esa columna en silencio, y ya ocurrió una vez. Si se
+añaden etapas para el paper, etiquetar los sitios de CPU y GPU juntos.
