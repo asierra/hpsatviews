@@ -22,6 +22,17 @@ Datos de revista verificados el 2026-09-02 contra las páginas oficiales de
   hoy el paper de ESIN comprimido y hay que recortarla.
 - **ESIN sale primero.** SoftwareX cita a ESIN para las cifras, así que ESIN
   necesita existir al menos como preprint con DOI antes de enviar SoftwareX.
+- **JOSS queda como plan B del paper de software, no como paper adicional.**
+  Publicar en ESIN cura el motivo del rechazo: JOSS trata ese rechazo de
+  escritorio como «not yet, rather than never» y admite reenvío a los seis meses
+  o más, y su política permite expresamente la co-publicación junto a un trabajo
+  que describa «details of algorithm development, and/or methods assessment»,
+  que es justo lo que es el paper de ESIN. Pero JOSS y SoftwareX son el mismo
+  tipo de artículo —la descripción del software—, así que enviar ambos sería
+  publicación duplicada: hay que elegir uno. Se mantiene SoftwareX porque ya
+  está escrito y sin TODOs, mientras JOSS exigiría recortar a 250–1000 palabras
+  y esperar. Si SoftwareX rechaza por la misma política que JOSS, entonces sí:
+  para ese momento ESIN ya existe y el motivo original está curado.
 
 ## 1. La advertencia de alcance — leer antes que nada
 
