@@ -1,41 +1,67 @@
-%% hpsatviews - Journal of Atmospheric and Oceanic Technology (AMS)
-%% Compilar: pdflatex -> bibtex -> pdflatex x2
-%%
-%% REQUIERE ametsocV6.1.cls y ametsocV6.bst, que NO están versionados: son de
-%% AMS y no se redistribuyen desde este repo. Se bajan del "AMS LaTeX Package
-%% V6.1" en el sitio de autores de AMS y se dejan en este directorio. El .zip
-%% trae además amsdocsV6.1.pdf, el instructivo, y templateV6.1.tex, la plantilla
-%% de ejemplo de la que salió este archivo.
-%%
-%% ESTE NO ES EL MANUSCRITO DE SoftwareX REFORMATEADO.
-%% El encuadre cambia: SoftwareX pregunta "¿qué es este software?"; JTECH
-%% pregunta "¿qué aprendimos que le sirva a otro grupo?". El artículo es la
-%% caracterización de dónde se va el tiempo al generar productos GOES-R, y
-%% hpsatviews es el instrumento con el que se midió. Prueba para cada párrafo:
-%% ¿esto le sirve a alguien que NO vaya a usar hpsv? Si no, sobra.
-%%
-%% Plan completo y pendientes: lanot/tmp/plan_jtech.md
+% hpsatviews --- Earth Science Informatics (Springer)
+% Compilar: pdflatex -> bibtex -> pdflatex x2
+%
+% TIPO DE ARTICULO: methodology article, subtipo computational. Hay que
+% declararlo en la interfaz de envio, y es lo que fija la estructura de la
+% seccion de metodos en las subsecciones Algorithm / Implementation / Testing
+% que sigue este archivo.
+%
+% CLASE: se compila con `article` para poder trabajar en cualquier maquina.
+% Para el envio final Springer recomienda su propia plantilla, que se instala
+% con
+%     sudo apt install texlive-publishers
+% y entonces basta cambiar la linea de \documentclass por
+%     \documentclass[sn-mathphys-num]{sn-jnl}
+% mas el bloque de portada. El cuerpo no usa ninguna macro propia de la clase,
+% asi que el cambio no lo toca.
+%
+% ESTE NO ES EL MANUSCRITO DE SoftwareX REFORMATEADO, y tampoco el de JTECH.
+% ESIN exige que la contribucion principal sea a la informatica, y su alcance
+% excluye por nombre los articulos centrados en percepcion remota o
+% meteorologia como dominio de aplicacion. Prueba para cada parrafo: esto le
+% sirve a alguien que NO procese datos GOES? Si no, sobra.
+%
+% Plan completo y pendientes: paper/plan_esin.md
 
-\documentclass{ametsocV6.1}
+\documentclass[11pt]{article}
 
-%% Para revisar cómo queda en dos columnas (SOLO uso del autor, no para enviar):
-% \documentclass[twocol]{ametsocV6.1}
-
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
 \usepackage{booktabs}
+\usepackage{natbib}
 
+% TITULO. El actual viene de JTECH y lidera con lo operativo y con GOES, que
+% es justo lo que la advertencia de alcance de ESIN castiga. Alternativas que
+% ponen la informatica al frente, a decidir junto con el abstract:
+%  - Quadratic chunk-index cost in chunked scientific storage: characterization,
+%    removal, and a reproducible benchmarking protocol
+%  - Where the time goes in geostationary product pipelines: chunk-index cost,
+%    device-resident processing, and a measured protocol
+%  - Characterizing I/O and precision bottlenecks in chunked-HDF5 Earth
+%    observation pipelines
 \title{Where the time goes in operational GOES-R ABI product generation:
 parallel decoding, device-resident processing, and a measured comparison}
 
-%% TODO decidir coautores. La memoria registra que quedó pendiente para el
-%% resumen de la RAUGM y nunca se resolvió.
-\authors{Alejandro Aguilar Sierra\aff{a}\correspondingauthor{Alejandro Aguilar
-Sierra, asierra@unam.mx}}
+% TODO decidir coautores. Pendiente desde el resumen de la RAUGM. Bloquea
+% tambien el bloque Author contributions del cierre. Springer pide ORCID de
+% 16 digitos de cada autor y correo del autor de correspondencia.
+\author{Alejandro Aguilar Sierra\\
+\small Laboratorio Nacional de Observaci\'on de la Tierra (LANOT),\\
+\small Universidad Nacional Aut\'onoma de M\'exico, Mexico City, Mexico\\
+\small \texttt{asierra@unam.mx}}
 
-\affiliation{\aff{a}{Laboratorio Nacional de Observaci\'on de la Tierra (LANOT),
-Universidad Nacional Aut\'onoma de M\'exico, Mexico City, Mexico}}
+\date{}
 
-%% Máximo 250 palabras. Redactar AL FINAL, cuando los números estén cerrados.
-\abstract{Operational monitoring with geostationary imagery is bounded by a
+\begin{document}
+
+\maketitle
+
+% Entre 150 y 250 palabras; el actual tiene 245, asi que no hay margen para
+% crecer. Reescribir AL FINAL sobre la tesis informatica, no sobre el encuadre
+% operativo heredado de JTECH. La revista prohibe abreviaturas sin definir: hoy
+% usa ABI y GPU sin expandir.
+\begin{abstract}
+Operational monitoring with geostationary imagery is bounded by a
 deadline: the Advanced Baseline Imager delivers a new full disk every ten to
 fifteen minutes, and the interval between file arrival and image availability
 determines whether a product informs a decision. The algorithms defining
@@ -56,24 +82,27 @@ precision and run $15.4\times$ slower on one accelerator than another, while
 the single-precision stages differ by $1.9\times$, and at full resolution the
 working set exceeds the smaller card entirely. We also report three
 measurement failure modes, two of which would have overstated our results, and
-the protocol avoiding them.}
+the protocol avoiding them.
+\end{abstract}
 
-\begin{document}
+% TODO elegir de 4 a 6, apuntando a informatica y no a percepcion remota.
+% Candidatas: chunked storage, HDF5, scientific data I/O, GPU computing,
+% reproducible benchmarking, geostationary satellite data.
+\textbf{Keywords:} \textit{(pendiente)}
 
-\maketitle
+% El "significance statement" es un requisito de AMS que ESIN no pide. Se
+% conserva porque sirve casi tal cual para la carta de presentacion:
+%
+%% When a hurricane intensifies or a volcano erupts, the satellite image behind
+%% the warning is useful only if it arrives quickly. Producing one is routine;
+%% producing it fast is not, and the time it takes has rarely been examined. We
+%% measured where that time goes for a standard product and found most of it not
+%% in the calculations but in reading the compressed data, where one step slows
+%% disproportionately as resolution rises. Correcting that and rearranging the
+%% remaining work cuts the delay threefold without changing the imagery at all.
+%% Graphics accelerators help or not depending on the card, and we describe how to
+%% measure this reliably, since it is easy to get wrong.
 
-\statement
-When a hurricane intensifies or a volcano erupts, the satellite image behind
-the warning is useful only if it arrives quickly. Producing one is routine;
-producing it fast is not, and the time it takes has rarely been examined. We
-measured where that time goes for a standard product and found most of it not
-in the calculations but in reading the compressed data, where one step slows
-disproportionately as resolution rises. Correcting that and rearranging the
-remaining work cuts the delay threefold without changing the imagery at all.
-Graphics accelerators help or not depending on the card, and we describe how to
-measure this reliably, since it is easy to get wrong.
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Introduction}
 \label{sec:intro}
 
@@ -153,21 +182,24 @@ concerns the transformation from the first to the third, and makes no claim on
 the retrieval algorithms that precede it.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\section{Products and reference algorithms}
+\section{Methods}
+\label{sec:methods}
+
+\subsection{Algorithm: products and reference definitions}
 \label{sec:algorithms}
 
 %% TODO. Breve y con propósito: fijar la línea base de equivalencia, para que
-%% la sección 5 pueda afirmar que se compara el MISMO producto.
+%% la sección de Resultados pueda afirmar que se compara el MISMO producto.
 %%  - Verde sintético: G = 0.465 B + 0.465 R + 0.07 NIR (coeficientes CIMSS).
 %%  - Rayleigh por LUT derivada de pyspectral; relajación por nubes.
 %%  - Estiramiento por tramos y realce por razón, los de geo2grid.
 %% Insistir: los algoritmos son los publicados. Lo que cambia es el sustrato.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\section{Implementation}
+\subsection{Implementation}
 \label{sec:implementation}
 
-\subsection{Parallel decoding of the input}
+\subsubsection{Parallel decoding of the input}
 \label{sec:decoding}
 
 A GOES-R ABI full disk arrives as sixteen separately compressed NetCDF-4 files.
@@ -220,7 +252,7 @@ DEFLATE-compressed NetCDF-4 that reads whole variables and can afford to
 inflate them concurrently, which describes most operational satellite
 processing.
 
-\subsection{Device-resident processing}
+\subsubsection{Device-resident processing}
 \label{sec:device}
 
 The per-pixel stages of a true-color composite---viewing geometry, atmospheric
@@ -265,7 +297,7 @@ equivalence check of Section~\ref{sec:equivalence} possible, and it is what
 allows a deployment to decline the GPU without losing functionality when
 measurement says the GPU does not pay.
 
-\subsection{Output encoding}
+\subsubsection{Output encoding}
 \label{sec:output}
 
 Once decoding and computation are both parallel, the encoder becomes visible in
@@ -298,7 +330,7 @@ used, but a full-disk product written as PNG spends more time in the encoder
 than in everything else combined.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\section{Evaluation methodology}
+\subsection{Testing: evaluation protocol}
 \label{sec:methodology}
 
 Performance claims about processing software are unusually easy to get wrong in
@@ -361,7 +393,7 @@ against the reference implementation. The scripts implementing this protocol
 are distributed with the software, so the tables that follow can be regenerated
 on other hardware.
 
-\subsection{Experimental setup}
+\subsubsection{Experimental setup}
 \label{sec:setup}
 
 All timings were obtained on the laboratory's production ingest server: two
@@ -636,25 +668,53 @@ arithmetic on an accelerator, the remaining wall time is dominated by input and
 output rather than by computation, which is where we expect further work in
 this class of pipeline to be worthwhile.
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\acknowledgments
-Developed at the Laboratorio Nacional de Observaci\'on de la Tierra (LANOT),
-Universidad Nacional Aut\'onoma de M\'exico, with support from Laboratorio
-Nacional SECIHTI 2025--2027, grant LN-2025-C-102.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\datastatement
-%% Obligatorio en AMS. Aquí el proyecto está en muy buena posición: los datos
-%% de entrada son públicos y los scripts de medición se distribuyen con el
-%% código. TODO redactar nombrando:
-%%  - GOES-R ABI L1b del bucket público de NOAA en S3, sin credenciales.
-%%  - hpsatviews v1.1.0 archivado, DOI 10.5281/zenodo.21893553 (DOI de
-%%    concepto 10.5281/zenodo.20817973).
+\section*{List of abbreviations}
+%% TODO completar. Springer lo recomienda y es barato. Al menos: ABI, COG, DN,
+%% FP32, FP64, GOES-R, HDF5, LUT, SZA, VZA.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section*{Statements and Declarations}
+%% OBLIGATORIO: las solicitudes que no incluyan las declaraciones pertinentes
+%% se devuelven como incompletas. Van antes de la lista de referencias.
+%%
+%% OJO: Author contributions y Competing interests hay que capturarlas ADEMAS
+%% en la interfaz de envio, y solo lo capturado ahi sale en la version
+%% publicada. Ponerlas nada mas aqui no basta.
+
+\subsection*{Funding}
+This work was developed at the Laboratorio Nacional de Observaci\'on de la
+Tierra (LANOT), Universidad Nacional Aut\'onoma de M\'exico, with support from
+Laboratorio Nacional SECIHTI 2025--2027, grant LN-2025-C-102.
+
+\subsection*{Competing interests}
+%% TODO redactar.
+
+\subsection*{Data availability}
+%% TODO redactar: GOES-R ABI L1b del bucket publico de NOAA en S3, accesible
+%% sin credenciales.
+
+\subsection*{Code availability}
+%% TODO redactar:
+%%  - hpsatviews v1.1.0 archivado, DOI 10.5281/zenodo.21893553
+%%    (DOI de concepto 10.5281/zenodo.20817973)
 %%  - reproduction/bench_geo2grid.sh y reproduction/compare_g2g_product.sh
-%%    reproducen las tablas de la seccion 5.
+%%    reproducen las tablas de la seccion de resultados.
+
+\subsection*{Author contributions}
+%% TODO en formato CRediT. BLOQUEADO por la decision de coautores.
+
+\subsection*{Use of large language models}
+%% TODO decidir. La revista exige documentar el uso de un LLM y exime solo la
+%% "edicion de copia asistida" ---legibilidad, estilo, gramatica, tono---,
+%% excluyendo expresamente el trabajo editorial generativo y la creacion
+%% autonoma de contenido. Ver la seccion 5 de paper/plan_esin.md.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\bibliographystyle{ametsocV6}
+%% plainnat mientras se trabaja con `article`. Con sn-jnl se cambia al estilo
+%% que trae la plantilla.
+\bibliographystyle{plainnat}
 \bibliography{paper}
 
 \end{document}

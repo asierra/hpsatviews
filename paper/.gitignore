@@ -18,14 +18,22 @@
 !e_airmass.jpg
 !f_severestorm.jpg
 
-# La clase y el estilo bibliográfico de AMS son suyos, no nuestros: se bajan del
-# AMS LaTeX Package (V6.1) y no se redistribuyen desde aquí. Hacen falta para
-# compilar hpsatviews_jtech.tex; ver la cabecera de ese archivo.
-ametsocV6*.cls
-ametsocV6*.bst
+# La plantilla de Springer Nature es suya, no nuestra, y además la trae el
+# paquete texlive-publishers: no se versiona aquí. Hace falta solo para el
+# build de envío; el manuscrito compila con `article` sin ella. Ver la cabecera
+# de hpsatviews_esin.tex.
+sn-jnl.cls
+sn-*.bst
+
+# Artefactos de compilación de LaTeX. El .gitignore raíz ya cubre *.log y
+# *.out, pero no el resto.
+*.aux
+*.bbl
+*.blg
+*.synctex.gz
+*.toc
 
 # Lo que sigue fuera, a propósito:
 #   *.tif          intermedios de create_fig2.sh, ~220 MB entre todos
 #   lbl_*.jpg      paneles etiquetados, los regenera crea_panel.sh
-#   *.pdf          el manuscrito compilado es un artefacto de build, y también
-#                  amsdocsV6.1.pdf, el instructivo de AMS que se consulta local
+#   *.pdf          el manuscrito compilado es un artefacto de build
