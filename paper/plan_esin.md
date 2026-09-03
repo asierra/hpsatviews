@@ -1,7 +1,21 @@
 # Plan de escritura — Earth Science Informatics
 
 Sustituye al plan de JTECH, que quedó como `lanot/tmp/plan_jtech.md` en bucéfalo.
-Este vive en el repo a propósito: para que no vuelva a quedarse varado en un host.
+
+**Ubicación (desde el 2026-09-02):** este plan, `hpsatviews_esin.tex` y la copia
+de trabajo de `paper.bib` viven en `~/Dropbox/cca/lanot/vistas/paper/`, fuera del
+repo, para no meter ruido en él. Antes vivían en `hpsatviews/paper/` justo para
+que no se quedaran varados en un host; Dropbox cumple ese propósito igual en las
+máquinas de trabajo —**bucéfalo, pegaso y lanot7**— y deliberadamente no en los
+servidores de medición (tahan, tsom04, kawak), donde no hace falta.
+
+**El `paper.bib` de Dropbox es el que manda.** El del repo se queda porque
+`hpsatviews_softwarex.tex` y el `paper.md` de JOSS aún lo usan; cuando toque
+SoftwareX se porta lo que haga falta. No editar el del repo pensando en ESIN.
+
+En `referencias/` hay artículos de contexto. El del **HDCRS** (grupo de trabajo
+de HPC y percepción remota del Earth Science Informatics Technical Committee del
+GRSS) sirve para el bloque 3 de la bibliografía del §6.
 
 Manuscrito base: `hpsatviews_jtech.tex`. Se reencuadra, no se reescribe: el grueso
 del texto sirve tal cual.
@@ -61,9 +75,104 @@ la §2 de retoque a condición de supervivencia:
 La diferencia es de encuadre, no de contenido: las cuatro contribuciones ya son
 computacionales. Pero hay que escribirlas como tales desde el título.
 
-**Plan B:** si aun así hay rechazo por alcance, el destino siguiente es
-*Computers & Geosciences*, que no exige que la contribución sea a la informática
-*como campo* y tolera mejor «métodos computacionales aplicados a geociencias».
+**Plan B — corregido el 2026-09-02.** La versión previa de este plan decía que
+el destino siguiente era *Computers & Geosciences*, «que no exige que la
+contribución sea a la informática *como campo*». **Eso era falso, escrito sin
+verificar.** C&G tiene su propia lista de exclusión de nueve puntos, y dos caen
+encima de la tesis de este artículo:
+
+> 5. «Manuscripts aiming at solving a geoscientific *engineering problem rather
+>    than answering a scientific question*»
+> 6. «*Standard code of already well-established, or previously published
+>    methods*»
+
+El punto 6 es casi una cita literal de nuestra frase de encuadre —«los algoritmos
+son los publicados; lo que cambia es el sustrato»— y el 5 describe una
+caracterización de rendimiento. Su punto 1 exige además «a significant computer
+science innovation». O sea que **C&G exige las dos cosas a la vez** (innovación en
+cómputo *y* pregunta científica), mientras ESIN solo exige la primera: para este
+manuscrito C&G es **más** restrictivo, no menos. A favor solo juega su punto 9,
+rechazo de escritorio para código cerrado, que no nos toca.
+
+**Plan B real: *Applied Computing & Geosciences*** (Elsevier, OA, la revista
+hermana a la que el propio C&G remite). Su alcance nombra explícitamente *Remote
+Sensing*, *Near and Remote Sensing Data Analysis*, *Parallel Systems*, *Data
+Processing* y *Software Engineering* — justo lo que ESIN pone en su lista de
+exclusión. Verificado contra la *Guide for authors* oficial el 2026-09-02; los detalles
+están abajo.
+
+Orden de destinos, entonces: **ESIN → Applied Computing & Geosciences → C&G**,
+y C&G solo si se reescribe alrededor de una pregunta científica, no de una
+medición.
+
+### Requisitos de ACAG, verificados contra la guía oficial
+
+Leída del HTML descargado por el usuario el 2026-09-02, porque sciencedirect.com
+bloquea el acceso automatizado (HTTP 403), igual que el sitio de AMS. Las citas de
+**C&G** de más arriba siguen siendo de segunda mano —un espejo del alcance y una
+búsqueda que coinciden—; eso no se ha verificado contra la página oficial.
+
+**Corrección:** una versión previa de este plan le atribuyó a ACAG un tipo
+*Original Software Publication*. **No existe**; salió de la lista genérica de
+Elsevier, no de la revista. Los tipos reales son tres:
+
+| Tipo | Tope | Encaje |
+|---|---|---|
+| Original research article | **5 000 palabras** | **el nuestro** |
+| Application article | 5 000 | no: somos método, no caso de uso |
+| Scientific review article | 10 000 | no |
+
+Desaparece con eso el riesgo de traslape con SoftwareX que este plan temía: no
+hay género de «paper de software» que colisione.
+
+**El límite de 5 000 palabras es la restricción operativa.** El borrador iba en
+4 231 y este plan empuja en la dirección contraria: exposición de dominio (§4.1),
+introducción reencuadrada, bibliografía mayor. ESIN no publica tope; ACAG sí. Si
+ACAG sigue vivo como plan B, **contar palabras desde ahora**, no al final. (La
+guía no aclara si el tope incluye referencias y resumen.)
+
+**Requisito nuevo, y más duro que el de ESIN — datos, *Option C*:** obligatorio
+*depositar* los datos en un repositorio y *citarlos y enlazarlos* en el artículo,
+o explicar por qué no se puede. No basta la declaración de disponibilidad del §5.
+El código ya está en Zenodo, pero **los CSV de `--timing-csv` y los resultados de
+`reproduction/` que sostienen las tablas habría que depositarlos**. Tarea concreta
+que este plan no tenía. La guía trae ejemplo de *reference to software* con DOI de
+Zenodo, así que nuestro propio archivo se cita como referencia normal.
+
+**Tres cosas a favor:**
+
+- **Preprint gratuito en SSRN con DOI** al enviar, publicado en cuanto pasa el
+  filtro de escritorio y sin efecto sobre la decisión editorial. Resuelve tal cual
+  el requisito del §0: que este paper exista como preprint con DOI antes de mandar
+  SoftwareX.
+- **La declaración de LLM deja de ser decisión abierta y pasa a ser formulario.**
+  Elsevier da la frase textual, en sección propia titulada «Declaration of
+  generative AI and AI-assisted technologies in the manuscript preparation
+  process», antes de las referencias, y **exime explícitamente** gramática,
+  ortografía y gestión de referencias. Mucho más accionable que el «documéntese en
+  Methods» de ESIN; ver §5.
+- **Highlights** (3–5 viñetas, ≤85 caracteres) y **resumen gráfico**
+  (531×1328 px), ambos opcionales. La figura de presupuesto de tiempo del §7.5
+  sirve de resumen gráfico sin trabajo extra.
+
+**Compatibles sin cambios:** resumen ≤250 palabras (ESIN pide 150–250), 1–7
+palabras clave evitando las de varias palabras (ESIN pide 4–6), LaTeX aceptado con
+plantilla de Elsevier, CRediT obligatorio, secciones numeradas 1 / 1.1 / 1.1.1.
+
+**Lo que sí cambia:** estilo de referencias **numérico `[1]` por orden de
+aparición**, contra el autor-año de Springer. El trabajo de bibliografía del §6 es
+portable; el estilo no.
+
+**Costo: 2 230 USD de APC**, confirmado el 2026-09-02 contra la página de la
+revista (la *Guide for authors* no lo trae; remite a una página aparte). ACAG es
+OA **obligatorio**, así que aquí no existe la vía de suscripción gratuita que sí
+tiene ESIN por ser híbrida: **el plan B cuesta 2 230 USD salvo que lo cubra el
+acuerdo UNAM/CONRICYT o una exención**. Eso convierte la consulta a biblioteca
+del §8 en condición para el plan B, no en trámite opcional — y conviene
+preguntarlo de una vez por las dos revistas, no cuando haga falta.
+
+Confirmado también: el *Article Transfer Service* desde C&G hacia ACAG existe y
+está descrito en la guía.
 
 ## 2. El reencuadre
 
@@ -248,6 +357,35 @@ No bloquean, pero un revisor de informática las va a pedir:
 - **Más de una escena o producto.** Hoy todo es un disco completo de color
   verdadero. Si no se mide, dejarlo explícito en Limitaciones.
 
+## 7.5 Figuras — el manuscrito hoy no tiene ninguna
+
+Recogido de `plan_jtech.md`. El `.tex` tiene tres tablas y **cero
+`\includegraphics`**. Es un hueco de trabajo real, no un detalle de formato: dos
+de las candidatas sostienen justamente la tesis informática.
+
+**Lo que NO va, y ya estaba decidido:** `processing_workflow` describe lo que
+hace el software, no sostiene ningún argumento del artículo, y el texto más la
+tabla de etapas ya orientan al lector. El panel de productos (`radiometric.jpg`)
+es catálogo, no evidencia. Ambas son las figuras correctas para SoftwareX.
+
+Candidatas, por valor:
+
+- [ ] **Presupuesto de tiempo**: barras apiladas de decodificación / cómputo /
+      escritura, para CPU y GPU. Sostiene «el problema dejó de estar limitado por
+      cómputo», que hoy vive solo en prosa. Para ESIN es *la* figura: es el
+      argumento de que el cuello de botella es de acceso a almacenamiento.
+- [ ] **Desglose por etapa T4 vs A30**, agrupado por precisión. El resultado más
+      fuerte, y en tabla se lee peor de lo que se vería en barras: el contraste
+      entre el grupo `double` y el grupo `float` es visual.
+- [ ] **Barrido de workers**, si sobra espacio. Hoy funciona bien como tabla;
+      solo vale la pena si se quiere subrayar la meseta. En ESIN, además, es
+      material del planificador de dask, así que se apoya en la cita nueva.
+- [ ] **Escena de caso**, no catálogo: una sola escena operativa real (Otis o el
+      Popocatépetl) para la motivación de la Introducción. Prescindible aquí,
+      donde lo operativo dejó de ser la tesis.
+
+Figuras a color sin costo (§8), así que nada empuja a recortarlas.
+
 ## 8. Formato y envío
 
 - **LaTeX sí se acepta** para manuscritos con contenido matemático; recomiendan
@@ -259,7 +397,11 @@ No bloquean, pero un revisor de informática las va a pedir:
 - **Costo:** la revista es híbrida, así que la vía de suscripción no cuesta. Y la
   página detecta afiliación UNAM y anuncia que **hay fondos disponibles para
   publicación en acceso abierto** (acuerdo vía CONRICYT). Confirmar cobertura
-  concreta para ESIN con la biblioteca antes de elegir Open Choice.
+  concreta con la biblioteca antes de elegir Open Choice — y preguntar **por las
+  dos revistas de una sola vez**: en ESIN el acceso abierto es opcional, pero en
+  el plan B (ACAG, Elsevier) es obligatorio y son 2 230 USD, así que ahí la
+  respuesta decide si el plan B es viable. Convenios distintos: Springer vs
+  Elsevier.
 
 ## 9. Orden de trabajo propuesto
 
@@ -269,8 +411,14 @@ No bloquean, pero un revisor de informática las va a pedir:
 3. **Bibliografía** — en paralelo desde el inicio, es lo más largo.
 4. **Reencuadre de Introducción** y ajuste de Conclusiones.
 5. **Declarations**, keywords y lista de abreviaturas — mecánicos.
-6. **Abstract y título** — al final.
-7. **Recorte de §4.2 de SoftwareX** — cuando ESIN tenga DOI de preprint.
+6. **Figuras** (§7.5) — hay que producirlas; las dos primeras son argumento,
+   no adorno.
+7. **Abstract y título** — al final.
+8. **Relectura sección por sección con la prueba de encuadre en la mano:** *¿la
+   contribución principal de este párrafo es a la informática, o suena a
+   percepción remota?* Es el equivalente para ESIN de la prueba que traía el
+   plan de JTECH, y la defensa última contra el rechazo de la §1.
+9. **Recorte de §4.2 de SoftwareX** — cuando ESIN tenga DOI de preprint.
 
 ## 10. Bloqueos y pendientes
 
@@ -279,9 +427,19 @@ No bloquean, pero un revisor de informática las va a pedir:
 - **Declaración de uso de LLM** — decisión de los autores, ver §5.
 - **ORCID** de los autores para la portada.
 - **Respuesta de la RAUGM** todavía sin llegar. No bloquea nada de este plan.
-- **`plan_jtech.md` en bucéfalo**: revisar si tiene pendientes que este plan no
-  recoja.
+- **Sesgo de −2.4 DN en el rojo, sin verificar** (`hpsatviews_esin.tex`,
+  l. 503–509 y §`sec:redbias`). La hipótesis del texto —que viene de la
+  corrección atmosférica, única etapa que actúa solo sobre ese canal— está
+  razonada pero no comprobada. Si se investiga y resulta ser otra cosa, hay que
+  cambiar el párrafo. No bloquea el envío; sí es lo primero que un revisor va a
+  picar.
+- ~~**`plan_jtech.md` en bucéfalo**: revisar si tiene pendientes que este plan no
+  recoja.~~ Hecho el 2026-09-02; lo rescatado está en la §7.5, en el pendiente
+  del rojo de arriba, y en la nota de FP64 de la §11.
 - **Cobertura del APC por el acuerdo UNAM**, si se opta por acceso abierto.
+- **Solo si se activa el plan B (ACAG):** depositar y citar los CSV de tiempos y
+  los resultados de `reproduction/` (su política de datos es *Option C*,
+  obligatoria), y vigilar el tope de 5 000 palabras. Ver §1.
 
 ---
 
@@ -313,20 +471,58 @@ citas indefinidas. Toda la prosa referencia secciones por `\ref`, ninguna por
 número escrito a mano, así que la reorganización no rompió ninguna referencia
 cruzada.
 
-### Lo primero al llegar a bucéfalo
+### Rescate de `plan_jtech.md` — HECHO
 
-**Rescatar `lanot/tmp/plan_jtech.md`**, que vive en esa máquina y no en el repo.
-Revisar si tiene pendientes que este plan no recoja e incorporarlos aquí. Fue
-justo por estar fuera del repo que se perdió de vista; no repetir el patrón.
+Revisado en bucéfalo el 2026-09-02. Casi todo estaba superado (destino y
+encuadre, `\datastatement`, coautores, cargos por página de AMS, medición de la
+T4 ya hecha). Lo que **no** recogía este plan, ya incorporado arriba:
+
+1. Las figuras, que aquí no se mencionaban en absoluto — §7.5.
+2. El sesgo del rojo sin verificar — §10.
+3. La corrección de FP64 — nota al final de esta sección.
+4. La relectura con la prueba de encuadre — paso 8 de la §9.
+
+El archivo original queda en `lanot/tmp/` en bucéfalo, ya sin contenido único.
 
 Si quieres el build de envío en bucéfalo: `sudo apt install texlive-publishers`,
 y cambiar la línea de `\documentclass` según la cabecera del `.tex`.
 
+### Sesión del 2026-09-02 en bucéfalo — paso 2 HECHO
+
+**Methods/Algorithm escrita e integrada** (798 palabras, seis apartados):
+instrumento y malla fija; el producto y la síntesis del verde; preparación
+radiométrica y Rayleigh con relajación por nubes; realce por razón; curva de
+contraste; reproyección. Cierra con la tesis del sustrato y remite a
+`sec:equivalence`.
+
+Dos detalles se sacaron **del código, no del plan**, y quedaron con cifras
+exactas: la curva de contraste son cinco puntos de control, en cuentas de 8 bits
+$(0,0)$, $(25,90)$, $(55,140)$, $(100,175)$, $(255,255)$
+(`GEO2GRID_STRETCH_X/Y` en `src/truecolor.c`); y el realce por razón es el
+cociente de la banda roja contra su media de caja $2\times2$, acotado a
+$[0.5,1.5]$, que multiplica verde y azul (`dataf_ratio_sharpen_map` +
+`src/rgb.c:220`). Las mismas constantes alimentan CPU y GPU, lo que de paso
+refuerza el argumento de equivalencia.
+
+Verificado: `pdflatex` + `bibtex` compilan limpio, **17 páginas** (antes 15), sin
+citas ni referencias indefinidas.
+
+**Conteo de palabras: 5 374** (de Introducción a bibliografía, sin comentarios).
+ESIN no publica tope, así que el plan A no se ve afectado. Pero **ya excede las
+5 000 de ACAG** y el §4.2 todavía pide engordar la introducción: si el plan B se
+activa, el recorte no será cosmético. Medir con:
+
+```
+python3 -c "import re;s=open('hpsatviews_esin.tex').read();s=re.sub(r'(?m)^\s*%.*$','',s);b=s[s.index(r'\section{Introduction}'):];print(b[:b.index(r'\bibliography')])" > /tmp/body.tex && detex /tmp/body.tex | wc -w
+```
+
 ### Siguiente paso
 
-Paso 2, **Methods/Algorithm** — la sección vacía, el único hueco de escritura
-real. En paralelo conviene arrancar el paso 3, la bibliografía, que es lo más
-largo.
+Paso 3, **la bibliografía** — ahora es el hueco mayor y el más largo. La sección
+nueva ya consume las citas que había (`Bah2018`, `Miller2016`, `Bucholtz1995`,
+`Bodhaine1999`, `HansenTravis1974`, `Scheirer2018`, `PySpectralLUT2018`), así que
+de las 11 entradas quedan pocas sin usar y siguen faltando los cuatro bloques del
+§6 — con Schmit et al. para el ABI y satpy/dask como los más urgentes.
 
 ### Nota sobre el trabajo que venía de bucéfalo
 
@@ -339,3 +535,19 @@ fuerte de OpenMP que la §7 deja como medición preventiva opcional.
 `CLAUDE.md` trae ahora una advertencia asociada: una etapa cronometrada en un
 build y no en el otro sesga esa columna en silencio, y ya ocurrió una vez. Si se
 añaden etapas para el paper, etiquetar los sitios de CPU y GPU juntos.
+
+### Nota rescatada: el cociente de FP64 es 37.4×, no 16×
+
+Viene de `plan_jtech.md` y vale la pena no perderla, porque corrige un error que
+casi entra al artículo. El razonamiento «la T4 es 1:32 en FP64 y la A30 es 1:2,
+luego el cociente es 16×» es **falso**: ignora que las dos tarjetas también
+difieren en FP32. Medido con `reproduction/gpu_precision_ratio.cu` (FMA sostenida
+en ambas precisiones): T4 3834/101 GFLOP/s (38.0×), A30 7546/3774 (2.0×); de ahí
+A30/T4 = FP32 1.97×, FP64 **37.4×**, ancho de banda 2.92×.
+
+La lectura correcta, ya en el texto: las etapas `float` siguen el FP32 casi
+exacto (1.9 observado contra 1.97 teórico) y no el ancho de banda; las `double`
+quedan muy por debajo del 37.4×, o sea que están penalizadas por FP64 pero no
+gobernadas solo por ella — también escriben rejillas grandes y evalúan
+trascendentes. El 15.4× observado cae entre 2.92× y 37.4×, que es donde debe caer
+algo mixto. Si se reescribe ese párrafo al reencuadrar, no volver al 16×.

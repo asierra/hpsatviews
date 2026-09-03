@@ -188,12 +188,92 @@ the retrieval algorithms that precede it.
 \subsection{Algorithm: products and reference definitions}
 \label{sec:algorithms}
 
-%% TODO. Breve y con propósito: fijar la línea base de equivalencia, para que
-%% la sección de Resultados pueda afirmar que se compara el MISMO producto.
-%%  - Verde sintético: G = 0.465 B + 0.465 R + 0.07 NIR (coeficientes CIMSS).
-%%  - Rayleigh por LUT derivada de pyspectral; relajación por nubes.
-%%  - Estiramiento por tramos y realce por razón, los de geo2grid.
-%% Insistir: los algoritmos son los publicados. Lo que cambia es el sustrato.
+The comparison reported in Section~\ref{sec:results} is meaningful only if both
+engines compute the same thing. This section states what that thing is. Nothing
+in it is new: every transformation described here is published, and implemented
+in the reference tool as well as in ours. We restate them for two reasons. They
+fix the baseline against which output equivalence is verified in
+Section~\ref{sec:equivalence}, and the audience for a computational result does
+not necessarily share the domain background that the operations presuppose.
+
+\paragraph{The instrument and its grid.}
+ABI observes in sixteen spectral bands, two of them visible, four in the near
+infrared and ten thermal, at nadir sample spacings of $0.5$, $1$ and $2$~km
+depending on the band. Samples are laid out on a fixed grid tied to the
+satellite's nominal subpoint: the horizontal coordinates are scan angles in the
+geostationary projection, not geographic ones, and each band is stored as a
+separate file. Two properties of this layout drive everything that follows.
+Bands differ in resolution by factors of two, so any operation combining them
+begins by resampling to a common grid; and because the grid is a projection of
+the viewing geometry rather than of the Earth, producing a map-projected image
+requires an inverse mapping evaluated per output pixel.
+
+\paragraph{The product.}
+We use the true-color composite as the workload throughout. It is the most
+demanding standard product---it needs the three finest-resolution bands, the
+full atmospheric correction and the sharpening step---and the most widely
+reproduced, which makes it the fairest basis for comparison. Its defining
+difficulty is that ABI has no green band. It carries blue at $0.47\,\mu$m
+(band~1, $1$~km), red at $0.64\,\mu$m (band~2, $0.5$~km) and near infrared at
+$0.86\,\mu$m (band~3, $1$~km), so the green plane must be synthesized. We use
+the CIMSS linear combination \citep{Bah2018,Miller2016},
+\[
+G = 0.465\,B + 0.465\,R + 0.07\,\mathrm{NIR},
+\]
+which is the combination the reference tool applies, with the same
+coefficients.
+
+\paragraph{Radiometric preparation and atmospheric correction.}
+Level~1b files store calibrated radiances, which are converted to reflectance
+factors using the per-band calibration constants carried in the file. Molecular
+scattering then has to be removed. It brightens the shorter wavelengths in
+proportion to the optical path, so an uncorrected composite acquires a blue
+cast that grows toward the limb and toward low sun elevations. Our default is
+the lookup-table formulation derived from \texttt{pyspectral}
+\citep{Scheirer2018,PySpectralLUT2018}, whose tables are indexed by the secants
+of the solar and satellite zenith angles and by the relative azimuth; an
+analytic alternative combining the Bucholtz optical depths
+\citep{Bucholtz1995,Bodhaine1999} with the Hansen and Travis phase function
+\citep{HansenTravis1974} is also available. Both are applied to the blue and
+red bands, and both are relaxed over bright scenes: the correction is faded
+linearly to zero as the red reflectance rises from $0.20$ to $1.0$, because the
+model assumes a molecular path above a dark surface and otherwise
+over-corrects cloud tops.
+
+\paragraph{Sharpening.}
+Only the red band is sampled at $0.5$~km. Rather than degrade it to the $1$~km
+grid of the others, the coarser bands are upsampled and then modulated by the
+detail the red band carries: a ratio map is formed between the red band and its
+own $2 \times 2$ box mean, clamped to $[0.5, 1.5]$, and the green and blue
+planes are multiplied by it. This transfers sub-kilometer structure to the
+bands that lack it while leaving their means at the $1$~km scale unchanged, and
+is the reason the product is delivered at $0.5$~km rather than $1$~km.
+
+\paragraph{Contrast transformation.}
+Reflectance is close to linear in radiance and yields a dark, low-contrast
+image if mapped directly to display counts. The composite therefore passes
+through a piecewise-linear transfer curve applied identically to the three
+planes. We use the curve of the reference tool, defined by five control points
+which, expressed in $8$-bit counts, are $(0,0)$, $(25,90)$, $(55,140)$,
+$(100,175)$ and $(255,255)$, with linear interpolation between them. The same
+five constants drive the CPU and GPU implementations, so that the two cannot
+diverge silently.
+
+\paragraph{Reprojection.}
+Finally, delivery frequently requires a geographic rather than a fixed grid.
+The output equirectangular lattice is traversed and each cell mapped back
+through the geostationary projection to a source location, which is then
+interpolated. Cells whose inverse mapping falls outside the visible disk carry
+no data and are filled explicitly. This stage is the one place where numerical
+precision is not a free choice, a point taken up in
+Section~\ref{sec:device}.
+
+The chain is thus fixed by the literature, and this paper makes no claim on any
+part of it. What the following sections change is the substrate on which it
+executes: how the inputs are decoded, where the per-pixel arithmetic runs, and
+how the result is encoded. Keeping the algorithms fixed is what makes the
+measurement a comparison of substrates rather than of products---and it is
+checked rather than assumed, in Section~\ref{sec:equivalence}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsection{Implementation}
