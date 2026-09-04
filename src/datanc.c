@@ -81,7 +81,15 @@ DataF dataf_copy(const DataF *data) {
     copy.fmin = data->fmin;
     copy.fmax = data->fmax;
 
+    /* El memcpy sí se cronometra: dataf_create() solo mide el malloc, que es
+     * perezoso, mientras que copiar (y con ello tocar por primera vez) el grid
+     * es trabajo real. En un disco completo son dos copias de 470 MB seguidas,
+     * 0.197 s que hasta ahora no aparecían en ninguna etapa — el 8% de una
+     * corrida de CPU, y la mayor parte de su tiempo no contabilizado. La ruta
+     * CUDA no las hace, así que la asimetría sesgaba la comparación. */
+    double t_mem = omp_get_wtime();
     memcpy(copy.data_in, data->data_in, data->size * sizeof(float));
+    timing_add(TM_MEM, omp_get_wtime() - t_mem);
 
     return copy;
 }
