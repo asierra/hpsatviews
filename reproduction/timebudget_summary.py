@@ -52,19 +52,27 @@ def main(argv):
     # ones: t_start_utc and t_end_utc are timestamps, not stages.
     stages = [c[2:] for c in rows[0] if c.startswith("n_")]
 
+    # Group by commit as well as by build: a CSV accumulates across runs, so
+    # re-measuring after a code change lands the new rows next to the old ones.
+    # Warning about that but pooling them anyway is worse than useless — it hands
+    # back a median of both revisions that looks like a result. This already hid
+    # one: three runs of a change appended to three of its parent, and the pooled
+    # median moved by 2 ms, which reads as "no effect" whether or not there was one.
     groups = defaultdict(list)
     for r in rows:
-        groups[(r.get("build", "?"), r.get("path", "?"))].append(r)
+        groups[(r.get("build", "?"), r.get("path", "?"),
+                r.get("git_commit", "") or "?")].append(r)
 
     commits = {r.get("git_commit", "") for r in rows}
     if len(commits) > 1:
-        print(f"WARNING: rows span {len(commits)} commits {sorted(commits)}.",
-              file=sys.stderr)
-        print("         Builds from different revisions are not comparable.",
+        print(f"NOTE: rows span {len(commits)} commits {sorted(commits)}; "
+              "reported separately.", file=sys.stderr)
+        print("      Compare a CPU and a GPU group only within one revision.",
               file=sys.stderr)
 
     summary = {}
-    for (build, taken), rs in sorted(groups.items()):
+    multi = len({c for _, _, c in groups}) > 1
+    for (build, taken, commit), rs in sorted(groups.items()):
         def med(col):
             vals = [float(r[col]) for r in rs if r.get(col) not in (None, "")]
             return statistics.median(vals) if vals else 0.0
@@ -75,7 +83,8 @@ def main(argv):
                   for name, members in PHASES}
         accounted = sum(phases.values())
 
-        print(f"=== build={build} path={taken}  ({len(rs)} runs, median) ===")
+        print(f"=== build={build} path={taken} commit={commit}  "
+              f"({len(rs)} runs, median) ===")
         if build == "cuda" and taken == "cpu":
             print("  !! built with CUDA but ran the CPU path: silent fallback.")
             print("     These are not GPU numbers.")
@@ -91,8 +100,12 @@ def main(argv):
             f"{s}={per_stage[s]:.3f}" for s in stages if per_stage[s] > 0))
         print()
 
-        summary[f"{build}/{taken}"] = {
-            "runs": len(rs), "t_total": total,
+        # The JSON key stays "build/path" while a file holds one revision, so
+        # fig_timebudget.py keeps reading it unchanged; it only grows the commit
+        # when there is more than one to tell apart.
+        key = f"{build}/{taken}@{commit}" if multi else f"{build}/{taken}"
+        summary[key] = {
+            "runs": len(rs), "t_total": total, "commit": commit,
             "phases": phases, "stages": per_stage,
         }
 
