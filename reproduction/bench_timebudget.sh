@@ -21,6 +21,14 @@
 #   REPS        timed runs per build (default 3; the summary takes the median).
 #   OMP_NUM_THREADS  cap CPU threads to the production allocation.
 #   SKIP_CUDA=1 CPU build only (host without a GPU).
+#   EXTRA_ARGS  extra hpsv flags, so the budget can be measured on the SAME
+#               product a paper reports rather than on the bare composite. The
+#               manuscript's product (sec:setup) adds ratio sharpening and the
+#               piecewise stretch, which quadruples the pixel count:
+#                   EXTRA_ARGS="--sharpen --stretch"
+#               A budget measured without them does not add up to the wall time
+#               in the results table, and the mismatch is not obvious in the
+#               figure — it just looks like a different machine.
 #
 # Run from the repo root. Rebuilds in each mode; touches nothing in production.
 set -e
@@ -48,9 +56,11 @@ fi
 echo "== host: $(hostname -s) | CPU threads: $(nproc) (OMP_NUM_THREADS=${OMP_NUM_THREADS:-all}) =="
 echo "== GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo N/A) =="
 echo "== input: $ANCHOR =="
+echo "== product: truecolor --rayleigh ${EXTRA_ARGS:-(no extra flags)} =="
 echo "== CSV: $CSV (rows are appended; $REPS timed runs per build) =="
 
-ARGS=(rgb "$ANCHOR" --mode truecolor --rayleigh -o "$OUT")
+# shellcheck disable=SC2206  # word splitting of EXTRA_ARGS is the point
+ARGS=(rgb "$ANCHOR" --mode truecolor --rayleigh ${EXTRA_ARGS:-} -o "$OUT")
 
 measure() {           # measure <label> <extra hpsv args...>
   local label="$1"; shift
