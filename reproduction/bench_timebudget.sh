@@ -22,13 +22,21 @@
 #   OMP_NUM_THREADS  cap CPU threads to the production allocation.
 #   SKIP_CUDA=1 CPU build only (host without a GPU).
 #   EXTRA_ARGS  extra hpsv flags, so the budget can be measured on the SAME
-#               product a paper reports rather than on the bare composite. The
-#               manuscript's product (sec:setup) adds ratio sharpening and the
-#               piecewise stretch, which quadruples the pixel count:
-#                   EXTRA_ARGS="--sharpen --stretch"
-#               A budget measured without them does not add up to the wall time
-#               in the results table, and the mismatch is not obvious in the
-#               figure — it just looks like a different machine.
+#               product a paper reports rather than on the bare composite:
+#                   EXTRA_ARGS="--full-res --sharpen --stretch"
+#               --full-res is the one that sets the size, and it is easy to
+#               forget: without it the reference channel is the LOWEST-resolution
+#               one loaded (1 km, 10848x10848), while the manuscript's product is
+#               the sharpened composite at C02's native 0.5 km (21696x21696),
+#               four times the pixels. --sharpen and --stretch change the work
+#               but not the size, so a run missing only --full-res still looks
+#               plausible: check nx/ny in the CSV, not just the flags.
+#               A budget measured on the wrong product does not add up to the
+#               wall time in the results table, and the mismatch is invisible in
+#               the figure — it just looks like a different machine.
+#               At 0.5 km each float grid is 1.88 GB; the temporary GeoTIFF is
+#               written under TMPDIR, so point TMPDIR at real disk if /tmp is a
+#               small tmpfs.
 #
 # Run from the repo root. Rebuilds in each mode; touches nothing in production.
 set -e
