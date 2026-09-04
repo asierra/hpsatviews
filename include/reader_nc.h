@@ -27,10 +27,25 @@ int create_navigation_from_reprojected_bounds(DataF *navla, DataF *navlo, size_t
 DataF dataf_load_from_netcdf(const char *filename, const char *varname);
 
 /// Computes per-pixel Solar Zenith Angle (SZA) and Solar Azimuth Angle (SAA).
+/// Reopens the file just to read the scene time; prefer compute_solar_angles_at()
+/// when the caller already holds a loaded DataNC.
 int compute_solar_angles_nc(const char *filename, const DataF *navla, const DataF *navlo, DataF *sza, DataF *saa);
 
+/// Same, with the scene time already known (DataNC::timestamp): no file is opened.
+/// load_nc_sf() already read that timestamp with the file open, so the reopen is
+/// redundant I/O. Its cost is host-dependent and not settled: on one full-disk run
+/// the interval containing it measured 0.203 s, yet removing it on a CONUS scene
+/// stayed inside the run-to-run noise. Treat this as dropping redundant work, not
+/// as a measured speed-up.
+int compute_solar_angles_at(time_t scene_time, const DataF *navla, const DataF *navlo, DataF *sza, DataF *saa);
+
 /// Computes per-pixel View Zenith Angle (VZA) and View Azimuth Angle (VAA).
+/// Reopens the file for the projection parameters; prefer the _at() variant.
 int compute_satellite_angles_nc(const char *filename, const DataF *navla, const DataF *navlo, DataF *vza, DataF *vaa);
+
+/// Same, with the projection parameters already known (DataNC::proj_info):
+/// sub-satellite longitude in degrees east and perspective point height in metres.
+int compute_satellite_angles_at(float sat_lon, float sat_height_m, const DataF *navla, const DataF *navlo, DataF *vza, DataF *vaa);
 
 /// Computes the Relative Azimuth Angle (RAA) between sun and satellite.
 void compute_relative_azimuth(const DataF *saa, const DataF *vaa, DataF *raa);

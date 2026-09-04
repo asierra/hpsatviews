@@ -60,7 +60,7 @@ void rayleigh_free_navigation(RayleighNav *nav) {
     }
 }
 
-bool rayleigh_load_navigation_from_latlon(const char *filename,
+bool rayleigh_load_navigation_from_latlon(const char *filename, const DataNC *meta,
                                           const DataF *navla, const DataF *navlo,
                                           RayleighNav *nav,
                                           unsigned int target_width, unsigned int target_height) {
@@ -70,14 +70,27 @@ bool rayleigh_load_navigation_from_latlon(const char *filename,
 
     DataF la = *navla, lo = *navlo;  // shallow copy; data not freed here
 
+    /* Scene time and projection parameters are already in the loaded DataNC, so
+     * reopening the file to read them again is redundant I/O. On one full-disk
+     * run the interval containing that reopen measured 0.203 s; on a CONUS scene
+     * removing it stayed inside the noise, so the saving is host-dependent and
+     * unproven. Fall back to reading the file when the caller has no metadata. */
     DataF saa = {0};
-    if (compute_solar_angles_nc(filename, &la, &lo, &nav->sza, &saa) != 0) {
+    int rc = (meta && meta->timestamp > 0)
+                 ? compute_solar_angles_at(meta->timestamp, &la, &lo, &nav->sza, &saa)
+                 : compute_solar_angles_nc(filename, &la, &lo, &nav->sza, &saa);
+    if (rc != 0) {
         LOG_ERROR("Failed to compute solar angles.");
         return false;
     }
 
     DataF vaa = {0};
-    if (compute_satellite_angles_nc(filename, &la, &lo, &nav->vza, &vaa) != 0) {
+    rc = (meta && meta->proj_info.valid)
+             ? compute_satellite_angles_at((float)meta->proj_info.lon_origin,
+                                           (float)meta->proj_info.sat_height,
+                                           &la, &lo, &nav->vza, &vaa)
+             : compute_satellite_angles_nc(filename, &la, &lo, &nav->vza, &vaa);
+    if (rc != 0) {
         LOG_ERROR("Failed to compute satellite angles.");
         dataf_destroy(&saa); dataf_destroy(&nav->sza);
         return false;
@@ -106,7 +119,7 @@ bool rayleigh_load_navigation_from_latlon(const char *filename,
     return true;
 }
 
-bool rayleigh_load_navigation(const char *filename, RayleighNav *nav,
+bool rayleigh_load_navigation(const char *filename, const DataNC *meta, RayleighNav *nav,
 				unsigned int target_width, unsigned int target_height) {
     nav->sza.data_in = NULL;
     nav->vza.data_in = NULL;
@@ -120,7 +133,7 @@ bool rayleigh_load_navigation(const char *filename, RayleighNav *nav,
     }
 
     // Delegate to the helper using locally-owned lat/lon; free them before returning.
-    bool ok = rayleigh_load_navigation_from_latlon(filename, &navla, &navlo, nav,
+    bool ok = rayleigh_load_navigation_from_latlon(filename, meta, &navla, &navlo, nav,
                                                    target_width, target_height);
     dataf_destroy(&navla);
     dataf_destroy(&navlo);

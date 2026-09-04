@@ -172,10 +172,16 @@ static bool load_rayleigh_nav(RgbContext *ctx, RayleighNav *nav,
     }
 #endif
 
+    // Los metadatos de C01 ya están cargados (channels[] va indexado por banda,
+    // C01 = [1]), y con ellos la geometría no reabre el archivo para releer la
+    // hora de la escena ni los parámetros de proyección. Si por lo que sea no
+    // están, se pasa NULL y se lee del archivo como antes.
+    const DataNC *nav_meta = ctx->channels[1].timestamp > 0 ? &ctx->channels[1] : NULL;
+
     if (ctx->has_navigation && ctx->nav_lat.data_in && ctx->nav_lon.data_in)
-        return rayleigh_load_navigation_from_latlon(nav_file, &ctx->nav_lat,
+        return rayleigh_load_navigation_from_latlon(nav_file, nav_meta, &ctx->nav_lat,
                                                     &ctx->nav_lon, nav, w, h);
-    return rayleigh_load_navigation(nav_file, nav, w, h);
+    return rayleigh_load_navigation(nav_file, nav_meta, nav, w, h);
 }
 
 static bool compose_truecolor(RgbContext *ctx) {

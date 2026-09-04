@@ -22,11 +22,15 @@ typedef struct {
 void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lambda_um);
 
 /// Loads viewing geometry from an L1b NetCDF file and resamples to target dimensions.
-bool rayleigh_load_navigation(const char *filename, RayleighNav *nav, 
+/// @param meta Already-loaded metadata for @p filename, or NULL to read it from
+///        the file again. Passing it avoids two reopens per scene (see
+///        compute_solar_angles_at); a NULL or incomplete @p meta is not an error,
+///        the file is simply read as before.
+bool rayleigh_load_navigation(const char *filename, const DataNC *meta, RayleighNav *nav,
 				unsigned int target_width, unsigned int target_height);
 
 /// Loads viewing geometry reusing pre-computed lat/lon grids.
-bool rayleigh_load_navigation_from_latlon(const char *filename,
+bool rayleigh_load_navigation_from_latlon(const char *filename, const DataNC *meta,
                                           const DataF *navla, const DataF *navlo,
                                           RayleighNav *nav,
                                           unsigned int target_width,

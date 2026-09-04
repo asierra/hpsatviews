@@ -836,9 +836,16 @@ int compute_solar_angles_nc(const char *filename, const DataF *navla, const Data
 
     LOG_DEBUG("J2000 time read from NetCDF: %.1f seconds", tiempo);
 
-    // Convertir tiempo J2000 a fecha/hora
-    long tt = (long)(tiempo);
-    time_t dt = 946728000 + tt; // Epoch J2000
+    if ((retval = nc_close(ncid)))
+        ERR(retval);
+
+    /* Same conversion load_nc_sf() applies when it fills DataNC::timestamp. */
+    return compute_solar_angles_at((time_t)(946728000 + (long)tiempo), navla, navlo, sza, saa);
+}
+
+int compute_solar_angles_at(time_t scene_time, const DataF *navla, const DataF *navlo,
+                            DataF *sza, DataF *saa) {
+    time_t dt = scene_time;
     struct tm ts = *gmtime(&dt);
     int year = ts.tm_year + 1900;
     int month = ts.tm_mon + 1;
@@ -846,9 +853,6 @@ int compute_solar_angles_nc(const char *filename, const DataF *navla, const Data
     int hour = ts.tm_hour;
     int min = ts.tm_min;
     int sec = ts.tm_sec;
-
-    if ((retval = nc_close(ncid)))
-        ERR(retval);
 
     LOG_DEBUG("Date/time for solar calculation: %04d-%02d-%02d %02d:%02d:%02d UTC", year, month, day,
               hour, min, sec);
@@ -911,6 +915,11 @@ int compute_satellite_angles_nc(const char *filename, const DataF *navla, const 
     if ((retval = nc_close(ncid)))
         ERR(retval);
 
+    return compute_satellite_angles_at(sat_lon, sat_height_m, navla, navlo, vza, vaa);
+}
+
+int compute_satellite_angles_at(float sat_lon, float sat_height_m, const DataF *navla,
+                                const DataF *navlo, DataF *vza, DataF *vaa) {
     LOG_INFO("Computing satellite geometry (sub-point: %.1f°E, altitude: %.0f m)", sat_lon,
              sat_height_m);
 
