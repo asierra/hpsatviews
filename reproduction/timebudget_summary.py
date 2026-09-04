@@ -60,9 +60,13 @@ def main(argv):
     # median moved by 2 ms, which reads as "no effect" whether or not there was one.
     groups = defaultdict(list)
     for r in rows:
-        groups[(r.get("build", "?"), r.get("path", "?"),
+        groups[(r.get("host", "?"), r.get("build", "?"), r.get("path", "?"),
                 r.get("git_commit", "") or "?")].append(r)
 
+    hosts = {r.get("host", "") for r in rows}
+    if len(hosts) > 1:
+        print(f"NOTE: rows span {len(hosts)} hosts {sorted(hosts)}; "
+              "reported separately.", file=sys.stderr)
     commits = {r.get("git_commit", "") for r in rows}
     if len(commits) > 1:
         print(f"NOTE: rows span {len(commits)} commits {sorted(commits)}; "
@@ -71,8 +75,9 @@ def main(argv):
               file=sys.stderr)
 
     summary = {}
-    multi = len({c for _, _, c in groups}) > 1
-    for (build, taken, commit), rs in sorted(groups.items()):
+    multi = len({c for _, _, _, c in groups}) > 1
+    multi_host = len({h for h, _, _, _ in groups}) > 1
+    for (host, build, taken, commit), rs in sorted(groups.items()):
         def med(col):
             vals = [float(r[col]) for r in rs if r.get(col) not in (None, "")]
             return statistics.median(vals) if vals else 0.0
@@ -83,7 +88,7 @@ def main(argv):
                   for name, members in PHASES}
         accounted = sum(phases.values())
 
-        print(f"=== build={build} path={taken} commit={commit}  "
+        print(f"=== host={host} build={build} path={taken} commit={commit}  "
               f"({len(rs)} runs, median) ===")
         if build == "cuda" and taken == "cpu":
             print("  !! built with CUDA but ran the CPU path: silent fallback.")
@@ -103,7 +108,11 @@ def main(argv):
         # The JSON key stays "build/path" while a file holds one revision, so
         # fig_timebudget.py keeps reading it unchanged; it only grows the commit
         # when there is more than one to tell apart.
-        key = f"{build}/{taken}@{commit}" if multi else f"{build}/{taken}"
+        key = f"{build}/{taken}"
+        if multi_host:
+            key = f"{host}/{key}"      # dos aceleradores en un mismo registro
+        if multi:
+            key = f"{key}@{commit}"
         summary[key] = {
             "runs": len(rs), "t_total": total, "commit": commit,
             "phases": phases, "stages": per_stage,
