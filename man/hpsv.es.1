@@ -198,6 +198,21 @@ disponible en binarios compilados con
 .BR "make CUDA=1" .
 .\" @CUDA_END@
 
+.TP
+.BI "--timing-csv " archivo
+Agrega al
+.I archivo
+una fila por corrida: los tiempos por etapa, la firma de la escena, los bytes
+totales leídos entre todos los canales, el build
+.RB ( openmp / cuda )
+y si la corrida realmente tomó la ruta GPU, las versiones de las bibliotecas,
+la carga del sistema y el código de salida. El encabezado se escribe cuando el
+archivo está vacío, y cada fila se emite bajo candado exclusivo en una sola
+escritura, así que varios procesos
+.B hpsv
+concurrentes pueden compartir el mismo archivo sin entremezclarse. Pensado para
+medir un despliegue operativo durante periodos largos; apagado si no se da ruta.
+
 .SH OPCIONES ESPECÍFICAS POR COMANDO
 .SS gray
 .TP

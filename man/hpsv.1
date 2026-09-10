@@ -195,6 +195,21 @@ in binaries built with
 .BR "make CUDA=1" .
 .\" @CUDA_END@
 
+.TP
+.BI "--timing-csv " file
+Append one row per run to
+.IR file :
+the per-stage times, the scene signature, the total bytes read across every
+channel, the build
+.RB ( openmp / cuda )
+and whether the run actually took the GPU path, the library versions, the load
+average and the exit code. The header is written when the file is empty, and
+each row is emitted under an exclusive lock in a single write, so several
+concurrent
+.B hpsv
+processes can share one file without interleaving. Intended for measuring an
+operational deployment over long periods; off unless a path is given.
+
 .SH COMMAND-SPECIFIC OPTIONS
 .SS gray
 .TP
