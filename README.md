@@ -463,7 +463,6 @@ this flag wrote a sidecar of our own design; the Item replaces it.
     "proj:transform": [0.0721, 0, -151.654, 0, -0.0722, 56.640],
     "proj:shape": [583, 1369],
     "proj:bbox": [-151.654, 14.571, -52.947, 56.640],
-    "eo:bands": [{ "name": "C11", "center_wavelength": 8.4 }, ...],
     "hpsv:sector": "conus",
     "hpsv:product": "Volcanic Ash",
     "hpsv:command": "rgb",
@@ -501,6 +500,7 @@ this flag wrote a sidecar of our own design; the Item replaces it.
   product and the tool does not know the publication URL. The media type follows
   the flags: `image/png`, `image/tiff; application=geotiff`, and with `--cog`
   the same plus `; profile=cloud-optimized`.
+* **`eo:bands` goes on the asset, not in `properties`** — eo v1.1.0 requires it there — and only when the asset *is* that band. A `gray` or `pseudocolor` rendering of C13 declares it, with `common_name` and `center_wavelength`; an RGB composite does not declare `eo:bands` at all, and does not even list the eo extension, because three derived planes are not the four ABI channels they came from. The provenance of those cases lives in `hpsv:channels`, for the same reason the physical ranges do.
 * **`links` is always empty.** Building `self`, `root` and `parent` needs to know
   where the file will be published; the indexer completes the graph.
 * **Physical ranges live in `hpsv:channels`, not in `raster:bands`** of an asset.

@@ -545,9 +545,18 @@ int metadata_save_stac_item(MetadataContext *ctx, const char *filename,
     json_write(w, "type", "Feature");
     json_write(w, "stac_version", STAC_VERSION);
 
+    // eo:bands va en el ACTIVO: eo v1.1.0 lo exige ahí, y un Item que sólo lo
+    // lleve en properties no valida (medido contra el esquema oficial). Y
+    // sólo se declara cuando el activo ES esa banda: un compuesto RGB contiene
+    // tres planos derivados, no las cuatro bandas de las que salió, así que
+    // afirmarlo sería falso. La procedencia de esos casos vive en
+    // hpsv:channels, por la misma razón que las estadísticas físicas no
+    // cuelgan de raster:bands.
+    const bool emit_eo = (ctx->channel_count == 1 && band_number(ctx->channels[0].name) > 0);
+
     json_begin_array(w, "stac_extensions");
     json_array_item_string(w, STAC_EXT_PROJ);
-    json_array_item_string(w, STAC_EXT_EO);
+    if (emit_eo) json_array_item_string(w, STAC_EXT_EO);
     json_array_item_string(w, STAC_EXT_PROCESSING);
     json_end_array(w);
 
@@ -583,22 +592,6 @@ int metadata_save_stac_item(MetadataContext *ctx, const char *filename,
     // The box in the output's own CRS: metres on the fixed grid, degrees once
     // reprojected. The root bbox is always 4326, so this is not a duplicate.
     if (ctx->has_bbox) json_write_double_array(w, "proj:bbox", ctx->bbox, 4);
-
-    if (ctx->channel_count > 0) {
-        json_begin_array(w, "eo:bands");
-        for (int i = 0; i < ctx->channel_count; i++) {
-            ChannelInfo *ch = &ctx->channels[i];
-            if (!ch->valid) continue;
-            json_array_item_begin_object(w);
-            json_write(w, "name", ch->name);
-            int band = band_number(ch->name);
-            const char *common = stac_common_name(band);
-            if (common) json_write(w, "common_name", common);
-            if (band > 0) json_write(w, "center_wavelength", kBandCentre[band]);
-            json_end_object(w);
-        }
-        json_end_array(w);
-    }
 
     if (ctx->sector && ctx->sector[0]) json_write(w, "hpsv:sector", ctx->sector);
     if (ctx->product[0]) json_write(w, "hpsv:product", ctx->product);
@@ -665,6 +658,17 @@ int metadata_save_stac_item(MetadataContext *ctx, const char *filename,
             // Sin esto el activo de rejilla fija, que no tiene código EPSG,
             // hereda el CRS del Item y su origen en metros se lee como grados.
             if (a->wkt2) json_write_string(w, "proj:wkt2", a->wkt2);
+        }
+        if (emit_eo) {
+            const int band = band_number(ctx->channels[0].name);
+            const char *common = stac_common_name(band);
+            json_begin_array(w, "eo:bands");
+            json_array_item_begin_object(w);
+            json_write(w, "name", ctx->channels[0].name);
+            if (common) json_write(w, "common_name", common);
+            json_write(w, "center_wavelength", kBandCentre[band]);
+            json_end_object(w);
+            json_end_array(w);
         }
         json_end_object(w);
     }

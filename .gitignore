@@ -43,6 +43,7 @@ hpsatviews
 # Los esquemas versionados son la excepcion: describen lo que hpsv emite y la
 # suite valida contra ellos, asi que tienen que viajar con el codigo.
 !docs/stac/*.schema.json
+!docs/stac/schemas/**
 
 *.bin
 bin/

@@ -522,13 +522,45 @@ completa de `crea_rgb_meso.py`: costa de 1 px alineada y `"satellite": "G19"`.
 * Lo que mesoescala publica junto a la imagen sigue siendo el sidecar plano de
   `mapdrawer --o_crs`, no el Item.
 
-### Fase 5 — Validación externa y barrido retroactivo
+### Fase 5 — Validación externa y barrido retroactivo — **validación HECHA 2026-09-12; barrido pendiente**
 
-* `stac-validator` en la suite. Descarga esquemas de la red: o se permite en CI,
-  o se versionan copias locales. Decidirlo explícitamente.
-* Barrido de lo ya producido: reconstruir ítems desde los GeoTIFF con lo que las
-  etiquetas GDAL y el nombre permiten, documentando qué campos quedan ausentes
-  (`channels`, `enhancements`). Los PNG sin georreferencia quedan fuera.
+**Validación contra los esquemas oficiales, hecha.** `tests/test_json.sh` valida
+cada Item contra el esquema del núcleo y el de cada extensión que declara.
+
+*Decisión explícita sobre la red, que este plan pedía tomar:* **se versionan
+copias locales**, en `docs/stac/schemas/`, no se descargan en cada corrida. Dos
+razones: la suite deja de depender de que un servicio ajeno esté en pie, y las
+versiones quedan fijadas de forma visible en el árbol, que es justo lo que el
+riesgo de «deriva de versiones» pedía. `tools/fetch_stac_schemas.py` las trae
+—doce archivos, el cierre completo de referencias— y **lee las versiones de
+`src/metadata.c`** en vez de repetirlas, de modo que no pueden separarse del
+emisor. Mover una versión es editar los `#define`, correr el script y revisar el
+diff.
+
+**Y encontró lo que se buscaba.** El `Item` no validaba contra `eo` v1.1.0:
+`eo:bands` tiene que ir en el **activo**, y un Item que sólo lo lleve en
+`properties` no valida. Al corregirlo apareció algo de fondo: decir que el
+activo de un `ash` contiene C11, C13, C14 y C15 es **falso** —ese activo es un
+compuesto RGB de tres planos derivados—, la misma falsedad que ya se había
+evitado al no colgar `raster:bands` de un activo de 8 bits. Así que `eo:bands`
+se emite sólo cuando el activo **es** esa banda (`gray`, `pseudocolor`), y un
+compuesto no declara ni el campo ni la extensión; su procedencia vive en
+`hpsv:channels`. El núcleo 1.0.0 y `projection`/`processing` v1.1.0 validaron sin
+cambios.
+
+*Corrección a una afirmación mía intermedia:* llegué a escribir que eo v1.1.0
+«prohíbe» `eo:bands` en `properties`. No es exacto: lo que exige es que esté en
+el activo. Un Item que lo tenga en ambos sitios valida.
+
+**Barrido retroactivo, pendiente.** Reconstruir Items de lo ya producido desde
+los GeoTIFF. Lo que las etiquetas GDAL y el nombre permiten: satélite, sector,
+instante, producto, y la georreferencia completa (geotransformación y CRS), de
+donde sale la huella con el mismo código de `src/footprint.c`. Lo que **no** se
+puede recuperar: `hpsv:channels` —magnitud física, unidades, rango real— y
+`hpsv:enhancements`, porque nunca se escribieron dentro del GeoTIFF. Los PNG sin
+georreferencia quedan fuera por completo. Conviene que sea una herramienta
+aparte en `tools/`, no parte de `hpsv`: lee archivos que ya existen y no
+participa del camino de proceso.
 
 ## Mapeo campo por campo
 

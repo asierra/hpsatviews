@@ -467,7 +467,6 @@ diseño propio; el Item lo sustituye.
     "proj:transform": [0.0721, 0, -151.654, 0, -0.0722, 56.640],
     "proj:shape": [583, 1369],
     "proj:bbox": [-151.654, 14.571, -52.947, 56.640],
-    "eo:bands": [{ "name": "C11", "center_wavelength": 8.4 }, ...],
     "hpsv:sector": "conus",
     "hpsv:product": "Volcanic Ash",
     "hpsv:command": "rgb",
@@ -507,6 +506,7 @@ diseño propio; el Item lo sustituye.
   tipo de medio sigue a las banderas: `image/png`,
   `image/tiff; application=geotiff`, y con `--cog` ese mismo más
   `; profile=cloud-optimized`.
+* **`eo:bands` va en el activo, no en `properties`** —eo v1.1.0 lo exige ahí— y sólo cuando el activo **es** esa banda. Una vista `gray` o `pseudocolor` de C13 lo declara, con `common_name` y `center_wavelength`; un compuesto RGB no declara `eo:bands` en absoluto, ni siquiera lista la extensión eo, porque tres planos derivados no son los cuatro canales de ABI de los que salieron. La procedencia de esos casos vive en `hpsv:channels`, por la misma razón que los rangos físicos.
 * **`links` va siempre vacío.** Construir `self`, `root` y `parent` exige saber
   dónde se publicará el archivo; el indizador completa el grafo.
 * **Los rangos físicos viven en `hpsv:channels`, no en `raster:bands`** de un

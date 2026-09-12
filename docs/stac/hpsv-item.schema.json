@@ -87,22 +87,6 @@
           "minItems": 4,
           "maxItems": 4
         },
-        "eo:bands": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "object",
-            "required": ["name"],
-            "properties": {
-              "name": { "type": "string" },
-              "common_name": {
-                "type": "string",
-                "description": "Sólo en las bandas reflectivas, donde el nombre común de STAC es inequívoco; las térmicas de ABI van sin él."
-              },
-              "center_wavelength": { "type": "number", "exclusiveMinimum": 0 }
-            }
-          }
-        },
         "hpsv:sector": { "type": "string", "enum": ["fd", "conus", "m1", "m2"] },
         "hpsv:product": { "type": "string" },
         "hpsv:command": { "type": "string", "enum": ["rgb", "gray", "pseudocolor"] },
@@ -162,6 +146,20 @@
           "proj:wkt2": {
             "type": "string",
             "description": "Por activo, como proj:transform: el de rejilla fija no tiene código EPSG, así que sin su propio CRS heredaría el del Item —WGS 84 tras un -B— y su origen en metros se leería como grados."
+          },
+          "eo:bands": {
+            "type": "array",
+            "description": "Va en el ACTIVO: eo v1.1.0 lo exige ahí y un Item que sólo lo lleve en properties no valida. Y sólo aparece cuando el activo ES esa banda; un compuesto RGB contiene tres planos derivados, no las bandas de las que salió, y afirmarlo sería falso. La procedencia de esos casos vive en hpsv:channels.",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["name"],
+              "properties": {
+                "name": { "type": "string" },
+                "common_name": { "type": "string" },
+                "center_wavelength": { "type": "number", "exclusiveMinimum": 0 }
+              }
+            }
           }
         }
       }

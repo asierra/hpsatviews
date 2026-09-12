@@ -1,0 +1,203 @@
+{
+  "$id": "https://stac-extensions.github.io/eo/v1.1.0/schema.json#",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "bands": {
+      "items": {
+        "minProperties": 1,
+        "properties": {
+          "center_wavelength": {
+            "minimumExclusive": 0,
+            "title": "Center Wavelength",
+            "type": "number"
+          },
+          "common_name": {
+            "enum": [
+              "coastal",
+              "blue",
+              "green",
+              "red",
+              "rededge",
+              "yellow",
+              "pan",
+              "nir",
+              "nir08",
+              "nir09",
+              "cirrus",
+              "swir16",
+              "swir22",
+              "lwir",
+              "lwir11",
+              "lwir12"
+            ],
+            "title": "Common Name of the band",
+            "type": "string"
+          },
+          "description": {
+            "minLength": 1,
+            "title": "Description of the band",
+            "type": "string"
+          },
+          "full_width_half_max": {
+            "minimumExclusive": 0,
+            "title": "Full Width Half Max (FWHM)",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name of the band",
+            "type": "string"
+          },
+          "solar_illumination": {
+            "minimum": 0,
+            "title": "Solar Illumination",
+            "type": "number"
+          }
+        },
+        "title": "Band",
+        "type": "object"
+      },
+      "minItems": 1,
+      "title": "Bands",
+      "type": "array"
+    },
+    "fields": {
+      "additionalProperties": false,
+      "patternProperties": {
+        "^(?!eo:)": {}
+      },
+      "properties": {
+        "eo:bands": {
+          "$ref": "#/definitions/bands"
+        },
+        "eo:cloud_cover": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Cloud Cover",
+          "type": "number"
+        },
+        "eo:snow_cover": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Snow and Ice Cover",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "stac_extensions": {
+      "properties": {
+        "stac_extensions": {
+          "contains": {
+            "const": "https://stac-extensions.github.io/eo/v1.1.0/schema.json"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "stac_extensions"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "STAC EO Extension for STAC Items.",
+  "oneOf": [
+    {
+      "$comment": "This is the schema for STAC Items.",
+      "allOf": [
+        {
+          "$comment": "The if-then-else below checks whether the eo:bands is given in assets or not. If yes, allows eo:bands in properties (else), otherwise, disallows eo:bands in properties (then).",
+          "else": {
+            "properties": {
+              "properties": {
+                "properties": {
+                  "eo:bands": {
+                    "$ref": "#/definitions/bands"
+                  }
+                }
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "assets": {
+                "additionalProperties": {
+                  "properties": {
+                    "eo:bands": false
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "assets"
+            ]
+          },
+          "properties": {
+            "assets": {
+              "additionalProperties": {
+                "$ref": "#/definitions/fields"
+              },
+              "type": "object"
+            },
+            "properties": {
+              "$ref": "#/definitions/fields"
+            },
+            "type": {
+              "const": "Feature"
+            }
+          },
+          "required": [
+            "type",
+            "properties",
+            "assets"
+          ],
+          "then": {
+            "properties": {
+              "properties": {
+                "properties": {
+                  "eo:bands": false
+                }
+              }
+            }
+          },
+          "type": "object"
+        },
+        {
+          "$ref": "#/definitions/stac_extensions"
+        }
+      ]
+    },
+    {
+      "$comment": "This is the schema for STAC Collections.",
+      "allOf": [
+        {
+          "properties": {
+            "assets": {
+              "additionalProperties": {
+                "$ref": "#/definitions/fields"
+              },
+              "type": "object"
+            },
+            "item_assets": {
+              "additionalProperties": {
+                "$ref": "#/definitions/fields"
+              },
+              "type": "object"
+            },
+            "type": {
+              "const": "Collection"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/definitions/stac_extensions"
+        }
+      ]
+    }
+  ],
+  "title": "EO Extension"
+}

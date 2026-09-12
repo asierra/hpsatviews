@@ -48,6 +48,56 @@ VALPY
     echo "OK: $file valida contra el esquema del Item"
 }
 
+# Validación contra los esquemas OFICIALES de STAC, versionados en
+# docs/stac/schemas/ por tools/fetch_stac_schemas.py. Se versionan en vez de
+# descargarse para que la suite no dependa de que un servicio ajeno esté en pie
+# y para que las versiones queden fijadas de forma visible en el árbol.
+validate_stac() {
+    local file="$1"
+    if ! python3 - "$file" ../docs/stac/schemas <<'STACPY'
+import json, sys
+from pathlib import Path
+from jsonschema import Draft7Validator, exceptions
+from referencing import Registry, Resource
+from referencing.jsonschema import DRAFT7
+
+item = json.load(open(sys.argv[1]))
+root = Path(sys.argv[2])
+if not root.is_dir():
+    sys.exit("faltan los esquemas versionados: corre tools/fetch_stac_schemas.py")
+
+resources = {}
+for path in root.rglob("*.json"):
+    doc = json.loads(path.read_text())
+    rel = path.relative_to(root).as_posix()
+    res = Resource.from_contents(doc, default_specification=DRAFT7)
+    for scheme in ("https", "http"):
+        resources[f"{scheme}://{rel}"] = res
+registry = Registry().with_resources(resources.items())
+
+def schema_for(uri):
+    for key in (uri, uri.replace("https://", "http://")):
+        if key in resources:
+            return json.loads((root / key.split("://", 1)[1]).read_text())
+    sys.exit(f"no está versionado el esquema {uri}; corre tools/fetch_stac_schemas.py")
+
+urls = ["https://schemas.stacspec.org/v%s/item-spec/json-schema/item.json" % item["stac_version"]]
+urls += item["stac_extensions"]
+failed = False
+for url in urls:
+    errors = list(Draft7Validator(schema_for(url), registry=registry).iter_errors(item))
+    if errors:
+        failed = True
+        print("  %s: %s" % (url, exceptions.best_match(iter(errors)).message[:160]), file=sys.stderr)
+sys.exit(1 if failed else 0)
+STACPY
+    then
+        echo "FAIL: $file no valida contra los esquemas oficiales de STAC" >&2
+        exit 1
+    fi
+    echo "OK: $file valida contra los esquemas oficiales de STAC"
+}
+
 check_key() {
     local file="$1" key="$2" expected="$3"
     local line
@@ -176,6 +226,7 @@ check_key $GRAY_ITEM "hpsatviews" "$EXPECTED_VERSION"
 check_key $GRAY_ITEM "hpsv:command" "gray"
 check_item $GRAY_ITEM "gray PNG sin georreferencia"
 validate $GRAY_ITEM
+validate_stac $GRAY_ITEM
 
 # El id NO lleva los realces: dos renderizaciones de una escena son un item.
 ../bin/hpsv gray -v -s -4 -j --clahe -g 1.5 "$C01" -o gray_clahe_out.png
@@ -202,8 +253,19 @@ validate hpsv_G16_conus_2024220_1302_pseudo_C13.json
 ../bin/hpsv gray -v -s -4 -j -t "$C13" -o geom_fixed_json_out.tif
 FIXED_ITEM=hpsv_G16_conus_2024220_1302_gray_C13.json
 check_asset_type $FIXED_ITEM "image/tiff; application=geotiff"
+python3 - <<'EOBPY' || exit 1
+import json, sys
+d = json.load(open("hpsv_G16_conus_2024220_1302_gray_C13.json"))
+bands = d["assets"]["image"].get("eo:bands")
+if not bands or bands[0]["name"] != "C13":
+    sys.exit("FAIL: el activo de un gray C13 deberia declarar eo:bands [C13], tiene %s" % bands)
+if "center_wavelength" not in bands[0]:
+    sys.exit("FAIL: eo:bands sin center_wavelength")
+print("OK: el activo de un gray C13 declara eo:bands con longitud de onda")
+EOBPY
 check_item $FIXED_ITEM "gray GeoTIFF rejilla fija"
 validate $FIXED_ITEM
+validate_stac $FIXED_ITEM
 
 # --cog tiene que cambiar el tipo de medio, no sólo el archivo.
 ../bin/hpsv gray -v -s -4 -j -t --cog "$C13" -o cog_json_out.tif
@@ -214,6 +276,7 @@ check_asset_type $FIXED_ITEM "profile=cloud-optimized"
 check_key $FIXED_ITEM "proj:epsg" "4326"
 check_item $FIXED_ITEM "gray reproyectado"
 validate $FIXED_ITEM
+validate_stac $FIXED_ITEM
 
 # -B: dos activos en un solo Item, que es la razon de ser de D1.
 ../bin/hpsv gray -v -s -4 -j -t -B "$C13" -o both_json_out.tif
@@ -227,6 +290,7 @@ print("OK: -B deja un Item con dos activos")
 BOTHPY
 check_item $FIXED_ITEM "gray -B"
 validate $FIXED_ITEM
+validate_stac $FIXED_ITEM
 
 # rgb: command, modo, y eo:bands con los TRES canales del compuesto.
 ../bin/hpsv rgb -v -m ash -s -4 -j "$C13" -o rgb_json_out.png
@@ -236,16 +300,24 @@ check_key $RGB_ITEM "mode" "ash"
 python3 - <<'BANDSPY' || exit 1
 import json, sys
 d = json.load(open("hpsv_G16_conus_2024220_1302_ash.json"))
-names = [b["name"] for b in d["properties"]["eo:bands"]]
+# eo v1.1.0 exige eo:bands en el activo. Y un compuesto RGB no CONTIENE las
+# bandas de las que salio: tres planos derivados no son cuatro canales de ABI,
+# asi que este Item no declara eo en absoluto.
+if "eo:bands" in d["properties"]:
+    sys.exit("FAIL: eo:bands en properties; la procedencia va en hpsv:channels")
+for key, a in d["assets"].items():
+    if "eo:bands" in a:
+        sys.exit("FAIL: el activo '%s' de un rgb declara eo:bands" % key)
+if any("/eo/" in e for e in d["stac_extensions"]):
+    sys.exit("FAIL: un rgb declara la extension eo sin emitir eo:bands")
+names = [c["name"] for c in d["properties"]["hpsv:channels"]]
 if len(names) < 3:
-    sys.exit("FAIL: eo:bands de un rgb deberia listar los tres canales, lista %s" % names)
-for b in d["properties"]["eo:bands"]:
-    if "center_wavelength" not in b:
-        sys.exit("FAIL: %s sin center_wavelength" % b["name"])
-print("OK: eo:bands lista %s con longitud de onda" % names)
+    sys.exit("FAIL: hpsv:channels deberia listar los canales del compuesto, lista %s" % names)
+print("OK: rgb sin eo:bands; la procedencia esta en hpsv:channels %s" % names)
 BANDSPY
 check_item $RGB_ITEM "rgb ash"
 validate $RGB_ITEM
+validate_stac $RGB_ITEM
 
 # Sin -j: no debe generarse Item (opt-in).
 rm -f hpsv_G16_conus_2024220_1302_gray_C01.json
