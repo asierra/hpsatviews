@@ -696,7 +696,12 @@ puede ingerirlo, ese guion es exactamente el sitio donde los Items dejan de
 borrarse. Es la frase del Contexto de este documento —«el cambio de fondo no es
 de formato, es de retención»— aplicada al único lugar donde se decide.
 
-**3. Casos de producción en la suite**, discutido y anotado más arriba.
+**3. Casos de producción en la suite**, discutido y anotado más arriba. Su
+justificación creció: al revisar qué procedencia guarda el Item aparecieron tres
+huecos, los tres en combinaciones que producción usa y la suite no cubría —la
+expresión de un `rgb --mode custom` no se registraba, `--minmax` tampoco, y `-N`
+pisaba el modo y metía espacios en el `id`—. Cerrados el 2026-09-12, con prueba
+cada uno.
 
 **4. Deuda declarada, sin urgencia:** el CRS de la rejilla fija sale como
 `PROJCRS["unknown"]` (ver la fase 2, y no confundirlo con la comparación de CRS

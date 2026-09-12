@@ -40,6 +40,14 @@ void metadata_add_bool(MetadataContext *ctx, const char *key, bool value);
 /// Sets the processing command/mode string.
 void metadata_set_command(MetadataContext *ctx, const char *command);
 
+/// Sets the short key that identifies this product inside the Item id and the
+/// generated filename ("ash", "nightmicro"). It is NOT the mode: production
+/// builds several `custom` products per scene and tells them apart only by this
+/// label, so it has to stay in the id. The real mode is recorded separately in
+/// hpsv:enhancements, and the id segment is sanitized — it used to accept a
+/// human label verbatim and produce an identifier with a space in it.
+void metadata_set_product_key(MetadataContext *ctx, const char *key);
+
 /// Sets a descriptive product name.
 void metadata_set_product(MetadataContext *ctx, const char *product);
 

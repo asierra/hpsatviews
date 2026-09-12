@@ -1210,7 +1210,16 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     const char *mode_label = (cfg->product_short && cfg->product_short[0])
                                  ? cfg->product_short
                                  : (ctx.opts.mode ? ctx.opts.mode : "unknown");
-    metadata_add(meta, "mode", mode_label);
+    // El modo REAL, no la etiqueta: con -N "Ceniza Volcanica" el Item decía que
+    // el modo era esa cadena y el `ash` desaparecía. La etiqueta identifica al
+    // producto dentro del id, que es otra cosa.
+    metadata_add(meta, "mode", ctx.opts.mode ? ctx.opts.mode : "unknown");
+    metadata_set_product_key(meta, mode_label);
+    // Con --mode custom la expresión ES la combinación de bandas: sin esto, el
+    // Item de un producto a medida no dice cómo se hizo. Sólo se registraba en
+    // gray/pseudocolor.
+    if (cfg->custom_expr) metadata_add(meta, "expression", cfg->custom_expr);
+    if (cfg->custom_minmax) metadata_add(meta, "minmax", cfg->custom_minmax);
     // Without this the sidecar has no "command" and metadata_build_filename()
     // falls through to the literal "output" as the product type.
     metadata_set_command(meta, cfg->command);

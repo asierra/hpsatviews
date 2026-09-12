@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <math.h>
+#include <ctype.h>
 
 #define MAX_KV 32
 #define MAX_CHANNELS 16
@@ -61,6 +62,7 @@ struct MetadataContext {
     char time_iso[32];
     time_t timestamp;
     char product[128];
+    char product_key[64];
     
     double bbox[4];
     char projection[32];
@@ -190,6 +192,11 @@ void metadata_from_nc(MetadataContext *ctx, const DataNC *nc) {
 void metadata_set_command(MetadataContext *ctx, const char *command) {
     if (!ctx || !command) return;
     strncpy(ctx->command, command, sizeof(ctx->command) - 1);
+}
+
+void metadata_set_product_key(MetadataContext *ctx, const char *key) {
+    if (!ctx || !key) return;
+    snprintf(ctx->product_key, sizeof(ctx->product_key), "%s", key);
 }
 
 void metadata_set_product(MetadataContext *ctx, const char *product) {
@@ -413,16 +420,9 @@ static void build_stem(const MetadataContext *ctx, char *buf, size_t size) {
         } else if (strcmp(ctx->command, "pseudocolor") == 0) {
             strcpy(type, "pseudo");
         } else if (strcmp(ctx->command, "rgb") == 0) {
-            const char *mode = NULL;
-            for (int i = 0; i < ctx->count; i++) {
-                if (strcmp(ctx->extra_fields[i].key, "mode") == 0 &&
-                    ctx->extra_fields[i].type == 1) {
-                    mode = ctx->extra_fields[i].val_s;
-                    break;
-                }
-            }
-            if (mode && mode[0] && strcmp(mode, "truecolor") != 0 && strcmp(mode, "composite") != 0)
-                snprintf(type, sizeof(type), "%s", mode);
+            const char *key = ctx->product_key[0] ? ctx->product_key : NULL;
+            if (key && key[0] && strcmp(key, "truecolor") != 0 && strcmp(key, "composite") != 0)
+                snprintf(type, sizeof(type), "%s", key);
             else
                 strcpy(type, "rgb");
         } else {
@@ -437,6 +437,14 @@ static void build_stem(const MetadataContext *ctx, char *buf, size_t size) {
     } else if (ctx->channel_count > 0 && ctx->channels[0].valid) {
         strncpy(bands, ctx->channels[0].name, sizeof(bands) - 1);
     }
+
+    // El id es contrato público y acaba siendo un nombre de archivo: nada de
+    // espacios ni de caracteres que obliguen a entrecomillar. Con -N "Ceniza
+    // Volcanica" el identificador salía con un espacio dentro.
+    for (char *c = type; *c; c++)
+        if (!isalnum((unsigned char)*c) && *c != '.' && *c != '-' && *c != '_') *c = '-';
+    for (char *c = bands; *c; c++)
+        if (!isalnum((unsigned char)*c) && *c != '.' && *c != '-' && *c != '_') *c = '-';
 
     char sat_prefix[32];
     if (sector) snprintf(sat_prefix, sizeof(sat_prefix), "%s_%s", sat, sector);

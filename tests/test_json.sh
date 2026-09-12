@@ -229,6 +229,41 @@ check_item $RGB_ITEM "rgb ash"
 validate $RGB_ITEM
 validate_stac $RGB_ITEM
 
+# Procedencia de un producto a medida: la expresion ES la combinacion de bandas,
+# y --minmax cambia el resultado. Ninguno de los dos se registraba en rgb.
+../bin/hpsv rgb -v -m custom --expr "C15-C13; C14-C11; C13" -s -4 -j \
+    --minmax "-6.7,2.6" -N "Ceniza Volcanica:Ash" "$C13" -o custom_json_out.png
+python3 - <<'PROVPY' || exit 1
+import json, sys
+d = json.load(open("hpsv_G16_conus_2024220_1302_Ceniza-Volcanica.json"))
+e = d["properties"]["hpsv:enhancements"]
+if e.get("expression") != "C15-C13; C14-C11; C13":
+    sys.exit("FAIL: la expresion de un rgb custom no se registro: %s" % e.get("expression"))
+if e.get("minmax") != "-6.7,2.6":
+    sys.exit("FAIL: --minmax no se registro: %s" % e.get("minmax"))
+if e.get("mode") != "custom":
+    sys.exit("FAIL: mode deberia ser el modo real, es %s" % e.get("mode"))
+print("OK: el Item registra expresion, minmax y el modo real")
+PROVPY
+
+# El id es contrato publico y acaba siendo nombre de archivo: -N con espacios no
+# debe colarlos. Y la etiqueta no puede sustituir al modo en la procedencia.
+../bin/hpsv rgb -v -m ash -N "Ceniza Volcanica" -s -4 -j "$C13" -o label_json_out.png
+python3 - <<'LBLPY' || exit 1
+import json, glob, sys
+hits = [f for f in glob.glob("hpsv_*Ceniza*.json")]
+if not hits:
+    sys.exit("FAIL: no se genero el Item de la etiqueta")
+if any(" " in f for f in hits):
+    sys.exit("FAIL: el nombre del Item lleva un espacio: %s" % hits)
+d = json.load(open(hits[0]))
+if " " in d["id"]:
+    sys.exit("FAIL: el id lleva un espacio: %r" % d["id"])
+if d["properties"]["hpsv:enhancements"].get("mode") != "ash":
+    sys.exit("FAIL: -N piso el modo real; mode=%s" % d["properties"]["hpsv:enhancements"].get("mode"))
+print("OK: -N no mete espacios en el id ni pisa el modo (%s)" % d["id"])
+LBLPY
+
 # Sin -j: no debe generarse Item (opt-in).
 rm -f hpsv_G16_conus_2024220_1302_gray_C01.json
 ../bin/hpsv gray -v -s -4 "$C01" -o no_json_out.png
