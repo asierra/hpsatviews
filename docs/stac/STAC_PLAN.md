@@ -458,11 +458,69 @@ describía un formato que ya no se emite, y lo sustituye
 `docs/stac/hpsv-item.schema.json`, que cubre lo que esta herramienta emite y
 controla.
 
-### Fase 4 — `mapdrawer` lee el `Item`
+### Fase 4 — `mapdrawer` lee el `Item` — **HECHA 2026-09-12**
 
-Los cuatro sitios de la tabla de D3, y borrar `GOES_PROJECTIONS`. **Orden
-obligatorio:** primero el convertidor y el emisor, luego `mapdrawer`. Al revés
-quedan productos en disco que ningún lector entiende.
+LANOT_tools `a7c0037` (rama `stac-fase4`) y LANOT_procesamiento_goes `eafc182`
+(rama `meso-item-stac`). Sin fusionar en `main` ni desplegar.
+
+**La tabla de D3 estaba mal en lo esencial.** El `bbox` de la raíz del Item es
+la huella en 4326 —la curva del limbo—, no la extensión del ráster. Los límites
+de la imagen, en su propio CRS (metros en rejilla fija), salen de
+`proj:transform` + `proj:shape` **del activo**. Leer `bbox` habría desalineado
+todas las capas. Tampoco basta `properties["proj:wkt2"]`: con `-B` describe sólo
+la última salida escrita.
+
+**Los cuatro sitios de `mapdrawer` no cambiaron.** Toda la conversión cabe en
+`Metadata.from_stac_item()` (`LANOT_tools/metadata.py`), que entrega los mismos
+`crs` y `bounds` internos, así que `make_south_room`, `--o_crs` y
+`set_projected_bounds` siguen igual. `from_json_file()` se conserva para el
+formato plano que aún escriben `geotiff2view --save-metadata` y el sidecar de
+`mapdrawer --o_crs`.
+
+* El activo se elige por `href` = nombre de la imagen; el `proj:*` del Item sólo
+  se cree cuando hay un solo activo.
+* CRS: `proj:wkt2` del activo → `proj:epsg` del activo → los del Item (un solo
+  activo). Sin CRS, error: no se inventa.
+* `-m` sólo acepta el Item: un JSON plano o un archivo ausente salen con 1, en
+  vez de ignorarse en silencio como antes.
+* `platform` se lee en forma corta (`goes-19` → `G19`), la convención de CIMSS y
+  CIRA y la de los nombres de archivo.
+
+**El orden «primero el emisor» se confirmó en la práctica.** Con `-B` el activo
+de rejilla fija no declaraba CRS y el lector no podía georreferenciarlo; lo cerró
+`a6e97dd`, y los fixtures de LANOT_tools se regeneraron con ese binario.
+
+**`GOES_PROJECTIONS` se borró** de `mapdrawer.py` y de su copia en
+`glm_renderer.py`; `--crs goes16` ya no existe. Una prueba deja constancia de que
+el CRS del Item y la tabla vieja ponen los puntos a menos de 1 m.
+
+**Hallazgo lateral: el grosor de `--layer`.** Desde `f50b864` (LANOT_tools,
+2026-06) `:0.5` era fracción del ancho —media imagen— y `:1` la imagen entera,
+mientras que tren2 corre código de abril, donde son píxeles. Desplegar la fase 4
+habría dejado blanca la mesoescala. Ahora hay una sola regla en las tres
+herramientas: `< 1` fracción del ancho, `>= 1` píxeles, y un aviso cuando un
+grosor relativo pasa del 1 % del ancho.
+
+**Mesoescala.** `crea_rgb_meso.py` buscaba `<-o>.json` y el Item se nombra por su
+`id`, así que la ingesta cayó al instalar el hpsv de la fase 3. Ahora hpsv corre
+sin `-o` (imagen e Item comparten nombre), la imagen se toma del `href` del Item y
+el nombre publicado de siempre (`YYYYMMDD_hhmm_SAT_SECTOR.png`) se arma desde el
+Item.
+
+**Verificación.** 265 pruebas en LANOT_tools. Contra los GeoTIFF de un disco
+completo G19 con `-B` (21696² y 10000²): límites iguales a los de rasterio y 0 m
+de diferencia de posición. Una escena real de mesoescala G19 M1 por la cadena
+completa de `crea_rgb_meso.py`: costa de 1 px alineada y `"satellite": "G19"`.
+
+**Pendientes.**
+
+* Desplegar juntos en tren2 el hpsv con `a6e97dd`, LANOT_tools y
+  LANOT_procesamiento_goes.
+* Grosor en disco completo: `0.0005` da 5 px en 10000² donde tren2 hoy pinta
+  1 px. Revisarlo guion por guion.
+* Otros guiones podrían dejar de pasarle `-o` a hpsv.
+* Lo que mesoescala publica junto a la imagen sigue siendo el sidecar plano de
+  `mapdrawer --o_crs`, no el Item.
 
 ### Fase 5 — Validación externa y barrido retroactivo
 
@@ -482,7 +540,7 @@ quedan productos en disco que ningún lector entiende.
 | `timestamp` | `properties.datetime` | Ya en ISO 8601 UTC |
 | `product`, `command` | `properties["hpsv:product"]`, `["hpsv:command"]` | |
 | `crs` | `properties["proj:wkt2"]`, `proj:epsg` (`null` en rejilla fija) | Fase 2 |
-| `bounds` | `bbox` (raíz) | Mismo orden; sólo hay que garantizar 4326 |
+| `bounds` | `proj:transform` + `proj:shape` del activo (y `proj:bbox`) | **No** es `bbox` de la raíz, que es la huella en 4326 (corregido en la fase 4) |
 | `geometry.bbox` en metros | `properties["proj:bbox"]` | |
 | — | `geometry` (polígono GeoJSON) | Fase 1 |
 | `channels[].name` | `properties["eo:bands"][].name` / `common_name` | |
@@ -572,22 +630,10 @@ aprendido, pero es una discusión aparte de ésta.
 
 ## Primer paso de la siguiente sesión
 
-Fases 0 a 3 cerradas: `hpsv` emite `Item`s de STAC. Quedan las dos fases de
-integración, y el orden entre ellas ya no es libre —los productos en disco ya
-llevan Item, así que `mapdrawer` es lo urgente—:
-
-**Fase 4, `mapdrawer`.** Ojo con el tamaño: la tabla de D3 lista cuatro sitios,
-pero el trabajo real **no** está en ellos, sino en `Metadata.from_json_file()`
-(`mapdrawer.py:1376`), la clase que parsea el JSON. Hoy lee un formato plano con
-`crs` y `bounds` en la raíz; tiene que pasar a leer un `Item`, donde eso vive en
-`bbox` y en `properties["proj:wkt2"]`. Los cuatro sitios son la consecuencia, no
-la causa. Los cuatro sitios de la tabla de D3, con una diferencia
-respecto a lo que ese cuadro decía: `bounds` ya no existe, y lo que hay que leer
-es `bbox` en la raíz del Item y `properties["proj:wkt2"]`. Al hacerlo se borra
-`GOES_PROJECTIONS` de `mapdrawer.py:63-66`, la tabla privada de PROJ que hoy no
-coincide con la de `hpsv` —fija `+a`/`+b` y `+h`/`+lon_0` a mano mientras `hpsv`
-los lee del archivo— y que funciona sólo porque dos repositorios la sincronizan
-a mano.
+Fases 0 a 4 cerradas: `hpsv` emite `Item`s de STAC con CRS por activo y
+`mapdrawer` los lee. Antes de la fase 5 va el despliegue, porque tren2 sigue con
+LANOT_tools de abril: hpsv, LANOT_tools (`stac-fase4`) y
+LANOT_procesamiento_goes (`meso-item-stac`) tienen que llegar juntos.
 
 **Fase 5, validación externa y barrido retroactivo.** Validar contra los
 esquemas oficiales del núcleo y de cada extensión, y decidir explícitamente si
@@ -595,6 +641,5 @@ se descargan en CI o se versionan copias locales; ahí se revalidan las versione
 declaradas. El barrido reconstruye Items de lo ya producido desde los GeoTIFF,
 documentando que `hpsv:channels` y `hpsv:enhancements` no se pueden recuperar.
 
-Y, cuando toque, avisar a producción: `crea_rgbs_products.sh:202` sigue
-ignorando el código de salida de `hpsv` por un segfault que ya no existe y que
-nunca fue del sidecar.
+El aviso a producción sobre `crea_rgbs_products.sh` ya se atendió: el guion vuelve
+a tratar como fallo el código de salida de `hpsv`.
