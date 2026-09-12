@@ -676,18 +676,34 @@ justo el mantenimiento que se decidió no pagar cuando se puso `check_nonblank`
 en vez de una referencia exacta por modo. Conviene revisar esa decisión con lo
 aprendido, pero es una discusión aparte de ésta.
 
-## Primer paso de la siguiente sesión
+## Estado y lo que queda (2026-09-12)
 
-Fases 0 a 4 cerradas: `hpsv` emite `Item`s de STAC con CRS por activo y
-`mapdrawer` los lee. Antes de la fase 5 va el despliegue, porque tren2 sigue con
-LANOT_tools de abril: hpsv, LANOT_tools (`stac-fase4`) y
-LANOT_procesamiento_goes (`meso-item-stac`) tienen que llegar juntos.
+**Las cinco fases están cerradas.** `hpsv` emite `Item`s de STAC con CRS y
+transformación por activo, `mapdrawer` los lee, la suite valida contra los
+esquemas oficiales versionados, y `tools/stac_sweep.py` reconstruye el acervo ya
+producido. Lo que queda no es implementación:
 
-**Fase 5, validación externa y barrido retroactivo.** Validar contra los
-esquemas oficiales del núcleo y de cada extensión, y decidir explícitamente si
-se descargan en CI o se versionan copias locales; ahí se revalidan las versiones
-declaradas. El barrido reconstruye Items de lo ya producido desde los GeoTIFF,
-documentando que `hpsv:channels` y `hpsv:enhancements` no se pueden recuperar.
+**1. Despliegue, y tiene que ir junto.** tren2 sigue con `LANOT_tools` de abril,
+así que `hpsatviews`, `LANOT_tools` (`stac-fase4`) y `LANOT_procesamiento_goes`
+(`meso-item-stac`) deben llegar a la vez. Las dos últimas están en rama, sin
+fusionar. Desplegar sólo una parte rompe: la fase 4 asume el emisor nuevo, y el
+hallazgo del grosor de `--layer` dejaría blanca la mesoescala.
 
-El aviso a producción sobre `crea_rgbs_products.sh` ya se atendió: el guion vuelve
-a tratar como fallo el código de salida de `hpsv`.
+**2. El cambio de `crea_rgbs_products.sh` sigue sin comitear**, y con él la
+decisión que nadie ha tomado: **el guion sigue borrando el Item como
+temporal**, que es lo que hacía con el sidecar desechable. Ahora que el catálogo
+puede ingerirlo, ese guion es exactamente el sitio donde los Items dejan de
+borrarse. Es la frase del Contexto de este documento —«el cambio de fondo no es
+de formato, es de retención»— aplicada al único lugar donde se decide.
+
+**3. Casos de producción en la suite**, discutido y anotado más arriba.
+
+**4. Deuda declarada, sin urgencia:** el CRS de la rejilla fija sale como
+`PROJCRS["unknown"]` (ver la fase 2, y no confundirlo con la comparación de CRS
+que ahí se explica); la huella existe dos veces, en C y en Python, sujeta sólo
+por `tests/test_sweep.sh`; y las versiones del núcleo y las extensiones se
+revalidan corriendo `tools/fetch_stac_schemas.py` y revisando el diff.
+
+Lo que **no** hace esta herramienta sigue siendo lo de siempre: no genera
+`Collection` ni `Catalog`, no resuelve enlaces absolutos y no mantiene el
+índice. Eso es del servicio de catálogo.
