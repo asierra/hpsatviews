@@ -59,6 +59,14 @@ void metadata_set_geometry(MetadataContext *ctx, double x1, double y1, double x2
 /// metadata_set_geometry(), which keeps describing the output's own CRS.
 void metadata_set_footprint(MetadataContext *ctx, const Footprint *fp);
 
+/// Records the grid of the output raster: its affine transform in the units of
+/// its own CRS, in the order STAC's proj:transform uses (pixel width, row
+/// rotation, origin x, column rotation, pixel height, origin y — NOT GDAL's),
+/// its shape as [height, width], and the CRS as WKT2. `epsg` is 4326 once
+/// reprojected and 0 (meaning "no authority code") on the fixed grid.
+void metadata_set_grid(MetadataContext *ctx, const double transform[6],
+                       int width, int height, const char *wkt2, int epsg);
+
 /// Canonical satellite name ("G16") for an identifier; "unknown" if out of range.
 const char* metadata_sat_name(SatelliteID id);
 

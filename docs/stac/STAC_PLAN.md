@@ -344,12 +344,46 @@ Trabajo adicional que entró con la fase:
   `depth` sin límite. No se alcanzaba con tres niveles de anidamiento, pero el
   polígono le dio a GCC un camino concreto y lo delató.
 
-### Fase 2 — Cablear la proyección hasta el contexto
+### Fase 2 — Cablear la proyección hasta el contexto — **HECHA 2026-09-12**
 
-`get_projection_wkt()` es `static` en `src/writer_geotiff.c`. Exponer el PROJ y
-el WKT (o el `proj_info` crudo) hacia `MetadataContext`, sin cambiar `crs` de
-sitio todavía. Sumar `proj:transform` (de la geotransformación) y `proj:shape`
-(alto y ancho finales, que ya se conocen en `final_w`/`final_h`).
+El sidecar lleva ahora cuatro claves más, aditivas como las de la fase 1 y
+nombradas ya por la extensión de STAC a la que alimentan: `proj_transform`,
+`proj_shape`, `proj_epsg` y `proj_wkt2`. La fase 3 sólo tiene que renombrarlas
+con dos puntos.
+
+* **`proj_transform` va en el orden de STAC, que no es el de GDAL**: ancho de
+  píxel, rotación de fila, origen x, rotación de columna, alto de píxel, origen
+  y. En la rejilla fija se emite en metros, con el recorte y el remuestreo ya
+  aplicados; se verifica en la suite contra la geotransformación del GeoTIFF
+  escrito al lado, en seis variantes, y coincide al límite del redondeo del JSON.
+* **`proj_shape` es `[alto, ancho]`.** En `rgb` hubo que moverlo *después* de
+  `apply_scaling()`: el bloque que fija `crs`/`bounds` corre antes del
+  remuestreo, así que habría descrito una imagen que nunca se escribió.
+* **`proj_epsg`** es 4326 reproyectado y se omite en la rejilla fija, que no
+  tiene código de autoridad.
+* **`proj_wkt2`** sale de `OSRExportToWktEx` con `FORMAT=WKT2_2019`; lo que
+  `projection_wkt_from_nc()` devolvía era WKT1.
+
+**El trabajo de fondo fue quitar una duplicación.** El ajuste de la
+geotransformación por recorte y escala estaba copiado dentro de la rama
+`is_geotiff` de cada escritor —dos veces en `processing.c`, una en `rgb.c`— y
+sólo ahí, que es por lo que una salida PNG no tenía transformación en ninguna
+parte y por lo que el `bounds` en metros discrepaba del GeoTIFF bajo `-s`. Ahora
+vive en `projection_output_geotransform()`. Los GeoTIFF salen byte a byte
+idénticos en las ocho variantes comprobadas.
+
+**Coste.** `-j` llegó a `ProcessConfig` (vivía sólo en `main.c` vía
+`ap_found()`), y la huella y la rejilla se calculan únicamente cuando se van a
+escribir. El WKT2 es lo único que necesita GDAL: **6 ms** la primera vez que un
+proceso lo toca, y **0 ms** escribiendo GeoTIFF, porque el escritor ya creó el
+SRS. La cadena de producción, que usa `-t -j`, no paga nada.
+
+**Pendiente menor, que la fase 3 debería decidir:** el CRS de la rejilla fija
+sale como `PROJCRS["unknown"]`, porque se arma desde una cadena PROJ.4 sin
+autoridad. Los parámetros están completos y es de ellos de lo que dependen los
+clientes, pero un nombre propio —«GOES-R ABI fixed grid»— mejoraría la ficha del
+catálogo. Cambiarlo altera los bytes de los GeoTIFF ya producidos, así que no se
+tocó aquí.
 
 ### Fase 3 — Emitir el `Item`
 
@@ -439,14 +473,16 @@ quedan productos en disco que ningún lector entiende.
 
 ## Primer paso de la siguiente sesión
 
-Fases 0 y 1 cerradas. Sigue la **fase 2**, cablear la proyección hasta el
-contexto, que ahora es mucho más corta de lo que el plan suponía:
+Fases 0, 1 y 2 cerradas: el sidecar ya lleva **todo** lo que un `Item` necesita
+—`bbox_4326`, `footprint`, `proj_transform`, `proj_shape`, `proj_epsg`,
+`proj_wkt2`, más lo que ya tenía— salvo la estructura y los activos. Sigue la
+**fase 3**, emitir el `Item`, con estas decisiones ya tomadas:
 
-1. `src/projection.c` ya existe y expone el SRS; falta añadir `proj:wkt2`, que
-   exige `OSRExportToWktEx` con `FORMAT=WKT2_2019` (lo que hay hoy es WKT1).
-2. Llevar `proj:transform` (la geotransformación en metros, que
-   `processing.c`/`rgb.c` ya calculan) y `proj:shape` (`final_w`/`final_h`) al
-   `MetadataContext`.
-3. Decidir el `proj:epsg`: `null` en la rejilla fija, `4326` reproyectado.
-
-Y sólo entonces la fase 3.
+1. `--stac` y `--stac-collection`, con `--stac` reusando la misma compuerta que
+   `-j` para el metadato que sólo se calcula para escribirse.
+2. `id` = escena más modo (D1); hace falta la función hermana de
+   `metadata_build_filename()` que corte antes del segmento de operaciones.
+3. Los activos exigen la lista de salidas que D1 describe: hoy
+   `MetadataContext` guarda una sola ruta, y trunca a 63 caracteres.
+4. `eo:bands` necesita los tres canales; `metadata_from_nc()` sólo registra el
+   de referencia.

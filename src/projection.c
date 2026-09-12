@@ -7,6 +7,7 @@
  */
 #include "projection.h"
 #include "logger.h"
+#include <cpl_conv.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -53,4 +54,58 @@ char* projection_wkt_from_nc(const DataNC *meta) {
     OSRExportToWkt(hSRS, &wkt);
     OSRDestroySpatialReference(hSRS);
     return wkt;
+}
+
+char* projection_wkt2_from_nc(const DataNC *meta) {
+    OGRSpatialReferenceH hSRS = projection_srs_from_nc(meta);
+    if (hSRS == NULL) return NULL;
+    char *wkt = NULL;
+    const char *opts[] = {"FORMAT=WKT2_2019", "MULTILINE=NO", NULL};
+    if (OSRExportToWktEx(hSRS, &wkt, opts) != OGRERR_NONE) {
+        OSRDestroySpatialReference(hSRS);
+        return NULL;
+    }
+    OSRDestroySpatialReference(hSRS);
+    return wkt;
+}
+
+void projection_output_geotransform(const double src_gt[6], unsigned crop_x,
+                                    unsigned crop_y, int scale, double out_gt[6]) {
+    if (src_gt == NULL || out_gt == NULL) return;
+    memcpy(out_gt, src_gt, 6 * sizeof(double));
+
+    // The crop shift uses the ORIGINAL pixel size, so it has to come before the
+    // resampling stretch; swapping the two misplaces the origin by the scale
+    // factor.
+    out_gt[0] += crop_x * out_gt[1];
+    out_gt[3] += crop_y * out_gt[5];
+
+    if (scale != 1 && scale != 0) {
+        const double sf = (scale < 0) ? -(double)scale : (double)scale;
+        if (scale > 1) { out_gt[1] /= sf; out_gt[5] /= sf; }
+        else           { out_gt[1] *= sf; out_gt[5] *= sf; }
+    }
+}
+
+void projection_stac_transform(const DataNC *meta, unsigned crop_x, unsigned crop_y,
+                               int scale, double stac[6]) {
+    if (meta == NULL || stac == NULL) return;
+    double gt[6];
+    projection_output_geotransform(meta->geotransform, crop_x, crop_y, scale, gt);
+
+    if (meta->proj_code == PROJ_GEOS && meta->proj_info.valid) {
+        const double h = meta->proj_info.sat_height;
+        for (int i = 0; i < 6; i++) gt[i] *= h;
+    }
+
+    stac[0] = gt[1];  /* pixel width      */
+    stac[1] = gt[2];  /* row rotation     */
+    stac[2] = gt[0];  /* origin x         */
+    stac[3] = gt[4];  /* column rotation  */
+    stac[4] = gt[5];  /* pixel height     */
+    stac[5] = gt[3];  /* origin y         */
+}
+
+void projection_free_wkt(char *wkt) {
+    if (wkt != NULL) CPLFree(wkt);
 }

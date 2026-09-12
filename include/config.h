@@ -34,6 +34,7 @@ typedef struct {
     bool invert_values;         // Invert scale (IR channels)
     bool use_cuda;              // --cuda: GPU kernels (requires build with CUDA=1)
     bool build_cog;             // --cog: full Cloud Optimized GeoTIFF (with overviews); default is a fast tiled GeoTIFF without them
+    bool save_json;             // -j: write the JSON sidecar. Also gates the metadata that is only computed to be written (footprint, WKT).
     
     // Compositing options
     int scale;                  // Integer scale factor (up- or down-sampling)

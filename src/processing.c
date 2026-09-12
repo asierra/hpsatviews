@@ -12,6 +12,7 @@
 #include "logger.h"
 #include "metadata.h"
 #include "footprint.h"
+#include "projection.h"
 #include "reader_nc.h"
 #include "reader_cpt.h"
 #include "writer_png.h"
@@ -416,14 +417,8 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
 
         if (is_geotiff) {
             DataNC meta_fg = c01;
-            meta_fg.geotransform[0] += crop_x * meta_fg.geotransform[1];
-            meta_fg.geotransform[3] += crop_y * meta_fg.geotransform[5];
-
-            if (cfg->scale != 1) {
-                double sf = (cfg->scale < 0) ? -(double)cfg->scale : (double)cfg->scale;
-                if (cfg->scale > 1) { meta_fg.geotransform[1] /= sf; meta_fg.geotransform[5] /= sf; }
-                else { meta_fg.geotransform[1] *= sf; meta_fg.geotransform[5] *= sf; }
-            }
+            projection_output_geotransform(c01.geotransform, crop_x, crop_y,
+                                           cfg->scale, meta_fg.geotransform);
 
             if (is_pseudocolor && color_array) {
                 if (cfg->use_alpha) {
@@ -459,10 +454,20 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         // grid, or on having reprojected: ~128 coordinate transforms against
         // the ~2 s compute_navigation_nc() costs on a full disk. So a plain PNG,
         // which carries no geometry at all today, gets one too.
-        if (!cfg->do_reprojection) {
+        if (!cfg->do_reprojection && cfg->save_json) {
             Footprint fp;
             if (footprint_from_geos_box(&c01, x_min, y_min, x_max, y_max_val, &fp) == 0)
                 metadata_set_footprint(meta, &fp);
+
+            // The output grid, for STAC's proj: extension. Gated with the rest
+            // because the WKT2 export builds a PROJ pipeline, ~17 ms in a
+            // process that has not touched GDAL yet — a tenth of a small run,
+            // and pure waste when no sidecar was asked for.
+            double stac_gt[6];
+            projection_stac_transform(&c01, crop_x, crop_y, cfg->scale, stac_gt);
+            char *wkt2 = projection_wkt2_from_nc(&c01);
+            metadata_set_grid(meta, stac_gt, (int)fg_final.width, (int)fg_final.height, wkt2, 0);
+            projection_free_wkt(wkt2);
         }
 
         // Record fixed-grid geometry in metadata (only if this is the final step).
@@ -593,11 +598,24 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
 
         metadata_set_geometry(meta, final_lon_min, final_lat_min, final_lon_max, final_lat_max);
         metadata_set_projection(meta, "EPSG:4326");
-        {   // Already in 4326: the footprint is the output rectangle itself.
+        if (cfg->save_json) {
+            // Already in 4326: the footprint is the output rectangle itself,
+            // and the transform follows from the bounds and the final size, so
+            // no resampling correction is needed here.
             Footprint fp;
             if (footprint_from_latlon_box(final_lon_min, final_lat_min,
                                           final_lon_max, final_lat_max, &fp) == 0)
                 metadata_set_footprint(meta, &fp);
+
+            const double stac_gt[6] = {
+                (final_lon_max - final_lon_min) / (double)geo_final.width, 0.0, final_lon_min,
+                0.0, (final_lat_min - final_lat_max) / (double)geo_final.height, final_lat_max
+            };
+            DataNC latlon = c01;
+            latlon.proj_code = PROJ_LATLON;
+            char *wkt2 = projection_wkt2_from_nc(&latlon);
+            metadata_set_grid(meta, stac_gt, (int)geo_final.width, (int)geo_final.height, wkt2, 4326);
+            projection_free_wkt(wkt2);
         }
 
         final_w = geo_final.width;

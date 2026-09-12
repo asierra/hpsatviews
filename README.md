@@ -85,12 +85,13 @@ On Debian/Ubuntu:
 sudo apt install build-essential libnetcdf-dev libpng-dev libgdal-dev libwebp-dev
 ```
 
-To run the test suite you also need **ImageMagick** (tolerant pixel diff) and
+To run the test suite you also need **ImageMagick** (tolerant pixel diff),
 **python3-jsonschema** (validates the JSON sidecar against
-`docs/hpsatviews.schema.json`):
+`docs/hpsatviews.schema.json`) and **python3-gdal** (reads the GeoTIFF's
+geotransform back, to check the sidecar describes the file written beside it):
 
 ```bash
-sudo apt install imagemagick python3-jsonschema
+sudo apt install imagemagick python3-jsonschema python3-gdal
 ```
 
 ### 3.3 Build and install
@@ -454,6 +455,9 @@ For `custom` mode see **Band algebra**.
     }
   ],
   "bbox_4326": [-152.113487, 14.561826, -52.918298, 56.78067],
+  "proj_transform": [8016.069, 0, -3627271.341, 0, -8016.069, 4589199.765],
+  "proj_shape": [375, 625],
+  "proj_wkt2": "PROJCRS[\"unknown\",BASEGEOGCRS[...]]",
   "footprint": {
     "type": "Polygon",
     "coordinates": [[[-152.113487, 47.386871], ..., [-152.113487, 47.386871]]]
@@ -471,6 +475,7 @@ For `custom` mode see **Band algebra**.
 
 * `crs` reflects the output's actual projection: `EPSG:4326` if reprojected with `-G`/`--both`, `goes16`/`goes17`/`goes18`/`goes19` (or `geostationary`) on the satellite's native grid, or the default value `geographics` when no geometry was computed (a plain PNG without `--clip`, neither GeoTIFF nor reprojection). `bounds`/`geometry.bbox` only appear when geometry was actually computed, and are redundant with each other (the same bounding box in two forms). Their order is `[x_min, y_min, x_max, y_max]` — that is `[W, S, E, N]`, the GeoJSON and STAC convention — and the **units follow `crs`**: degrees once reprojected, metres on the geostationary plane for the satellite's fixed grid.
 * `bbox_4326` and `footprint` are **always in EPSG:4326**, whatever `crs` says, and are emitted for every output — including a plain PNG, which carries no `crs`/`bounds` at all. They describe the raster's extent (pixel edges), and on the satellite's fixed grid they follow the Earth's **limb**, not the raster corners: a full disk's corners fall off the planet, so its footprint is the limb ellipse and its bbox comes out at `lon_0 ± 81.3°`, `±81.3°` of latitude. If the footprint crosses the antimeridian — a GOES-West full disk spans −218°…−56° — the west value is **greater** than the east one, which is the STAC convention, and no bbox is ever widened to the whole planet to paper over the wrap. Computing them needs no navigation grid and costs under a millisecond.
+* `proj_transform`, `proj_shape`, `proj_epsg` and `proj_wkt2` describe the **output raster's grid**, named after the STAC `proj:` extension they feed. `proj_transform` is in **STAC's order** — pixel width, row rotation, origin x, column rotation, pixel height, origin y — which is *not* GDAL's; on the fixed grid it is in metres and already carries the clip and the `-s` resampling, so it matches the geotransform of the GeoTIFF written beside it. `proj_shape` is `[height, width]`. `proj_epsg` is `4326` once reprojected and absent on the fixed grid, which has no authority code. These four, unlike the footprint, need GDAL, which costs about 6 ms the first time a process touches it — free when writing a GeoTIFF, since the writer got there first — so they are only computed when `-j` asks for them.
 * `product` only appears for L2 products (CMIP, ACHA, ACHT, ACTP, CTP, LST, SST); L1b (radiance) files don't include it because they have no "product" identity distinct from the channel.
 * `enhancements` adds one key per processing option that was actually applied (among others: `gamma`, `clahe`, `histogram`, `invert`, `rayleigh`/`stretch` in `rgb` mode, `scale`, `palette`, `expression`, `geographics`), plus `output_file`/`output_width`/`output_height`. Unused options simply don't appear.
 * **GeoTIFF (`-t`):** only a subset of these metadata fields is embedded as GDAL tags inside the file: `tool`, `satellite`, `sector`, `band`, `scan_time`, `product` (when applicable), and `colormap_min`/`colormap_max`/`colormap_size`/`colormap_units` in pseudocolor. `crs` and `bounds` aren't duplicated as text because the GeoTIFF already represents them natively (geotransform + WKT projection); `command`, `channels` (with min/max/quantity), and `enhancements` only exist in the JSON sidecar.

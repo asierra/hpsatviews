@@ -33,7 +33,8 @@ typedef int (*ProcessingFunc)(const ProcessConfig *, MetadataContext *);
 
 /// Saves the JSON metadata sidecar when --json was requested.
 static void save_sidecar_json(const ProcessConfig *cfg, MetadataContext *meta, ArgParser *parser) {
-    if (!ap_found(parser, "json")) {
+    (void)parser;
+    if (!cfg->save_json) {
         return;
     }
 

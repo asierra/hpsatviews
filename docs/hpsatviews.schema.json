@@ -85,6 +85,28 @@
         }
       }
     },
+    "proj_transform": {
+      "type": "array",
+      "description": "Transformación afín del ráster de salida, en las unidades de su propio CRS y en el ORDEN DE STAC proj:transform: [ancho de píxel, rotación de fila, origen x, rotación de columna, alto de píxel, origen y]. No es el orden de GDAL. En la rejilla fija va en metros sobre el plano geostacionario, ya con el recorte y el remuestreo aplicados: coincide con la geotransformación del GeoTIFF escrito al lado.",
+      "items": { "type": "number" },
+      "minItems": 6,
+      "maxItems": 6
+    },
+    "proj_shape": {
+      "type": "array",
+      "description": "Tamaño del ráster de salida como [alto, ancho], el orden de STAC proj:shape.",
+      "items": { "type": "integer", "minimum": 1 },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "proj_epsg": {
+      "type": "integer",
+      "description": "Código EPSG del CRS de salida: 4326 si se reproyectó. Se omite en la rejilla fija, que no tiene código de autoridad."
+    },
+    "proj_wkt2": {
+      "type": "string",
+      "description": "CRS de salida en WKT2 (2019). En la rejilla fija el CRS sale sin nombre (PROJCRS[\"unknown\"]) porque se arma desde una cadena PROJ.4 sin autoridad; los parámetros sí están completos, que es de lo que dependen los clientes."
+    },
     "geometry": {
       "type": "object",
       "description": "Misma información que crs y bounds, en forma anidada. Sólo aparece cuando se calculó geometría: una corrida gray/pseudocolor sin -c, -t ni -G no carga navegación y no emite este bloque.",

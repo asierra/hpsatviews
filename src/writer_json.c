@@ -161,6 +161,15 @@ void json_write_double_array(JsonWriter* w, const char* key, const double* vals,
     fprintf(w->fp, "]");
 }
 
+void json_write_int_array(JsonWriter* w, const char* key, const int* vals, int count) {
+    write_key(w, key);
+    fprintf(w->fp, "[");
+    for (int i = 0; i < count; i++) {
+        fprintf(w->fp, "%d%s", vals[i], (i < count - 1) ? ", " : "");
+    }
+    fprintf(w->fp, "]");
+}
+
 /* GeoJSON Polygon with a single ring, closed here (the caller keeps an open
  * ring). Coordinates go out as %.6f — about 11 cm, two orders below the
  * finest ABI pixel — and one pair per line would make a 128-vertex limb

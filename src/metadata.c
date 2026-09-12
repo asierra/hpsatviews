@@ -54,6 +54,12 @@ struct MetadataContext {
     bool has_bbox;
     Footprint footprint;
     bool has_footprint;
+
+    double transform[6];
+    int shape[2];          /* [height, width], STAC's proj:shape order */
+    char *wkt2;
+    int epsg;
+    bool has_grid;
     bool has_clip;  // true only when the user specified an explicit clip region
     
     ChannelInfo channels[MAX_CHANNELS];
@@ -104,6 +110,7 @@ MetadataContext* metadata_create(void) {
 }
 
 void metadata_destroy(MetadataContext *ctx) {
+    if (ctx) free(ctx->wkt2);
     free(ctx);
 }
 
@@ -188,6 +195,22 @@ void metadata_set_footprint(MetadataContext *ctx, const Footprint *fp) {
     if (!ctx || !fp || !fp->valid) return;
     ctx->footprint = *fp;
     ctx->has_footprint = true;
+}
+
+void metadata_set_grid(MetadataContext *ctx, const double transform[6],
+                       int width, int height, const char *wkt2, int epsg) {
+    if (!ctx || !transform || width <= 0 || height <= 0) return;
+    memcpy(ctx->transform, transform, sizeof(ctx->transform));
+    ctx->shape[0] = height;
+    ctx->shape[1] = width;
+    ctx->epsg = epsg;
+    free(ctx->wkt2);
+    ctx->wkt2 = NULL;
+    if (wkt2 && wkt2[0]) {
+        ctx->wkt2 = malloc(strlen(wkt2) + 1);
+        if (ctx->wkt2) strcpy(ctx->wkt2, wkt2);
+    }
+    ctx->has_grid = true;
 }
 
 void metadata_set_clip(MetadataContext *ctx, bool clipped) {
@@ -432,6 +455,14 @@ int metadata_save_json(MetadataContext *ctx, const char *filename) {
         json_write_double_array(w, "bbox_4326", ctx->footprint.bbox, 4);
         json_write_polygon(w, "footprint", ctx->footprint.lon, ctx->footprint.lat,
                            ctx->footprint.count);
+    }
+
+    // Output grid, named after the STAC `proj:` extension it feeds.
+    if (ctx->has_grid) {
+        json_write_double_array(w, "proj_transform", ctx->transform, 6);
+        json_write_int_array(w, "proj_shape", ctx->shape, 2);
+        if (ctx->epsg > 0) json_write_int(w, "proj_epsg", ctx->epsg);
+        if (ctx->wkt2) json_write_string(w, "proj_wkt2", ctx->wkt2);
     }
 
     // Canales (array de objetos)

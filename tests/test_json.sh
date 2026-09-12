@@ -17,6 +17,14 @@ if ! python3 -c 'import jsonschema' 2>/dev/null; then
     echo "      (o pip install jsonschema)" >&2
     exit 1
 fi
+# Las ligaduras de GDAL son la única forma de leer la geotransformación del
+# GeoTIFF (va en etiquetas binarias, no la ve 'strings') y por tanto de
+# comprobar que el sidecar describe el archivo que se escribió al lado.
+if ! python3 -c 'from osgeo import gdal' 2>/dev/null; then
+    echo "FAIL: faltan las ligaduras de GDAL para Python." >&2
+    echo "      Instálalas con: sudo apt-get install python3-gdal" >&2
+    exit 1
+fi
 
 validate() {
     local file="$1"
@@ -117,9 +125,45 @@ FPPY
 
 check_footprint gray_json_out.json "PNG sin geometria"
 
+# Rejilla de salida (proj_transform/proj_shape/proj_epsg/proj_wkt2). Tiene que
+# describir el archivo que se escribió al lado, no la imagen antes de escalar:
+# en rgb la rejilla se registra después del remuestreo por esa razón.
+check_grid() {
+    local json="$1" tif="$2" what="$3"
+    if ! python3 - "$json" "$tif" <<'GRIDPY'
+import json, sys
+from osgeo import gdal
+
+gdal.UseExceptions()
+d = json.load(open(sys.argv[1]))
+for k in ("proj_transform", "proj_shape", "proj_wkt2"):
+    if k not in d:
+        sys.exit("falta " + k)
+ds = gdal.Open(sys.argv[2])
+gt = ds.GetGeoTransform()
+want = [gt[1], gt[2], gt[0], gt[4], gt[5], gt[3]]   # orden STAC, no el de GDAL
+got = d["proj_transform"]
+worst = max(abs(a - b) for a, b in zip(want, got))
+if worst > 1e-3:
+    sys.exit("proj_transform no coincide con el GeoTIFF (%g)\n  esperado %s\n  emitido  %s"
+             % (worst, want, got))
+if d["proj_shape"] != [ds.RasterYSize, ds.RasterXSize]:
+    sys.exit("proj_shape %s no es [alto, ancho] del archivo (%d x %d)"
+             % (d["proj_shape"], ds.RasterXSize, ds.RasterYSize))
+if not d["proj_wkt2"].startswith(("PROJCRS", "GEOGCRS")):
+    sys.exit("proj_wkt2 no parece WKT2: " + d["proj_wkt2"][:40])
+GRIDPY
+    then
+        echo "FAIL: $json rejilla incoherente ($what)" >&2
+        exit 1
+    fi
+    echo "OK: $json rejilla coincide con el GeoTIFF ($what)"
+}
+
 # Rejilla fija con geometría (-t carga navegación): bounds en METROS y crs de la casa.
 ../bin/hpsv gray -v -s -4 -j -t "$C13" -o geom_fixed_json_out.tif
 check_key geom_fixed_json_out.json "crs" "goes16"
+check_grid geom_fixed_json_out.json geom_fixed_json_out.tif "gray rejilla fija, -s -4"
 grep -q '"bounds"' geom_fixed_json_out.json || { echo "FAIL: falta bounds con -t" >&2; exit 1; }
 validate geom_fixed_json_out.json
 
@@ -142,6 +186,14 @@ if max(abs(x - y) for x, y in zip(a, b)) > 1.0:
     sys.exit("FAIL: -s cambio la extension en metros\n  sin -s: %s\n  con -s: %s" % (a, b))
 print("OK: la extension en metros no depende de -s")
 EXPY
+check_grid extent_scaled_json_out.json extent_scaled_json_out.tif "escalado"
+
+# rgb reproyectado: el remuestreo ocurre despues de registrar la geometria, asi
+# que proj_shape tiene que seguir siendo el del archivo, no el de antes.
+../bin/hpsv rgb -v -m ash -j -t -G -s -4 "$C13" -o rgb_geo_json_out.tif
+check_key rgb_geo_json_out.json "proj_epsg" "4326"
+check_grid rgb_geo_json_out.json rgb_geo_json_out.tif "rgb reproyectado, -s -4"
+validate rgb_geo_json_out.json
 
 # rgb: regresión de metadata_set_command(), que sólo se llamaba desde
 # processing.c, así que los sidecars de rgb salían sin "command" (y el nombre

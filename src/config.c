@@ -364,6 +364,7 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
 
     // GPU acceleration (opt-in; requires a binary built with CUDA=1).
     cfg->build_cog = ap_found(parser, "cog");
+    cfg->save_json = ap_found(parser, "json");
     cfg->use_cuda = ap_found(parser, "cuda");
 
     // Per-run timing record, off unless a path is given.

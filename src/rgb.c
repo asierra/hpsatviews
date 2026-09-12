@@ -23,6 +23,7 @@
 #include "logger.h"
 #include "metadata.h"
 #include "footprint.h"
+#include "projection.h"
 #include "nocturnal_pseudocolor.h"
 #include "parse_expr.h"
 #include "processing.h"
@@ -1080,21 +1081,10 @@ static bool write_output(RgbContext *ctx, const char *product_label) {
             // Native (geostationary) metadata.
             meta_out = ctx->channels[ctx->ref_channel_idx];
 
-            // 1. Apply the crop offset to the origin (in original radians).
-            meta_out.geotransform[0] += ctx->crop_x_offset * meta_out.geotransform[1];
-            meta_out.geotransform[3] += ctx->crop_y_offset * meta_out.geotransform[5];
-
-            // Adjust pixel scale in geotransform if the image was scaled.
-            if (ctx->opts.scale != 1) {
-                double scale_factor = (ctx->opts.scale < 0) ? -ctx->opts.scale : ctx->opts.scale;
-                if (ctx->opts.scale > 1) {
-                    meta_out.geotransform[1] /= scale_factor;
-                    meta_out.geotransform[5] /= scale_factor;
-                } else {
-                    meta_out.geotransform[1] *= scale_factor;
-                    meta_out.geotransform[5] *= scale_factor;
-                }
-            }
+            // Crop offset folded into the origin, then the resampling stretch.
+            projection_output_geotransform(ctx->channels[ctx->ref_channel_idx].geotransform,
+                                           ctx->crop_x_offset, ctx->crop_y_offset,
+                                           ctx->opts.scale, meta_out.geotransform);
         }
         // Pass 0,0 as the offset: it's already folded into meta_out.geotransform.
         write_geotiff_rgb(ctx->opts.output_filename, &ctx->final_image, &meta_out, 0, 0,
@@ -1523,9 +1513,11 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
                 metadata_set_projection(meta, "EPSG:4326");
             }
             // Already in 4326: the footprint is the output rectangle itself.
-            if (footprint_from_latlon_box(ctx.final_lon_min, ctx.final_lat_min, ctx.final_lon_max,
-                                          ctx.final_lat_max, &fp) == 0)
-                metadata_set_footprint(meta, &fp);
+            if (cfg->save_json) {
+                if (footprint_from_latlon_box(ctx.final_lon_min, ctx.final_lat_min,
+                                              ctx.final_lon_max, ctx.final_lat_max, &fp) == 0)
+                    metadata_set_footprint(meta, &fp);
+            }
         } else {
             // Compute bounds in metres for geostationary projection metadata.
             DataNC *ref = &ctx.channels[ctx.ref_channel_idx];
@@ -1542,8 +1534,10 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
                 double y_max = (y_bot > y_top) ? y_bot : y_top;
                 if (record_bounds)
                     metadata_set_geometry(meta, x_min, y_min, x_max, y_max);
-                if (footprint_from_geos_box(ref, x_min, y_min, x_max, y_max, &fp) == 0)
-                    metadata_set_footprint(meta, &fp);
+                if (cfg->save_json) {
+                    if (footprint_from_geos_box(ref, x_min, y_min, x_max, y_max, &fp) == 0)
+                        metadata_set_footprint(meta, &fp);
+                }
             }
 
             if (record_bounds) {
@@ -1568,6 +1562,34 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     if (!apply_scaling(&ctx)) {
         LOG_ERROR("Failure in final scaling.");
         goto cleanup;
+    }
+
+    // The output grid, for STAC's proj: extension. It has to come AFTER the
+    // scaling — this is where final_image finally has the size the file will
+    // have — and it mirrors what write_output() hands the GeoTIFF writer.
+    // Gated on -j because the WKT2 export builds a PROJ pipeline, ~17 ms in a
+    // process that has not touched GDAL, and is pure waste with no sidecar.
+    if (cfg->save_json) {
+        const int out_w = (int)ctx.final_image.width, out_h = (int)ctx.final_image.height;
+        DataNC grid_ref = ctx.channels[ctx.ref_channel_idx];
+        double stac_gt[6];
+        int epsg = 0;
+        if (ctx.opts.do_reprojection) {
+            grid_ref.proj_code = PROJ_LATLON;
+            epsg = 4326;
+            stac_gt[0] = (ctx.final_lon_max - ctx.final_lon_min) / (double)out_w;
+            stac_gt[1] = 0.0;
+            stac_gt[2] = ctx.final_lon_min;
+            stac_gt[3] = 0.0;
+            stac_gt[4] = (ctx.final_lat_min - ctx.final_lat_max) / (double)out_h;
+            stac_gt[5] = ctx.final_lat_max;
+        } else {
+            projection_stac_transform(&grid_ref, ctx.crop_x_offset, ctx.crop_y_offset,
+                                      ctx.opts.scale, stac_gt);
+        }
+        char *wkt2 = projection_wkt2_from_nc(&grid_ref);
+        metadata_set_grid(meta, stac_gt, out_w, out_h, wkt2, epsg);
+        projection_free_wkt(wkt2);
     }
 
     // Generate output filename if not specified.
