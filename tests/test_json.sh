@@ -232,7 +232,7 @@ validate_stac $RGB_ITEM
 # Procedencia de un producto a medida: la expresion ES la combinacion de bandas,
 # y --minmax cambia el resultado. Ninguno de los dos se registraba en rgb.
 ../bin/hpsv rgb -v -m custom --expr "C15-C13; C14-C11; C13" -s -4 -j \
-    --minmax "-6.7,2.6" -N "Ceniza Volcanica:Ash" "$C13" -o custom_json_out.png
+    --minmax "-6.7,2.6" -N "ash:Ceniza Volcanica" "$C13" -o custom_json_out.png
 python3 - <<'PROVPY' || exit 1
 import json, sys
 d = json.load(open("hpsv_G16_conus_2024220_1302_Ceniza-Volcanica.json"))
