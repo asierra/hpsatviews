@@ -378,12 +378,24 @@ escribir. El WKT2 es lo único que necesita GDAL: **6 ms** la primera vez que un
 proceso lo toca, y **0 ms** escribiendo GeoTIFF, porque el escritor ya creó el
 SRS. La cadena de producción, que usa `-t -j`, no paga nada.
 
-**Pendiente menor, que la fase 3 debería decidir:** el CRS de la rejilla fija
-sale como `PROJCRS["unknown"]`, porque se arma desde una cadena PROJ.4 sin
-autoridad. Los parámetros están completos y es de ellos de lo que dependen los
-clientes, pero un nombre propio —«GOES-R ABI fixed grid»— mejoraría la ficha del
-catálogo. Cambiarlo altera los bytes de los GeoTIFF ya producidos, así que no se
-tocó aquí.
+**Pendiente menor:** el CRS de la rejilla fija sale como `PROJCRS["unknown"]`,
+porque se arma desde una cadena PROJ.4 sin autoridad. Los parámetros están
+completos y es de ellos de lo que dependen los clientes, pero un nombre propio
+—«GOES-R ABI fixed grid»— mejoraría la ficha del catálogo. Cambiarlo altera los
+bytes de los GeoTIFF ya producidos, así que no se tocó.
+
+**Y no confundirlo con esto** (medido el 2026-09-12, al escribir el lector de la
+fase 4): `rasterio`/`pyproj` dicen que el CRS del `Item` **no es igual** al del
+GeoTIFF en rejilla fija, aunque los parámetros sean idénticos y los puntos de
+prueba caigan en el mismo sitio con 0.000000 m de diferencia. La causa no es el
+nombre ni los nombres de eje: es que **al leer el GeoTIFF, GDAL reconstruye el
+CRS desde las claves TIFF y le añade `REMARK["PROJ CRS string: +proj=geos …"]`**,
+que el WKT2 del `Item` no lleva, y `pyproj` cuenta el remark como parte del CRS.
+Aislado: quitando sólo el remark, `==` da verdadero; igualando sólo los nombres
+de eje, sigue dando falso. No hay nada que arreglar en `hpsv` —el remark lo
+sintetiza el lector de GDAL— y ponerle nombre al CRS **no** lo resolvería. Lo
+que hay que corregir, si acaso, es la comparación: `CRS.to_dict()` compara los
+parámetros e ignora remarks y nombres de eje.
 
 ### Fase 3 — Emitir el `Item` — **HECHA 2026-09-12**
 
