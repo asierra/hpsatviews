@@ -11,6 +11,7 @@
 #include "config.h"
 #include "logger.h"
 #include "metadata.h"
+#include "footprint.h"
 #include "reader_nc.h"
 #include "reader_cpt.h"
 #include "writer_png.h"
@@ -440,19 +441,33 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             else writer_save_png(outfn, &fg_final);
         }
 
+        // Fixed-grid extent in metres. gt[1] is the UNSCALED pixel size, so it
+        // has to be paired with the pre-resampling size: multiplied by
+        // fg_final's width a -s -4 run reported a quarter of the real extent,
+        // contradicting the geotransform of the GeoTIFF written beside it.
+        double *gt = c01.geotransform;
+        double h = (c01.proj_info.valid) ? c01.proj_info.sat_height : 35786023.0;
+        double x_min = (gt[0] + crop_x * gt[1]) * h;
+        double y_top = (gt[3] + crop_y * gt[5]) * h;
+        double x_max = x_min + (fg_base.width * gt[1] * h);
+        double y_bot = y_top + (fg_base.height * gt[5] * h);
+
+        double y_min = (y_bot < y_top) ? y_bot : y_top;
+        double y_max_val = (y_bot > y_top) ? y_bot : y_top;
+
+        // The geographic footprint does not depend on `crs`, on the navigation
+        // grid, or on having reprojected: ~128 coordinate transforms against
+        // the ~2 s compute_navigation_nc() costs on a full disk. So a plain PNG,
+        // which carries no geometry at all today, gets one too.
+        if (!cfg->do_reprojection) {
+            Footprint fp;
+            if (footprint_from_geos_box(&c01, x_min, y_min, x_max, y_max_val, &fp) == 0)
+                metadata_set_footprint(meta, &fp);
+        }
+
         // Record fixed-grid geometry in metadata (only if this is the final step).
         if (nav_loaded && !cfg->do_reprojection) {
-            double *gt = c01.geotransform;
-            double h = (c01.proj_info.valid) ? c01.proj_info.sat_height : 35786023.0;
-            double x_min = (gt[0] + crop_x * gt[1]) * h;
-            double y_top = (gt[3] + crop_y * gt[5]) * h;
-            double x_max = x_min + (fg_final.width * gt[1] * h);
-            double y_bot = y_top + (fg_final.height * gt[5] * h);
-            
-            double y_min = (y_bot < y_top) ? y_bot : y_top;
-            double y_max_val = (y_bot > y_top) ? y_bot : y_top;
-            
-            metadata_set_geometry(meta, (float)x_min, (float)y_min, (float)x_max, (float)y_max_val);
+            metadata_set_geometry(meta, x_min, y_min, x_max, y_max_val);
             const char* sat_crs = "geostationary";
             if (c01.sat_id == SAT_GOES16) sat_crs = "goes16";
             else if (c01.sat_id == SAT_GOES17) sat_crs = "goes17";
@@ -578,6 +593,12 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
 
         metadata_set_geometry(meta, final_lon_min, final_lat_min, final_lon_max, final_lat_max);
         metadata_set_projection(meta, "EPSG:4326");
+        {   // Already in 4326: the footprint is the output rectangle itself.
+            Footprint fp;
+            if (footprint_from_latlon_box(final_lon_min, final_lat_min,
+                                          final_lon_max, final_lat_max, &fp) == 0)
+                metadata_set_footprint(meta, &fp);
+        }
 
         final_w = geo_final.width;
         final_h = geo_final.height;

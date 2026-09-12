@@ -74,6 +74,49 @@ validate pseudo_json_out.json
 check_key pseudo_phase_json_out.json "palette" "phase.cpt"
 validate pseudo_phase_json_out.json
 
+# Huella geográfica (EPSG:4326). Se emite siempre, incluso en el PNG pelado que
+# no lleva `bounds` ni `geometry`, y en la rejilla fija sigue el limbo en vez de
+# las esquinas del ráster.
+check_footprint() {
+    local file="$1" what="$2"
+    if ! python3 - "$file" "$what" <<'FPPY'
+import json, sys
+
+d = json.load(open(sys.argv[1]))
+bbox = d.get("bbox_4326")
+fp = d.get("footprint")
+if bbox is None or fp is None:
+    sys.exit("falta bbox_4326 o footprint")
+ring = fp["coordinates"][0]
+if fp.get("type") != "Polygon" or len(ring) < 5:
+    sys.exit("anillo degenerado: %d vértices" % len(ring))
+if ring[0] != ring[-1]:
+    sys.exit("el anillo no está cerrado")
+w, s_, e, n = bbox
+if not (-90 <= s_ < n <= 90):
+    sys.exit("latitudes fuera de rango o invertidas: %s %s" % (s_, n))
+for lon, lat in ring:
+    if not (-180 <= lon <= 180 and -90 <= lat <= 90):
+        sys.exit("vértice fuera de rango: %s %s" % (lon, lat))
+# El bbox tiene que ser el del anillo. Si cruza el antimeridiano (W>E) la
+# comparación directa no aplica, así que sólo se verifica en el caso normal.
+if w < e:
+    lons = [p[0] for p in ring]
+    lats = [p[1] for p in ring]
+    for got, want, name in ((w, min(lons), "W"), (e, max(lons), "E"),
+                            (s_, min(lats), "S"), (n, max(lats), "N")):
+        if abs(got - want) > 1e-6:
+            sys.exit("bbox %s=%s no coincide con el anillo (%s)" % (name, got, want))
+FPPY
+    then
+        echo "FAIL: $file huella inválida ($what)" >&2
+        exit 1
+    fi
+    echo "OK: $file huella coherente ($what)"
+}
+
+check_footprint gray_json_out.json "PNG sin geometria"
+
 # Rejilla fija con geometría (-t carga navegación): bounds en METROS y crs de la casa.
 ../bin/hpsv gray -v -s -4 -j -t "$C13" -o geom_fixed_json_out.tif
 check_key geom_fixed_json_out.json "crs" "goes16"
@@ -83,7 +126,22 @@ validate geom_fixed_json_out.json
 # Reproyectado (-G): crs EPSG:4326 y bounds en grados.
 ../bin/hpsv gray -v -s -4 -j -G "$C13" -o geom_geo_json_out.png
 check_key geom_geo_json_out.json "crs" "EPSG:4326"
+check_footprint geom_geo_json_out.json "reproyectado"
 validate geom_geo_json_out.json
+
+# La extensión en metros no puede depender de -s: gt[1] es el tamaño de píxel
+# SIN escalar, y multiplicarlo por el ancho ya reducido daba un cuarto de la
+# extensión real, contradiciendo la geotransformación del propio GeoTIFF.
+../bin/hpsv gray -v -j -t "$C13" -o extent_full_json_out.tif
+../bin/hpsv gray -v -j -t -s -4 "$C13" -o extent_scaled_json_out.tif
+python3 - <<'EXPY' || exit 1
+import json, sys
+a = json.load(open("extent_full_json_out.json"))["bounds"]
+b = json.load(open("extent_scaled_json_out.json"))["bounds"]
+if max(abs(x - y) for x, y in zip(a, b)) > 1.0:
+    sys.exit("FAIL: -s cambio la extension en metros\n  sin -s: %s\n  con -s: %s" % (a, b))
+print("OK: la extension en metros no depende de -s")
+EXPY
 
 # rgb: regresión de metadata_set_command(), que sólo se llamaba desde
 # processing.c, así que los sidecars de rgb salían sin "command" (y el nombre
@@ -91,6 +149,7 @@ validate geom_geo_json_out.json
 ../bin/hpsv rgb -v -m ash -s -4 -j "$C13" -o rgb_json_out.png
 check_key rgb_json_out.json "command" "rgb"
 check_key rgb_json_out.json "mode" "ash"
+check_footprint rgb_json_out.json "rgb rejilla fija"
 validate rgb_json_out.json
 
 # Sin -j: no debe generarse sidecar (opt-in).

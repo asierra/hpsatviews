@@ -49,9 +49,11 @@ struct MetadataContext {
     time_t timestamp;
     char product[128];
     
-    float bbox[4];
+    double bbox[4];
     char projection[32];
     bool has_bbox;
+    Footprint footprint;
+    bool has_footprint;
     bool has_clip;  // true only when the user specified an explicit clip region
     
     ChannelInfo channels[MAX_CHANNELS];
@@ -175,11 +177,17 @@ void metadata_set_projection(MetadataContext *ctx, const char *proj) {
     strncpy(ctx->projection, proj, sizeof(ctx->projection) - 1);
 }
 
-void metadata_set_geometry(MetadataContext *ctx, float x1, float y1, float x2, float y2) {
+void metadata_set_geometry(MetadataContext *ctx, double x1, double y1, double x2, double y2) {
     if(!ctx) return;
     ctx->bbox[0] = x1; ctx->bbox[1] = y1;
     ctx->bbox[2] = x2; ctx->bbox[3] = y2;
     ctx->has_bbox = true;
+}
+
+void metadata_set_footprint(MetadataContext *ctx, const Footprint *fp) {
+    if (!ctx || !fp || !fp->valid) return;
+    ctx->footprint = *fp;
+    ctx->has_footprint = true;
 }
 
 void metadata_set_clip(MetadataContext *ctx, bool clipped) {
@@ -407,15 +415,23 @@ int metadata_save_json(MetadataContext *ctx, const char *filename) {
         json_write_string(w, "crs", ctx->projection);
     }
     if (ctx->has_bbox) {
-        json_write_float_array(w, "bounds", ctx->bbox, 4);
+        json_write_double_array(w, "bounds", ctx->bbox, 4);
     }
 
     // Geometry block.
     if (ctx->has_bbox) {
         json_begin_object(w, "geometry");
         json_write(w, "projection", ctx->projection);
-        json_write_float_array(w, "bbox", ctx->bbox, 4);
+        json_write_double_array(w, "bbox", ctx->bbox, 4);
         json_end_object(w);
+    }
+
+    // Geographic footprint. Always EPSG:4326, whatever `crs` says, and computed
+    // even when no reprojection happened: it is what a catalogue searches on.
+    if (ctx->has_footprint) {
+        json_write_double_array(w, "bbox_4326", ctx->footprint.bbox, 4);
+        json_write_polygon(w, "footprint", ctx->footprint.lon, ctx->footprint.lat,
+                           ctx->footprint.count);
     }
 
     // Canales (array de objetos)

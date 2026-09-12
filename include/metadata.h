@@ -9,7 +9,8 @@
 #define HPSATVIEWS_METADATA_H_
 
 #include <stdbool.h>
-#include "datanc.h" 
+#include "datanc.h"
+#include "footprint.h"
 
 /// Opaque handle for metadata state.
 typedef struct MetadataContext MetadataContext;
@@ -51,7 +52,12 @@ void metadata_set_clip(MetadataContext *ctx, bool clipped);
 /// [W, S, E, N] — the GeoJSON and STAC order, which is what the three callers
 /// already pass. Units follow the projection: degrees once reprojected
 /// (EPSG:4326), metres on the satellite's fixed grid.
-void metadata_set_geometry(MetadataContext *ctx, float x1, float y1, float x2, float y2);
+void metadata_set_geometry(MetadataContext *ctx, double x1, double y1, double x2, double y2);
+
+/// Records the geographic footprint (EPSG:4326) of the output: the ring that
+/// follows the raster edge and the Earth's limb, plus its bbox. Independent of
+/// metadata_set_geometry(), which keeps describing the output's own CRS.
+void metadata_set_footprint(MetadataContext *ctx, const Footprint *fp);
 
 /// Canonical satellite name ("G16") for an identifier; "unknown" if out of range.
 const char* metadata_sat_name(SatelliteID id);

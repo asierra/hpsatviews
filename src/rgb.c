@@ -22,6 +22,7 @@
 #include "image.h"
 #include "logger.h"
 #include "metadata.h"
+#include "footprint.h"
 #include "nocturnal_pseudocolor.h"
 #include "parse_expr.h"
 #include "processing.h"
@@ -1508,12 +1509,23 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         }
     }
 
-    // Write geometry metadata for JSON sidecar.
-    if (ctx.has_navigation || ctx.opts.has_clip) {
+    // Write geometry metadata for JSON sidecar. The geographic footprint has a
+    // wider guard than `crs`/`bounds`: it needs neither navigation nor a clip,
+    // only the file's projection parameters, so it is emitted even for a plain
+    // PNG, which carries no geometry at all today.
+    {
+        const bool record_bounds = (ctx.has_navigation || ctx.opts.has_clip);
+        Footprint fp;
         if (ctx.opts.do_reprojection) {
-            metadata_set_geometry(meta, ctx.final_lon_min, ctx.final_lat_min, ctx.final_lon_max,
-                                  ctx.final_lat_max);
-            metadata_set_projection(meta, "EPSG:4326");
+            if (record_bounds) {
+                metadata_set_geometry(meta, ctx.final_lon_min, ctx.final_lat_min, ctx.final_lon_max,
+                                      ctx.final_lat_max);
+                metadata_set_projection(meta, "EPSG:4326");
+            }
+            // Already in 4326: the footprint is the output rectangle itself.
+            if (footprint_from_latlon_box(ctx.final_lon_min, ctx.final_lat_min, ctx.final_lon_max,
+                                          ctx.final_lat_max, &fp) == 0)
+                metadata_set_footprint(meta, &fp);
         } else {
             // Compute bounds in metres for geostationary projection metadata.
             DataNC *ref = &ctx.channels[ctx.ref_channel_idx];
@@ -1528,20 +1540,25 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
 
                 double y_min = (y_bot < y_top) ? y_bot : y_top;
                 double y_max = (y_bot > y_top) ? y_bot : y_top;
-                metadata_set_geometry(meta, (float)x_min, (float)y_min, (float)x_max, (float)y_max);
+                if (record_bounds)
+                    metadata_set_geometry(meta, x_min, y_min, x_max, y_max);
+                if (footprint_from_geos_box(ref, x_min, y_min, x_max, y_max, &fp) == 0)
+                    metadata_set_footprint(meta, &fp);
             }
 
-            const char *sat_crs = "geostationary";
-            int sid = ctx.channels[ctx.ref_channel_idx].sat_id;
-            if (sid == SAT_GOES16)
-                sat_crs = "goes16";
-            else if (sid == SAT_GOES17)
-                sat_crs = "goes17";
-            else if (sid == SAT_GOES18)
-                sat_crs = "goes18";
-            else if (sid == SAT_GOES19)
-                sat_crs = "goes19";
-            metadata_set_projection(meta, sat_crs);
+            if (record_bounds) {
+                const char *sat_crs = "geostationary";
+                int sid = ctx.channels[ctx.ref_channel_idx].sat_id;
+                if (sid == SAT_GOES16)
+                    sat_crs = "goes16";
+                else if (sid == SAT_GOES17)
+                    sat_crs = "goes17";
+                else if (sid == SAT_GOES18)
+                    sat_crs = "goes18";
+                else if (sid == SAT_GOES19)
+                    sat_crs = "goes19";
+                metadata_set_projection(meta, sat_crs);
+            }
         }
     }
 

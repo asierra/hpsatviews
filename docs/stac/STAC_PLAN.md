@@ -282,29 +282,67 @@ Y de paso, dos defectos del emisor descubiertos al verificar:
   salidas, como en `processing.c`. Conviene avisar a producción para que retire
   el comentario y deje de ignorar el código de salida.
 
-### Fase 1 — La huella en EPSG:4326, siempre
+### Fase 1 — La huella en EPSG:4326, siempre — **HECHA 2026-09-12**
 
-Es la única parte que puede sorprender. Hoy hay dos regímenes: con `-G` el
-`bbox` está en grados y `crs` es `EPSG:4326`; sin reproyección está **en
-metros** sobre la rejilla fija (`src/processing.c:447-455`) y `crs` es una
-etiqueta que no identifica sistema alguno (`"goes16"`, `"geostationary"`).
+`src/footprint.c` calcula la huella geográfica de **toda** salida y la emite en
+el sidecar como `bbox_4326` (recuadro `[W,S,E,N]`) y `footprint` (GeoJSON
+`Polygon`). Son claves **aditivas**: `crs`, `bounds` y `geometry` siguen
+significando exactamente lo que significaban, así que `mapdrawer` no se entera
+hasta la fase 4, y la fase 3 sólo tiene que mapear `bbox_4326` → `bbox` y
+`bounds` → `proj:bbox`.
 
-* **Sector recortado:** transformar las cuatro esquinas alcanza. La maquinaria
-  está en `src/reprojection.c`.
-* **Disco completo: no alcanza.** El limbo es una elipse; las esquinas del
-  rectángulo caen fuera de la Tierra y el resultado se sale de ±90. Opciones:
-  (a) recorrer el borde de la imagen invirtiendo a lon/lat y descartar los
-  puntos inválidos; (b) muestrear analíticamente el círculo del limbo —radio
-  angular `asin(Re/(Re+h))` ≈ 8.7° visto del satélite, ≈ 81.3° geocéntricos
-  desde el punto subsatelital— con ~72 puntos a 5° y emitir ese polígono. La (b)
-  es más predecible. Comprobación de cordura: para disco completo el `bbox`
-  debe salir cercano a `lon_0 ± 81.3°`, `±81.3°` de latitud.
-* **El recuadro en metros no se pierde:** va a `proj:bbox`, que es exactamente
-  el recuadro en el sistema del ítem.
-* **Caso sin geometría:** cuando no se calcula geometría, hoy `crs` queda en
-  `geographics` y no hay `bounds` (ver README §5.7). Un `Item` exige `geometry`;
-  STAC admite `geometry: null` —y entonces sin `bbox`—, válido pero imposible de
-  buscar. **Que `--stac` falle con mensaje claro** en vez de emitir un huérfano.
+**Cómo se resolvió el limbo.** No con ninguna de las dos opciones que este
+documento proponía. Se camina el borde del ráster y, donde una muestra cae fuera
+del disco visible, se lleva por bisección hacia el centro hasta volver a la
+Tierra; donde un borde *cruza* el limbo se biseca además **a lo largo del
+borde** para clavar esa esquina. Lo segundo no era opcional: la esquina noroeste
+de un sector CONUS sí se sale del disco, y redondearla hacia el centro costaba
+medio grado de latitud. Una sola rutina sirve para disco completo, sector y
+recorte.
+
+**Y no usa PROJ.** La versión con `OCTTransform` de GDAL —la que este documento
+recomendaba tras verificar que GDAL ya está enlazado— funcionó y dio las mismas
+coordenadas, pero gastaba ~17 ms en construir el *pipeline* de PROJ, la décima
+parte de una corrida pequeña, para 260 puntos. Se sustituyó por la misma forma
+cerrada que `compute_navigation_nc()` ya ejecuta por píxel
+(`src/reader_nc.c:537-570`). Las dos coinciden en 3e-06° (36 cm, contra píxeles
+de 500 m) y la analítica cuesta **menos de 1 ms**, medido con `LOG_TIMING` tanto
+en CONUS como en disco completo.
+
+Comprobaciones de cordura, las que este plan pedía:
+
+| Caso | `bbox_4326` |
+|---|---|
+| G19 disco completo (`lon_0 = -75`) | `[-156.2995, -81.3282, 6.2994, 81.3282]`, o sea `lon_0 ± 81.30°` |
+| G18 disco completo (`lon_0 = -137`) | `[141.7005, -81.3282, -55.7006, 81.3282]`, **cruza el antimeridiano** |
+| G16 CONUS | `[-152.1135, 14.5618, -52.9183, 56.7807]`, 130 vértices, 2 cruces de borde |
+
+**El antimeridiano era una trampa que el plan no había visto.** Las longitudes
+se acumulan como diferencias respecto al meridiano subsatelital, no en crudo: un
+disco de GOES-West va de −218° a −56°, cuyo mínimo y máximo ingenuos son
+`[-179, +176]`, es decir el planeta entero. `ring_bbox()` pliega el envolvimiento
+a la convención de STAC —oeste > este— y marca `crosses_antimeridian`.
+
+**Caso sin geometría: ya no existe.** La huella no necesita rejilla de
+navegación, sólo los parámetros de proyección del archivo, así que se emite
+incluso en el PNG pelado que hoy no lleva `crs` ni `bounds`. La fase 3 ya no
+tiene que hacer fallar a `--stac` por falta de geometría, salvo con archivos sin
+proyección utilizable.
+
+Trabajo adicional que entró con la fase:
+
+* `src/projection.c` es ahora el único sitio que arma el SRS; `get_projection_wkt()`
+  era `static` en `src/writer_geotiff.c`. De paso, `+sweep` se **lee** del archivo
+  (`sweep_angle_axis`) en vez de estar incrustado. El GeoTIFF sale byte a byte idéntico.
+* `MetadataContext.bbox` pasó de `float` a `double`, como pedía la corrección 4.
+* **Bug corregido**: con `-s`, el `bounds` en metros de la rejilla fija salía a un
+  cuarto de la extensión real (`processing.c` multiplicaba el ancho ya reducido
+  por el tamaño de píxel sin escalar), contradiciendo la geotransformación del
+  GeoTIFF escrito al lado. Con prueba de regresión en `tests/test_json.sh`.
+* **Desbordamiento latente cerrado** en `src/writer_json.c`: `check_comma()`
+  indexaba `needs_comma[depth]` sin tope mientras los `begin_*` incrementaban
+  `depth` sin límite. No se alcanzaba con tres niveles de anidamiento, pero el
+  polígono le dio a GCC un camino concreto y lo delató.
 
 ### Fase 2 — Cablear la proyección hasta el contexto
 
@@ -384,10 +422,10 @@ quedan productos en disco que ningún lector entiende.
 
 ## Riesgos conocidos
 
-* **El limbo del disco completo** (fase 1) dejó de ser el riesgo que parecía:
-  `OCTTransform` de GDAL, ya enlazado, resuelve el recorrido del borde con
-  reporte de puntos fallidos. El riesgo que queda es de convención —el orden
-  de ejes de GDAL 3— no de geometría.
+* **El limbo del disco completo** (fase 1) está resuelto y medido; ver la fase 1.
+  El riesgo real no era la geometría del limbo sino el **antimeridiano**, que
+  este documento no mencionaba: sin tratarlo, un disco de GOES-West declara
+  cobertura mundial.
 * **`COMPRESS=ZSTD`** (`src/writer_geotiff.c:273`) es COG válido, pero si el
   objetivo es que terceros lean los activos, reduce la audiencia frente a
   DEFLATE o WEBP. Conviene poder elegir la compresión cuando la salida es para
@@ -401,16 +439,14 @@ quedan productos en disco que ningún lector entiende.
 
 ## Primer paso de la siguiente sesión
 
-La fase 0 está cerrada y D1/D2/D3 están respondidas arriba, con fecha. Lo que
-sigue es la **fase 1**, la huella en EPSG:4326:
+Fases 0 y 1 cerradas. Sigue la **fase 2**, cablear la proyección hasta el
+contexto, que ahora es mucho más corta de lo que el plan suponía:
 
-1. Exponer la construcción del SRS geostacionario fuera de `writer_geotiff.c`
-   (hoy `static`), de modo que el recorrido del borde y el GeoTIFF usen la misma
-   cadena PROJ. De paso, leer `sweep_angle_axis` en vez de incrustarlo.
-2. Recorrer el borde de la imagen con `OCTTransform` sobre el par
-   (geos → 4326), con `OAMS_TRADITIONAL_GIS_ORDER`, descartando los puntos que
-   GDAL marque como fallidos. Comprobación de cordura para disco completo: el
-   `bbox` debe salir cerca de `lon_0 ± 81.3°` y `±81.3°` de latitud.
-3. Pasar `MetadataContext.bbox` de `float` a `double` antes de meter grados ahí.
-4. Decidir qué hace `--stac` cuando no hay geometría: fallar con mensaje claro,
-   como dice la fase 1, en vez de emitir un huérfano.
+1. `src/projection.c` ya existe y expone el SRS; falta añadir `proj:wkt2`, que
+   exige `OSRExportToWktEx` con `FORMAT=WKT2_2019` (lo que hay hoy es WKT1).
+2. Llevar `proj:transform` (la geotransformación en metros, que
+   `processing.c`/`rgb.c` ya calculan) y `proj:shape` (`final_w`/`final_h`) al
+   `MetadataContext`.
+3. Decidir el `proj:epsg`: `null` en la rejilla fija, `4326` reproyectado.
+
+Y sólo entonces la fase 3.
