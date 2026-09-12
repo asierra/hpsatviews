@@ -525,6 +525,14 @@ diseño propio; el Item lo sustituye.
   núcleo y las extensiones de STAC es un paso aparte, anotado en
   `docs/stac/STAC_PLAN.md`.
 
+**¿Acervo ya en disco?** `tools/stac_sweep.py` reconstruye Items desde GeoTIFF
+escritos antes de que `-j` los emitiera, agrupando el archivo de rejilla fija y
+el reproyectado de una escena en un solo Item con dos activos. Recupera todo lo
+que el archivo lleva —satélite, sector, instante, producto y la georreferencia
+completa, de donde sale la misma huella que sigue el limbo— y declara
+`hpsv:reconstructed: true`, porque `hpsv:channels` y `hpsv:enhancements` nunca se
+guardaron dentro del GeoTIFF y no se inventan. Los PNG quedan fuera de alcance.
+
 **Casos de uso:**
 * **Reproducibilidad:** documentación exacta de los parámetros de realce aplicados (gamma, CLAHE, Rayleigh, etc.) y del producto/canal de origen.
 * **Integración:** automatización de flujos de visualización, e indexación por cualquier cliente de STAC sin un lector de la casa.

@@ -518,6 +518,14 @@ this flag wrote a sidecar of our own design; the Item replaces it.
   emits and controls; validation against the official STAC core and extension
   schemas is a separate step, tracked in `docs/stac/STAC_PLAN.md`.
 
+**Archive already on disk?** `tools/stac_sweep.py` rebuilds Items from GeoTIFFs
+written before `-j` emitted them, grouping the fixed-grid and reprojected files
+of a scene into one Item with two assets. It recovers everything the file
+carries — satellite, sector, instant, product, and the full georeference, from
+which the same limb-following footprint is computed — and declares
+`hpsv:reconstructed: true`, because `hpsv:channels` and `hpsv:enhancements` were
+never stored inside the GeoTIFF and are not invented. PNGs are out of reach.
+
 **Use cases:**
 * **Reproducibility:** exact documentation of the applied enhancement parameters (gamma, CLAHE, Rayleigh, etc.) and the source product/channel.
 * **Integration:** automation of visualization pipelines, and indexing by any STAC client without a house-specific reader.

@@ -522,7 +522,7 @@ completa de `crea_rgb_meso.py`: costa de 1 px alineada y `"satellite": "G19"`.
 * Lo que mesoescala publica junto a la imagen sigue siendo el sidecar plano de
   `mapdrawer --o_crs`, no el Item.
 
-### Fase 5 — Validación externa y barrido retroactivo — **validación HECHA 2026-09-12; barrido pendiente**
+### Fase 5 — Validación externa y barrido retroactivo — **HECHA 2026-09-12**
 
 **Validación contra los esquemas oficiales, hecha.** `tests/test_json.sh` valida
 cada Item contra el esquema del núcleo y el de cada extensión que declara.
@@ -552,15 +552,31 @@ cambios.
 «prohíbe» `eo:bands` en `properties`. No es exacto: lo que exige es que esté en
 el activo. Un Item que lo tenga en ambos sitios valida.
 
-**Barrido retroactivo, pendiente.** Reconstruir Items de lo ya producido desde
-los GeoTIFF. Lo que las etiquetas GDAL y el nombre permiten: satélite, sector,
-instante, producto, y la georreferencia completa (geotransformación y CRS), de
-donde sale la huella con el mismo código de `src/footprint.c`. Lo que **no** se
-puede recuperar: `hpsv:channels` —magnitud física, unidades, rango real— y
-`hpsv:enhancements`, porque nunca se escribieron dentro del GeoTIFF. Los PNG sin
-georreferencia quedan fuera por completo. Conviene que sea una herramienta
-aparte en `tools/`, no parte de `hpsv`: lee archivos que ya existen y no
-participa del camino de proceso.
+**Barrido retroactivo, hecho.** `tools/stac_sweep.py`, herramienta aparte y no
+parte de `hpsv`: lee archivos que ya existen y no participa del camino de
+proceso. Agrupa por identidad de escena, así que el archivo de rejilla fija y el
+`_geo` de una misma corrida caen en **un** Item con dos activos, igual que los
+emite `hpsv`.
+
+* **Se recupera** satélite, sector, instante, producto y banda de las etiquetas
+  GDAL, y la georreferencia completa del archivo, de donde salen `proj:*` y la
+  huella. El subcomando no lo registra ninguna etiqueta, pero la forma del
+  ráster lo delata: una banda sin paleta es `gray`, con paleta `pseudocolor`, y
+  tres bandas son un compuesto cuyo modo sí viaja en `product`.
+* **No se recupera** `hpsv:channels` ni `hpsv:enhancements`: nunca se
+  escribieron dentro del GeoTIFF. Los Items reconstruidos lo declaran con
+  `hpsv:reconstructed` y los omiten, en vez de inventarlos. Un GeoTIFF que no
+  escribió `hpsv` se omite entero.
+* **Los PNG quedan fuera**, como preveía el plan.
+
+**La huella existe ahora dos veces**, en C y en Python, porque el barrido lee
+GeoTIFF y no toca el emisor. Es deuda consciente, y lo que impide que se separen
+es `tests/test_sweep.sh`: reconstruye el Item de unos archivos para los que
+`hpsv` ya emitió el suyo y **compara los dos anillos vértice a vértice**. Por eso
+el port recorre el borde desde la misma esquina y en el mismo sentido que
+`src/footprint.c`, que no es cosmético. Coinciden hasta 1.6e-05° —unos 2 m—, y
+la diferencia es de elipsoide: el C lo lee del NetCDF y el Python del CRS del
+GeoTIFF.
 
 ## Mapeo campo por campo
 
