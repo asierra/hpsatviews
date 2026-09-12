@@ -231,15 +231,12 @@ int footprint_from_latlon_box(double lon_min, double lat_min, double lon_max,
     if (out == NULL) return 1;
     memset(out, 0, sizeof(*out));
 
+    // Four vertices, not a dense walk: in EPSG:4326 the edges of this box are
+    // straight lines, and GeoJSON says so too, so intermediate points carry no
+    // information.
     const double bx[4] = {lon_min, lon_max, lon_max, lon_min};
     const double by[4] = {lat_min, lat_min, lat_max, lat_max};
-    for (int e = 0; e < 4; e++) {
-        int nxt = (e + 1 < 4) ? e + 1 : 0;
-        for (int i = 0; i < FOOTPRINT_EDGE_SAMPLES; i++) {
-            double t = (double)i / (double)FOOTPRINT_EDGE_SAMPLES;
-            push(out, bx[e] + (bx[nxt] - bx[e]) * t, by[e] + (by[nxt] - by[e]) * t);
-        }
-    }
+    for (int e = 0; e < 4; e++) push(out, bx[e], by[e]);
     out->bbox[0] = lon_min; out->bbox[1] = lat_min;
     out->bbox[2] = lon_max; out->bbox[3] = lat_max;
     out->crosses_antimeridian = (lon_min > lon_max);

@@ -385,24 +385,66 @@ clientes, pero un nombre propio —«GOES-R ABI fixed grid»— mejoraría la fi
 catálogo. Cambiarlo altera los bytes de los GeoTIFF ya producidos, así que no se
 tocó aquí.
 
-### Fase 3 — Emitir el `Item`
+### Fase 3 — Emitir el `Item` — **HECHA 2026-09-12**
 
-Estructura obligatoria en la raíz: `type: "Feature"`, `stac_version`, `id`,
-`geometry`, `bbox`, `properties`, `links`, `assets`, más `collection` y
-`stac_extensions`. Todo lo demás va bajo `properties`, y lo que no es estándar
-con prefijo `hpsv:`.
+`-j` escribe ahora un `Item` de STAC en vez del sidecar propio, que es lo que D3
+decidió. Se verificó antes que nada en producción lo lee: `crea_rgbs_products.sh`
+lo pide con `-j` pero sólo para borrarlo, y ningún otro guion usa la bandera. Lo
+único que queda roto es `mapdrawer --metadata`, opcional y documentado para
+imágenes sin georreferencia, que corrige la fase 4.
 
-**`links` y `collection`:** la herramienta **no sabe** dónde se publicará el
-archivo. `links: []` es válido según el esquema y semánticamente huérfano; el
-indizador completa el grafo. El identificador de colección sí es identidad de
-producto y no ubicación: se recibe por bandera (`--stac-collection`). **No**
-agregar banderas de URL raíz: eso metería conocimiento de publicación en la
-herramienta de proceso.
+**Nombre e identidad.** El archivo se nombra por el `id`, **no** por `-o`: el
+`id` es la escena más el producto, sin el segmento de realces, así que dos
+corridas sobre la misma escena convergen en un solo Item en vez de dispersar uno
+por renderización. `metadata_build_id()` y `metadata_build_filename()` comparten
+el mismo tronco (`build_stem()`) y se separan justo ahí. El directorio sí viene
+de `-o`, porque es donde quedó el producto. Hay prueba de regresión: una corrida
+con `--clahe -g 1.5` tiene que caer en el mismo archivo.
 
-**Activos:** el tipo de medio depende de la bandera. Con `--cog`,
-`image/tiff; application=geotiff; profile=cloud-optimized`; sin ella, el
-controlador COG se usa igual pero sin pirámides (`:276`), así que el tipo es
-`image/tiff; application=geotiff` a secas. El PNG es `image/png`.
+**`--stac-collection` es opcional.** Sin ella el Item no lleva `collection`, que
+es STAC válido y deja que el indizador la asigne al ingerir. Hacerla obligatoria
+habría roto toda invocación de `-j` existente, y derivarla sola habría fijado un
+identificador público que el portal §4.4 advierte que no se renombra sin romper a
+quien lo citó.
+
+**Los activos llevan su propia rejilla, y eso no estaba previsto.** Una corrida
+con `-B` escribe dos rásteres en rejillas distintas, y el `proj:transform` del
+Item sólo puede describir uno: sin `proj:transform` por activo, un cliente
+georreferenciaría mal el otro — y `-B` es justo lo que usa producción. Cada
+activo lleva ahora `proj:shape`, `proj:transform` y, cuando aplica, `proj:epsg`,
+y la suite abre cada activo declarado y los compara contra el archivo real.
+
+**La huella de una reproyección ya no es su rectángulo.** El ráster reproyectado
+es un rectángulo en lat/lon, pero el dato de dentro no: las esquinas de un disco
+completo reproyectado son nodato. Declararlas haría que una búsqueda de catálogo
+coincidiera con mar abierto, así que sin `-c` la geometría es el anillo curvo de
+la rejilla de origen; con `-c` el recuadro sí es la huella, porque el recorte es
+él mismo una caja en lat/lon.
+
+**Decisiones que el plan ya fijaba y se respetaron:** `links` sale vacío, porque
+construir `self`/`root`/`parent` exige saber dónde se publicará el archivo; no
+hay bandera de URL raíz; los rangos físicos van en `hpsv:channels` y **no** en
+`raster:bands` de un activo, porque los activos son de 8 bits y colgarles
+kelvin afirmaría algo falso; el tipo de medio sigue a `--cog`.
+
+**`eo:bands` lista los tres canales**, no sólo el de referencia:
+`metadata_from_nc()` se llama ahora por cada canal cargado. Un `ash` declara
+C11, C13, C14 y C15. Los `common_name` de STAC sólo se emiten en las bandas
+reflectivas, donde son inequívocos; inventarle uno a las térmicas de ABI
+afirmaría algo falso a quien filtre por ello.
+
+**Sin huella no hay Item**: si el archivo no trae proyección utilizable, `-j`
+falla con mensaje claro y el código de salida lo refleja, en vez de escribir un
+huérfano sin `geometry`.
+
+**Deuda declarada.** Las versiones del núcleo y de cada extensión están
+`#define`adas juntas al principio de `metadata_save_stac_item()` precisamente
+para que revalidarlas sea una sola edición; hoy son 1.0.0 y v1.1.0, elegidas por
+ser las de despliegue más amplio, y **no se han validado contra los esquemas
+vivos** — eso es la fase 5. `docs/hpsatviews.schema.json` se borró, porque
+describía un formato que ya no se emite, y lo sustituye
+`docs/stac/hpsv-item.schema.json`, que cubre lo que esta herramienta emite y
+controla.
 
 ### Fase 4 — `mapdrawer` lee el `Item`
 
@@ -473,16 +515,24 @@ quedan productos en disco que ningún lector entiende.
 
 ## Primer paso de la siguiente sesión
 
-Fases 0, 1 y 2 cerradas: el sidecar ya lleva **todo** lo que un `Item` necesita
-—`bbox_4326`, `footprint`, `proj_transform`, `proj_shape`, `proj_epsg`,
-`proj_wkt2`, más lo que ya tenía— salvo la estructura y los activos. Sigue la
-**fase 3**, emitir el `Item`, con estas decisiones ya tomadas:
+Fases 0 a 3 cerradas: `hpsv` emite `Item`s de STAC. Quedan las dos fases de
+integración, y el orden entre ellas ya no es libre —los productos en disco ya
+llevan Item, así que `mapdrawer` es lo urgente—:
 
-1. `--stac` y `--stac-collection`, con `--stac` reusando la misma compuerta que
-   `-j` para el metadato que sólo se calcula para escribirse.
-2. `id` = escena más modo (D1); hace falta la función hermana de
-   `metadata_build_filename()` que corte antes del segmento de operaciones.
-3. Los activos exigen la lista de salidas que D1 describe: hoy
-   `MetadataContext` guarda una sola ruta, y trunca a 63 caracteres.
-4. `eo:bands` necesita los tres canales; `metadata_from_nc()` sólo registra el
-   de referencia.
+**Fase 4, `mapdrawer`.** Los cuatro sitios de la tabla de D3, con una diferencia
+respecto a lo que ese cuadro decía: `bounds` ya no existe, y lo que hay que leer
+es `bbox` en la raíz del Item y `properties["proj:wkt2"]`. Al hacerlo se borra
+`GOES_PROJECTIONS` de `mapdrawer.py:63-66`, la tabla privada de PROJ que hoy no
+coincide con la de `hpsv` —fija `+a`/`+b` y `+h`/`+lon_0` a mano mientras `hpsv`
+los lee del archivo— y que funciona sólo porque dos repositorios la sincronizan
+a mano.
+
+**Fase 5, validación externa y barrido retroactivo.** Validar contra los
+esquemas oficiales del núcleo y de cada extensión, y decidir explícitamente si
+se descargan en CI o se versionan copias locales; ahí se revalidan las versiones
+declaradas. El barrido reconstruye Items de lo ya producido desde los GeoTIFF,
+documentando que `hpsv:channels` y `hpsv:enhancements` no se pueden recuperar.
+
+Y, cuando toque, avisar a producción: `crea_rgbs_products.sh:202` sigue
+ignorando el código de salida de `hpsv` por un segfault que ya no existe y que
+nunca fue del sidecar.

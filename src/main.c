@@ -32,42 +32,40 @@
 typedef int (*ProcessingFunc)(const ProcessConfig *, MetadataContext *);
 
 /// Saves the JSON metadata sidecar when --json was requested.
-static void save_sidecar_json(const ProcessConfig *cfg, MetadataContext *meta, ArgParser *parser) {
+/* Writes the STAC Item beside the product. Named after the Item id, NOT after
+ * -o: the id is the scene plus the product (D1 of docs/stac/STAC_PLAN.md), so
+ * two runs over the same scene converge on one file instead of scattering an
+ * item per rendering. The directory does come from -o, because that is where
+ * the product went. */
+static int save_stac_item(const ProcessConfig *cfg, MetadataContext *meta, ArgParser *parser) {
     (void)parser;
     if (!cfg->save_json) {
-        return;
+        return 0;
     }
 
-    char json_path_buffer[1024];
-    const char *final_json_path = NULL;
-    char *generated_path = NULL;
+    char *id = metadata_build_id(meta);
+    if (!id) {
+        LOG_ERROR("Could not build the STAC Item id.");
+        return 1;
+    }
 
-    if (cfg->output_path_override) {
-        // Use the output path as base; replace extension with .json.
-        strncpy(json_path_buffer, cfg->output_path_override, sizeof(json_path_buffer) - 1);
-        json_path_buffer[sizeof(json_path_buffer) - 1] = '\0';
-
-        char *last_dot = strrchr(json_path_buffer, '.');
-        char *last_slash = strrchr(json_path_buffer, '/');
-
-        // Only strip extension if the dot is after the last directory separator.
-        if (last_dot && (!last_slash || last_dot > last_slash)) {
-            *last_dot = '\0';
-        }
-        
-        strncat(json_path_buffer, ".json", sizeof(json_path_buffer) - strlen(json_path_buffer) - 1);
-        final_json_path = json_path_buffer;
+    char item_path[1024];
+    const char *slash = cfg->output_path_override ? strrchr(cfg->output_path_override, '/') : NULL;
+    if (slash) {
+        int dir_len = (int)(slash - cfg->output_path_override) + 1;
+        snprintf(item_path, sizeof(item_path), "%.*s%s.json",
+                 dir_len, cfg->output_path_override, id);
     } else {
-        // Auto-generate filename from metadata.
-        generated_path = metadata_build_filename(meta, ".json");
-        final_json_path = generated_path;
+        snprintf(item_path, sizeof(item_path), "%s.json", id);
     }
+    free(id);
 
-    if (final_json_path) {
-        LOG_INFO("Saving metadata to: %s", final_json_path);
-        metadata_save_json(meta, final_json_path);
+    LOG_INFO("Saving STAC Item to: %s", item_path);
+    if (metadata_save_stac_item(meta, item_path, cfg->stac_collection) != 0) {
+        LOG_ERROR("Could not write the STAC Item.");
+        return 1;
     }
-    free(generated_path);
+    return 0;
 }
 
 /// Shared driver for the gray/pseudocolor/rgb callbacks: validates config, runs the pipeline, and saves the JSON sidecar.
@@ -97,7 +95,9 @@ static int generic_cmd_handler(const char *cmd_mode, ArgParser *cmd_parser, Proc
     int result = run_func(&cfg, meta);
 
     if (result == 0) {
-        save_sidecar_json(&cfg, meta, cmd_parser);
+        // A failure here is a failure of the run: the product is on disk but
+        // undescribed, and reporting success would hide it.
+        result = save_stac_item(&cfg, meta, cmd_parser);
     }
 
     metadata_destroy(meta);
@@ -136,6 +136,7 @@ static void add_common_opts(ArgParser *cmd_parser) {
     ap_add_flag(cmd_parser, "both B");
     ap_add_flag(cmd_parser, "full-res f");
     ap_add_flag(cmd_parser, "json j");
+    ap_add_str_opt(cmd_parser, "stac-collection", NULL);
     ap_add_flag(cmd_parser, "verbose v");
     ap_add_str_opt(cmd_parser, "expr e", NULL);
     ap_add_str_opt(cmd_parser, "minmax", "0.0,255.0");

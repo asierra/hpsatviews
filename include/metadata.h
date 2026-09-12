@@ -76,10 +76,34 @@ const char* metadata_sector_name(SectorID id);
 /// Populates metadata from a loaded DataNC.
 void metadata_from_nc(MetadataContext *ctx, const DataNC *nc);
 
+/// Media type of an output, for the Item's assets.
+const char* metadata_media_type(bool is_geotiff, bool cog);
+
+/// Registers one written output as an asset of the Item. `key` is the asset
+/// key ("image", "image_geographic"): the operation goes in the key, per D1 of
+/// docs/stac/STAC_PLAN.md. Paths do NOT go through metadata_add_str(), which
+/// truncates at 63 characters.
+/// `transform` may be NULL. It is per-asset on purpose: a -B run writes two
+/// rasters on different grids, and the Item's own proj:transform can only
+/// describe one of them, so a client would otherwise georeference the other
+/// one wrong.
+void metadata_add_asset(MetadataContext *ctx, const char *key, const char *href,
+                        const char *media_type, int width, int height,
+                        const double transform[6], int epsg);
+
+/// Stable Item id: the scene plus the product, with no enhancement segment.
+/// metadata_build_filename() encodes gamma, CLAHE and clipping in the name, so
+/// it cannot serve as an identifier — two renderings of one scene would be two
+/// items. Caller must free.
+char* metadata_build_id(const MetadataContext *ctx);
+
 /// Builds a standardized output filename. Caller must free the returned string.
 char* metadata_build_filename(const MetadataContext *ctx, const char *extension);
 
-/// Serializes metadata to a JSON file.
-int metadata_save_json(MetadataContext *ctx, const char *filename);
+/// Serializes the metadata as a STAC Item to a JSON file. `collection` may be
+/// NULL, and then the Item carries no `collection`: valid STAC, and the
+/// indexer assigns it on ingest.
+int metadata_save_stac_item(MetadataContext *ctx, const char *filename,
+                            const char *collection);
 
 #endif /* HPSATVIEWS_METADATA_H_ */

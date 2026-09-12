@@ -1058,7 +1058,7 @@ static bool apply_scaling(RgbContext *ctx) {
     return true;
 }
 
-static bool write_output(RgbContext *ctx, const char *product_label) {
+static bool write_output(RgbContext *ctx, const char *product_label, MetadataContext *meta) {
     bool is_geotiff = ctx->opts.force_geotiff ||
                       (ctx->opts.output_filename && (strstr(ctx->opts.output_filename, ".tif") ||
                                                      strstr(ctx->opts.output_filename, ".tiff")));
@@ -1092,6 +1092,30 @@ static bool write_output(RgbContext *ctx, const char *product_label) {
     } else {
         writer_save_png(ctx->opts.output_filename, &ctx->final_image);
     }
+    // The leg is told apart by do_reprojection, which the -B fixed-grid pass
+    // flips off around its own call.
+    double asset_gt[6];
+    bool has_gt = true;
+    int asset_epsg = 0;
+    if (ctx->opts.do_reprojection) {
+        asset_epsg = 4326;
+        asset_gt[0] = (ctx->final_lon_max - ctx->final_lon_min) / (double)ctx->final_image.width;
+        asset_gt[1] = 0.0;
+        asset_gt[2] = ctx->final_lon_min;
+        asset_gt[3] = 0.0;
+        asset_gt[4] = (ctx->final_lat_min - ctx->final_lat_max) / (double)ctx->final_image.height;
+        asset_gt[5] = ctx->final_lat_max;
+    } else {
+        const DataNC *ref = &ctx->channels[ctx->ref_channel_idx];
+        has_gt = ref->proj_info.valid;
+        projection_stac_transform(ref, ctx->crop_x_offset, ctx->crop_y_offset,
+                                  ctx->opts.scale, asset_gt);
+    }
+    metadata_add_asset(meta, ctx->opts.do_reprojection ? "image_geographic" : "image",
+                       ctx->opts.output_filename,
+                       metadata_media_type(is_geotiff, ctx->opts.build_cog),
+                       (int)ctx->final_image.width, (int)ctx->final_image.height,
+                       has_gt ? asset_gt : NULL, asset_epsg);
     return true;
 }
 
@@ -1266,7 +1290,15 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     }
 
     // Extract satellite/band/timestamp/geometry metadata from reference channel.
+    // Every loaded channel, not just the reference: eo:bands has to list the
+    // three that went into the composite. metadata_from_nc() keys off varname,
+    // which is exactly what an unloaded slot lacks. Ascending order so the item
+    // is deterministic. Index 0 is unused (channels are 1-indexed).
     metadata_from_nc(meta, &ctx.channels[ctx.ref_channel_idx]);
+    for (int ch = 1; ch <= 16; ch++) {
+        if (ch == ctx.ref_channel_idx) continue;
+        if (ctx.channels[ch].varname != NULL) metadata_from_nc(meta, &ctx.channels[ch]);
+    }
 
     if (!process_geospatial(&ctx, strategy)) {
         LOG_ERROR("%s", ctx.error_msg);
@@ -1391,7 +1423,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         }
         // Temporarily disable reprojection flag so write_output uses the native projection.
         ctx.opts.do_reprojection = false;
-        bool fg_written = write_output(&ctx, product);
+        bool fg_written = write_output(&ctx, product, meta);
         ctx.opts.do_reprojection = true;
         if (fg_scaled) {
             image_destroy(&ctx.final_image);
@@ -1604,7 +1636,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         }
     }
 
-    if (!write_output(&ctx, product)) {
+    if (!write_output(&ctx, product, meta)) {
         LOG_ERROR("Failed to save image.");
         goto cleanup;
     }

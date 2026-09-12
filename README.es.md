@@ -86,6 +86,16 @@ En Debian/Ubuntu:
 sudo apt install build-essential libnetcdf-dev libpng-dev libgdal-dev libwebp-dev
 ```
 
+Para correr la suite de pruebas hacen falta además **ImageMagick** (la
+comparación tolerante de píxeles), **python3-jsonschema** (valida el Item de
+STAC contra `docs/stac/hpsv-item.schema.json`) y **python3-gdal** (lee de vuelta
+la geotransformación del GeoTIFF, para comprobar que el Item describe el archivo
+escrito a su lado):
+
+```bash
+sudo apt install imagemagick python3-jsonschema python3-gdal
+```
+
 ### 3.3 Compilar e instalar
 
 ```bash
@@ -412,59 +422,112 @@ Rayleigh y realce de contraste.
 
 Para modo `custom` ver **Álgebra de bandas**.
 
-### 5.7 Archivo JSON sidecar
+### 5.7 Item de STAC
 
-`hpsv` puede escribir un archivo JSON con metadatos del procesamiento junto a la imagen de salida, útil para trazabilidad y para integraciones como `mapdrawer`.
+Con `-j`/`--json`, `hpsv` escribe un **Item de STAC** que describe la salida, en
+el mismo directorio. STAC (*SpatioTemporal Asset Catalog*) es una
+especificación, no un formato de archivo, así que el resultado es indexable con
+herramientas estándar —STAC Browser, QGIS, `pystac-client`, TiTiler— en lugar de
+con un lector de la casa. Hasta la v1.1.0 esta bandera escribía un sidecar de
+diseño propio; el Item lo sustituye.
 
-**Convención de nombres y activación:**
-* El JSON sidecar es opcional: se genera solo si se pasa `-j`/`--json`.
-* Si la imagen es `salida.png`, el JSON será `salida.json`.
+**Nombre y activación:**
+* Es opcional: sólo con `-j`/`--json`.
+* El archivo se nombra por el **identificador del Item**, no por `-o`: el
+  identificador es la escena más el producto (satélite, sector, instante,
+  modo/banda) **sin el segmento de realces**, de modo que dos corridas sobre la
+  misma escena convergen en un solo Item en vez de dispersar uno por
+  renderización. Una escena `gray` C13 de CONUS da
+  `hpsv_G16_conus_2024220_1302_gray_C13.json`, se haya usado `--clahe` o no.
+* El directorio sí viene de `-o`, porque es donde quedó el producto.
+* `--stac-collection <id>` fija la colección. Es opcional: sin ella el Item no
+  lleva `collection`, lo cual es STAC válido, y el catálogo se la asigna al
+  ingerir. La herramienta **no** admite una bandera de URL raíz: no sabe dónde se
+  publicará el archivo, y ese conocimiento es del indizador, no de una
+  herramienta de proceso.
 
-**Contenido del JSON** (ejemplo real, `hpsv gray archivo_CMIP_C13.nc -j -G --clahe -g 1.3`):
+**Contenido** (abreviado; `hpsv rgb -m ash archivo.nc -j -t -B`):
 
 ```json
 {
-  "tool": "hpsatviews",
-  "version": "1.0.0",
-  "satellite": "G16",
-  "sector": "conus",
-  "timestamp": "2024-08-07T13:02:36Z",
-  "product": "CMIP",
-  "command": "gray",
-  "crs": "EPSG:4326",
-  "bounds": [-151.654, 14.571, -52.947, 56.640],
-  "geometry": {
-    "projection": "EPSG:4326",
-    "bbox": [-151.654, 14.571, -52.947, 56.640]
+  "type": "Feature",
+  "stac_version": "1.0.0",
+  "stac_extensions": ["...projection/v1.1.0...", "...eo/v1.1.0...", "...processing/v1.1.0..."],
+  "id": "hpsv_G16_conus_2024220_1302_ash",
+  "geometry": { "type": "Polygon", "coordinates": [[[-151.65, 14.57], ...]] },
+  "bbox": [-151.654, 14.571, -52.947, 56.640],
+  "properties": {
+    "datetime": "2024-08-07T13:02:36Z",
+    "platform": "goes-16",
+    "constellation": "goes",
+    "instruments": ["abi"],
+    "processing:software": { "hpsatviews": "1.1.0" },
+    "proj:epsg": 4326,
+    "proj:wkt2": "GEOGCRS[...]",
+    "proj:transform": [0.0721, 0, -151.654, 0, -0.0722, 56.640],
+    "proj:shape": [583, 1369],
+    "proj:bbox": [-151.654, 14.571, -52.947, 56.640],
+    "eo:bands": [{ "name": "C11", "center_wavelength": 8.4 }, ...],
+    "hpsv:sector": "conus",
+    "hpsv:product": "Volcanic Ash",
+    "hpsv:command": "rgb",
+    "hpsv:channels": [{ "name": "C11", "quantity": "brightness_temperature",
+                        "min": 191.383, "max": 298.163, "unit": "K" }, ...],
+    "hpsv:enhancements": { "mode": "ash" }
   },
-  "channels": [
-    {
-      "name": "C13",
-      "quantity": "brightness_temperature",
-      "min": 191.633,
-      "max": 301.757,
-      "unit": "K"
-    }
-  ],
-  "enhancements": {
-    "gamma": 1.3,
-    "clahe": true,
-    "geographics": true,
-    "output_file": "salida.png",
-    "output_width": 5476,
-    "output_height": 2334
+  "links": [],
+  "assets": {
+    "image":            { "href": "out.tif",     "type": "image/tiff; application=geotiff", "roles": ["data"] },
+    "image_geographic": { "href": "out_geo.tif", "type": "image/tiff; application=geotiff", "roles": ["data"] }
   }
 }
 ```
 
-* `crs` refleja la proyección real de la salida: `EPSG:4326` si se reproyectó con `-G`/`--both`, `goes16`/`goes17`/`goes18`/`goes19` (o `geostationary`) en la rejilla nativa del satélite, o el valor por omisión `geographics` cuando no se calculó geometría (PNG plano sin `--clip`, GeoTIFF ni reproyección). `bounds`/`geometry.bbox` solo aparecen cuando sí se calculó geometría, y son redundantes entre sí (mismo recuadro en dos formas).
-* `product` solo aparece para productos L2 (CMIP, ACHA, ACHT, ACTP, CTP, LST, SST); los archivos L1b (radiancia) no lo incluyen porque no tienen una identidad de "producto" distinta del canal.
-* `enhancements` agrega una clave por cada opción de procesamiento efectivamente aplicada (entre otras: `gamma`, `clahe`, `histogram`, `invert`, `rayleigh`/`stretch` en modo `rgb`, `scale`, `palette`, `expression`, `geographics`), además de `output_file`/`output_width`/`output_height`. Las opciones no usadas simplemente no aparecen.
-* **GeoTIFF (`-t`):** solo un subconjunto de estos metadatos se embebe como tags GDAL dentro del archivo: `tool`, `satellite`, `sector`, `band`, `scan_time`, `product` (cuando aplica) y `colormap_min`/`colormap_max`/`colormap_size`/`colormap_units` en pseudocolor. `crs` y `bounds` no se duplican como texto porque el GeoTIFF ya los representa de forma nativa (geotransform + proyección WKT); `command`, `channels` (con min/max/quantity) y `enhancements` solo existen en el JSON sidecar.
+* **`geometry` y `bbox` van siempre en EPSG:4326** y siguen el **limbo** de la
+  Tierra, no las esquinas del ráster. Las cuatro esquinas de un disco completo
+  caen fuera del planeta, así que su huella es la elipse del limbo y su bbox sale
+  en `lon_0 ± 81.3°`, `±81.3°` de latitud. Un disco completo reproyectado recibe
+  el mismo anillo curvo y no la extensión rectangular de su ráster, porque las
+  esquinas de ese rectángulo son nodato y reclamarlas haría que una búsqueda de
+  catálogo coincidiera con mar abierto. Si la huella cruza el antimeridiano —un
+  disco de GOES-West va de −218° a −56°— el valor del oeste es **mayor** que el
+  del este, que es la convención de STAC; el bbox nunca se ensancha al planeta
+  entero para tapar el envolvimiento.
+* **`proj:transform` va en el orden de STAC**, no en el de GDAL: ancho de píxel,
+  rotación de fila, origen x, rotación de columna, alto de píxel, origen y. En la
+  rejilla fija va en metros y ya lleva el recorte y el remuestreo de `-s`, de modo
+  que coincide con la geotransformación del GeoTIFF escrito al lado. `proj:shape`
+  es `[alto, ancho]`. `proj:bbox` es el recuadro en el CRS **propio** del ítem
+  —metros en la rejilla fija— mientras que el `bbox` de la raíz es siempre
+  geográfico.
+* **Las llaves de `assets` llevan la operación**: `image` para la rejilla fija
+  del satélite e `image_geographic` para la reproyectada, así que una sola corrida
+  con `-B` deja un Item con dos activos. El `href` es relativo, porque el Item
+  vive junto al producto y la herramienta no conoce la URL de publicación. El
+  tipo de medio sigue a las banderas: `image/png`,
+  `image/tiff; application=geotiff`, y con `--cog` ese mismo más
+  `; profile=cloud-optimized`.
+* **`links` va siempre vacío.** Construir `self`, `root` y `parent` exige saber
+  dónde se publicará el archivo; el indizador completa el grafo.
+* **Los rangos físicos viven en `hpsv:channels`, no en `raster:bands`** de un
+  activo. Los activos son renderizaciones de 8 bits; colgarles estadísticas en
+  kelvin afirmaría algo falso que ningún validador atraparía.
+* `hpsv:product` sólo aparece en productos L2 (CMIP, ACHA, ACHT, ACTP, CTP, LST,
+  SST) o cuando se da `-N`; los archivos L1b de radiancia no tienen identidad de
+  producto distinta del canal.
+* **GeoTIFF (`-t`):** un subconjunto de esto va además dentro del archivo como
+  etiquetas GDAL: `tool`, `satellite`, `sector`, `band`, `scan_time`, `product` y
+  las entradas `colormap_*` en pseudocolor. El CRS y la extensión no se duplican
+  como texto, porque el GeoTIFF ya los representa de forma nativa.
+* La estructura está descrita en `docs/stac/hpsv-item.schema.json`, que
+  `tests/test_json.sh` valida en cada corrida. Ese esquema cubre lo que esta
+  herramienta emite y controla; la validación contra los esquemas oficiales del
+  núcleo y las extensiones de STAC es un paso aparte, anotado en
+  `docs/stac/STAC_PLAN.md`.
 
 **Casos de uso:**
 * **Reproducibilidad:** documentación exacta de los parámetros de realce aplicados (gamma, CLAHE, Rayleigh, etc.) y del producto/canal de origen.
-* **Integración:** automatización de flujos de visualización (ej. `mapdrawer`), que consume `crs`/`bounds`/`product` para ubicar y clasificar cada imagen.
+* **Integración:** automatización de flujos de visualización, e indexación por cualquier cliente de STAC sin un lector de la casa.
 * **Trazabilidad:** identificar satélite, sector, canal(es), producto y proyección que generaron cada imagen.
 
 ### 5.8 Convenciones de salida

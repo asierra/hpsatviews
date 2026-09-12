@@ -435,6 +435,14 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             if (is_pseudocolor && color_array) writer_save_png_palette(outfn, &fg_final, color_array);
             else writer_save_png(outfn, &fg_final);
         }
+        {
+            double asset_gt[6];
+            projection_stac_transform(&c01, crop_x, crop_y, cfg->scale, asset_gt);
+            metadata_add_asset(meta, "image", outfn,
+                               metadata_media_type(is_geotiff, cfg->build_cog),
+                               (int)fg_final.width, (int)fg_final.height,
+                               c01.proj_info.valid ? asset_gt : NULL, 0);
+        }
 
         // Fixed-grid extent in metres. gt[1] is the UNSCALED pixel size, so it
         // has to be paired with the pre-resampling size: multiplied by
@@ -595,17 +603,46 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             if (is_pseudocolor && color_array) writer_save_png_palette(outfn, &geo_final, color_array);
             else writer_save_png(outfn, &geo_final);
         }
+        {
+            const double asset_gt[6] = {
+                (final_lon_max - final_lon_min) / (double)geo_final.width, 0.0, final_lon_min,
+                0.0, (final_lat_min - final_lat_max) / (double)geo_final.height, final_lat_max
+            };
+            metadata_add_asset(meta, "image_geographic", outfn,
+                               metadata_media_type(is_geotiff, cfg->build_cog),
+                               (int)geo_final.width, (int)geo_final.height, asset_gt, 4326);
+        }
 
         metadata_set_geometry(meta, final_lon_min, final_lat_min, final_lon_max, final_lat_max);
         metadata_set_projection(meta, "EPSG:4326");
         if (cfg->save_json) {
-            // Already in 4326: the footprint is the output rectangle itself,
-            // and the transform follows from the bounds and the final size, so
-            // no resampling correction is needed here.
+            // The output raster is a lat/lon rectangle, but the DATA inside it
+            // is not: reprojecting a full disk leaves the corners as nodata, so
+            // a rectangular footprint would claim coverage where there is none
+            // and a catalogue search would match a point in the ocean corner.
+            // With an explicit clip the box IS the footprint, because the clip
+            // is itself a lat/lon box; without one, the limb-following ring of
+            // the source grid is the honest answer.
             Footprint fp;
-            if (footprint_from_latlon_box(final_lon_min, final_lat_min,
-                                          final_lon_max, final_lat_max, &fp) == 0)
-                metadata_set_footprint(meta, &fp);
+            int fp_rc;
+            if (cfg->has_clip) {
+                fp_rc = footprint_from_latlon_box(final_lon_min, final_lat_min,
+                                                  final_lon_max, final_lat_max, &fp);
+            } else {
+                double *sgt = c01.geotransform;
+                double sh = (c01.proj_info.valid) ? c01.proj_info.sat_height : 35786023.0;
+                double sx0 = sgt[0] * sh, sy0 = sgt[3] * sh;
+                const unsigned sw = c01.is_float ? c01.fdata.width : c01.bdata.width;
+                const unsigned sh_px = c01.is_float ? c01.fdata.height : c01.bdata.height;
+                double sx1 = sx0 + (double)sw * sgt[1] * sh;
+                double sy1 = sy0 + (double)sh_px * sgt[5] * sh;
+                fp_rc = footprint_from_geos_box(&c01, fmin(sx0, sx1), fmin(sy0, sy1),
+                                                fmax(sx0, sx1), fmax(sy0, sy1), &fp);
+                if (fp_rc != 0)
+                    fp_rc = footprint_from_latlon_box(final_lon_min, final_lat_min,
+                                                      final_lon_max, final_lat_max, &fp);
+            }
+            if (fp_rc == 0) metadata_set_footprint(meta, &fp);
 
             const double stac_gt[6] = {
                 (final_lon_max - final_lon_min) / (double)geo_final.width, 0.0, final_lon_min,

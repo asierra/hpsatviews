@@ -1,0 +1,166 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/asierra/hpsatviews/blob/main/docs/stac/hpsv-item.schema.json",
+  "title": "HPSatViews STAC Item",
+  "description": "Describe el Item de STAC que hpsv escribe con -j. NO sustituye a los esquemas oficiales de STAC: sólo fija lo que esta herramienta emite y controla, incluidas las claves propias con prefijo hpsv:. La validación contra los esquemas del núcleo y de cada extensión es la fase 5 de STAC_PLAN.md. tests/test_json.sh valida contra este archivo en cada corrida de la suite; cuando discrepen, manda src/metadata.c.",
+  "type": "object",
+  "required": ["type", "stac_version", "stac_extensions", "id", "geometry", "bbox", "properties", "links", "assets"],
+  "properties": {
+    "type": { "const": "Feature" },
+    "stac_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "stac_extensions": {
+      "type": "array",
+      "items": { "type": "string", "format": "uri" },
+      "minItems": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^hpsv_",
+      "description": "Escena más producto, sin el segmento de realces: dos renderizaciones de una escena son un ítem con dos activos, no dos ítems."
+    },
+    "collection": {
+      "type": "string",
+      "description": "Sólo aparece si se dio --stac-collection. Sin ella el Item es válido y el indizador la asigna al ingerir."
+    },
+    "geometry": {
+      "type": "object",
+      "required": ["type", "coordinates"],
+      "properties": {
+        "type": { "const": "Polygon" },
+        "coordinates": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "type": "array",
+            "minItems": 4,
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "bbox": {
+      "type": "array",
+      "description": "[W, S, E, N] en EPSG:4326. Si la huella cruza el antimeridiano, W > E.",
+      "items": { "type": "number" },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "properties": {
+      "type": "object",
+      "required": ["datetime"],
+      "properties": {
+        "datetime": { "type": "string", "format": "date-time" },
+        "platform": { "type": "string", "enum": ["goes-16", "goes-17", "goes-18", "goes-19"] },
+        "constellation": { "type": "string" },
+        "instruments": { "type": "array", "items": { "type": "string" } },
+        "processing:software": {
+          "type": "object",
+          "required": ["hpsatviews"],
+          "properties": { "hpsatviews": { "type": "string" } }
+        },
+        "proj:epsg": { "type": "integer" },
+        "proj:wkt2": { "type": "string" },
+        "proj:transform": {
+          "type": "array",
+          "description": "Orden de STAC: ancho de píxel, rotación de fila, origen x, rotación de columna, alto de píxel, origen y. No es el de GDAL.",
+          "items": { "type": "number" },
+          "minItems": 6,
+          "maxItems": 6
+        },
+        "proj:shape": {
+          "type": "array",
+          "description": "[alto, ancho].",
+          "items": { "type": "integer", "minimum": 1 },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "proj:bbox": {
+          "type": "array",
+          "description": "Recuadro en el CRS del propio ítem: metros en la rejilla fija, grados reproyectado. El bbox de la raíz es siempre 4326, así que no es un duplicado.",
+          "items": { "type": "number" },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "eo:bands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "common_name": {
+                "type": "string",
+                "description": "Sólo en las bandas reflectivas, donde el nombre común de STAC es inequívoco; las térmicas de ABI van sin él."
+              },
+              "center_wavelength": { "type": "number", "exclusiveMinimum": 0 }
+            }
+          }
+        },
+        "hpsv:sector": { "type": "string", "enum": ["fd", "conus", "m1", "m2"] },
+        "hpsv:product": { "type": "string" },
+        "hpsv:command": { "type": "string", "enum": ["rgb", "gray", "pseudocolor"] },
+        "hpsv:channels": {
+          "type": "array",
+          "description": "Rangos físicos por canal. Cuelgan del ítem y NO de raster:bands de un activo: los activos son renderizaciones de 8 bits, y colgarles estadísticas en kelvin afirmaría algo falso que ningún validador atrapa.",
+          "items": {
+            "type": "object",
+            "required": ["name", "quantity", "min", "max"],
+            "properties": {
+              "name": { "type": "string" },
+              "quantity": {
+                "type": "string",
+                "enum": ["reflectance", "brightness_temperature", "raw_counts", "index"]
+              },
+              "min": { "type": "number" },
+              "max": { "type": "number" },
+              "unit": { "type": "string" }
+            }
+          }
+        },
+        "hpsv:enhancements": { "type": "object" }
+      }
+    },
+    "links": {
+      "type": "array",
+      "description": "Siempre vacío: la herramienta no sabe dónde se publicará el archivo, así que no puede construir self/root/parent. El indizador completa el grafo."
+    },
+    "assets": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["href", "type", "roles"],
+        "properties": {
+          "href": {
+            "type": "string",
+            "pattern": "^[^/]+$",
+            "description": "Relativo al Item, que vive en el mismo directorio que el producto."
+          },
+          "type": { "type": "string" },
+          "roles": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "proj:shape": {
+            "type": "array",
+            "items": { "type": "integer", "minimum": 1 },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "proj:transform": {
+            "type": "array",
+            "description": "Por activo, porque una corrida con -B escribe dos rásteres en rejillas distintas y el proj:transform del Item sólo puede describir uno: sin esto un cliente georreferenciaría mal el otro.",
+            "items": { "type": "number" },
+            "minItems": 6,
+            "maxItems": 6
+          },
+          "proj:epsg": { "type": "integer" }
+        }
+      }
+    }
+  }
+}

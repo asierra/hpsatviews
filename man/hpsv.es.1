@@ -177,7 +177,15 @@ Aplica CLAHE con parámetros explícitos:
 
 .TP
 .B "-j, --json"
-Guarda los metadatos en un archivo JSON sidecar junto a la imagen.
+Escribe un Item de STAC que describe la salida, en el mismo directorio. El
+archivo se nombra por el identificador del Item \(em la escena más el producto,
+sin el segmento de realces \(em de modo que dos corridas sobre la misma escena
+convergen en un solo Item en vez de dispersar uno por renderización.
+
+.TP
+.B "--stac-collection <id>"
+Colección a la que pertenece el Item. Opcional: sin ella el Item no lleva
+colección, lo cual es STAC válido, y el catálogo se la asigna al ingerir.
 
 .TP
 .B --cog

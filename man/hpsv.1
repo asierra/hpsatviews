@@ -173,7 +173,15 @@ Apply CLAHE with explicit parameters:
 
 .TP
 .B "-j, --json"
-Save metadata to a JSON sidecar file alongside the image.
+Write a STAC Item describing the output, in the same directory. The file is
+named after the Item id \(em the scene plus the product, with no enhancement
+segment \(em so two runs over the same scene converge on one Item instead of
+scattering one per rendering.
+
+.TP
+.B "--stac-collection <id>"
+Collection the Item belongs to. Optional: without it the Item carries no
+collection, which is valid STAC, and the catalogue assigns one on ingest.
 
 .TP
 .B --cog

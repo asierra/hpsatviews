@@ -30,6 +30,18 @@ typedef struct {
     int type; // 0=dbl, 1=str, 2=int, 3=bool
 } KeyVal;
 
+#define MAX_ASSETS 4
+
+typedef struct {
+    char key[32];           // "image", "image_geographic"
+    char href[512];         // path as written; NOT via KeyVal, which truncates at 63
+    char media_type[64];
+    int width, height;
+    double transform[6];
+    bool has_transform;
+    int epsg;
+} AssetInfo;
+
 typedef struct {
     char name[16];          // "C13", "Red", etc.
     char quantity[32];      // "brightness_temperature", "reflectance"
@@ -64,6 +76,9 @@ struct MetadataContext {
     
     ChannelInfo channels[MAX_CHANNELS];
     int channel_count;
+
+    AssetInfo assets[MAX_ASSETS];
+    int asset_count;
     
     // Almacenamiento temporal simple para campos extra
     KeyVal extra_fields[MAX_KV];
@@ -213,6 +228,41 @@ void metadata_set_grid(MetadataContext *ctx, const double transform[6],
     ctx->has_grid = true;
 }
 
+const char* metadata_media_type(bool is_geotiff, bool cog) {
+    if (!is_geotiff) return "image/png";
+    // Without --cog the COG driver still runs, just without the overview
+    // pyramids (writer_geotiff.c), so the profile must not be claimed.
+    return cog ? "image/tiff; application=geotiff; profile=cloud-optimized"
+               : "image/tiff; application=geotiff";
+}
+
+void metadata_add_asset(MetadataContext *ctx, const char *key, const char *href,
+                        const char *media_type, int width, int height,
+                        const double transform[6], int epsg) {
+    if (!ctx || !key || !href) return;
+    for (int i = 0; i < ctx->asset_count; i++) {
+        if (strcmp(ctx->assets[i].key, key) == 0) return;  /* first write wins */
+    }
+    if (ctx->asset_count >= MAX_ASSETS) {
+        LOG_WARN("More than %d outputs in one run; '%s' is missing from the Item.",
+                 MAX_ASSETS, key);
+        return;
+    }
+    AssetInfo *a = &ctx->assets[ctx->asset_count++];
+    snprintf(a->key, sizeof(a->key), "%s", key);
+    // Relative to the Item, which sits in the same directory: the tool does not
+    // know the publication URL, and a bare name keeps resolving wherever the
+    // pair is copied. An absolute local path would be meaningless once served.
+    const char *base = strrchr(href, '/');
+    snprintf(a->href, sizeof(a->href), "%s", base ? base + 1 : href);
+    snprintf(a->media_type, sizeof(a->media_type), "%s", media_type ? media_type : "");
+    a->width = width;
+    a->height = height;
+    a->epsg = epsg;
+    a->has_transform = (transform != NULL);
+    if (transform) memcpy(a->transform, transform, sizeof(a->transform));
+}
+
 void metadata_set_clip(MetadataContext *ctx, bool clipped) {
     if (!ctx) return;
     ctx->has_clip = clipped;
@@ -336,24 +386,17 @@ static bool build_ops_string(const MetadataContext *ctx, char* buffer, size_t si
     return (op_count > 0);
 }
 
-char* metadata_build_filename(const MetadataContext *ctx, const char *extension) {
-    if (!ctx || !extension) return NULL;
-    
-    // Formato: hpsv_<SAT>_<YYYYJJJ_hhmm>_<TIPO>_<BANDAS>[_<OPS>].<ext>
-    char *filename = malloc(512);
-    if (!filename) return NULL;
-    
-    // 1. Satellite.
-    const char *sat = ctx->satellite && ctx->satellite[0] ? ctx->satellite : "GXX";
-
-    // 2. Sector (opcional, omitido si desconocido)
+/* The scene-and-product part of the name: hpsv_<SAT>[_<SECTOR>]_<YYYYJJJ_hhmm>
+ * _<TYPE>[_<BANDS>]. Shared by the output filename, which appends the applied
+ * operations, and by the Item id, which must not carry them: two renderings of
+ * one scene are one item with two assets, not two items (D1). */
+static void build_stem(const MetadataContext *ctx, char *buf, size_t size) {
+    const char *sat = (ctx->satellite && ctx->satellite[0]) ? ctx->satellite : "GXX";
     const char *sector = (ctx->sector && ctx->sector[0]) ? ctx->sector : NULL;
 
-    // 3. Timestamp (formato juliano)
     char instant[20];
     format_timestamp_julian(ctx->timestamp, instant, sizeof(instant));
 
-    // 4. Tipo de producto (basado en command + mode para rgb)
     char type[64] = "output";
     if (ctx->command[0]) {
         if (strcmp(ctx->command, "gray") == 0) {
@@ -361,117 +404,205 @@ char* metadata_build_filename(const MetadataContext *ctx, const char *extension)
         } else if (strcmp(ctx->command, "pseudocolor") == 0) {
             strcpy(type, "pseudo");
         } else if (strcmp(ctx->command, "rgb") == 0) {
-            // Buscar el modo en extra_fields
             const char *mode = NULL;
             for (int i = 0; i < ctx->count; i++) {
-                if (strcmp(ctx->extra_fields[i].key, "mode") == 0 && 
+                if (strcmp(ctx->extra_fields[i].key, "mode") == 0 &&
                     ctx->extra_fields[i].type == 1) {
                     mode = ctx->extra_fields[i].val_s;
                     break;
                 }
             }
-            if (mode && mode[0] && strcmp(mode, "truecolor") != 0 && strcmp(mode, "composite") != 0) {
+            if (mode && mode[0] && strcmp(mode, "truecolor") != 0 && strcmp(mode, "composite") != 0)
                 snprintf(type, sizeof(type), "%s", mode);
-            } else {
+            else
                 strcpy(type, "rgb");
-            }
         } else {
             strncpy(type, ctx->command, sizeof(type) - 1);
         }
     }
-    
-    // 4. Bandas
+
     char bands[32] = "";
     if (strcmp(ctx->command, "rgb") == 0) {
         // Semantic RGB modes: bands already encoded in the type field.
         bands[0] = '\0';
     } else if (ctx->channel_count > 0 && ctx->channels[0].valid) {
-        // Para gray/pseudo: usar band_id si disponible (ej. "C13"), sino varname
         strncpy(bands, ctx->channels[0].name, sizeof(bands) - 1);
     }
-    
-    // 5. Operaciones aplicadas
+
+    char sat_prefix[32];
+    if (sector) snprintf(sat_prefix, sizeof(sat_prefix), "%s_%s", sat, sector);
+    else        snprintf(sat_prefix, sizeof(sat_prefix), "%s", sat);
+
+    if (bands[0])
+        snprintf(buf, size, "hpsv_%s_%s_%s_%s", sat_prefix, instant, type, bands);
+    else
+        snprintf(buf, size, "hpsv_%s_%s_%s", sat_prefix, instant, type);
+}
+
+char* metadata_build_id(const MetadataContext *ctx) {
+    if (!ctx) return NULL;
+    char *id = malloc(512);
+    if (!id) return NULL;
+    build_stem(ctx, id, 512);
+    return id;
+}
+
+char* metadata_build_filename(const MetadataContext *ctx, const char *extension) {
+    if (!ctx || !extension) return NULL;
+
+    char *filename = malloc(512);
+    if (!filename) return NULL;
+
+    char stem[384];
+    build_stem(ctx, stem, sizeof(stem));
+
     char ops[128] = "";
     bool has_ops = build_ops_string(ctx, ops, sizeof(ops));
 
-    // 6. Construir prefijo sat[_sector]
-    char sat_prefix[32];
-    if (sector)
-        snprintf(sat_prefix, sizeof(sat_prefix), "%s_%s", sat, sector);
-    else
-        snprintf(sat_prefix, sizeof(sat_prefix), "%s", sat);
+    if (has_ops) snprintf(filename, 512, "%s_%s%s", stem, ops, extension);
+    else         snprintf(filename, 512, "%s%s", stem, extension);
 
-    // 7. Construir nombre final
-    //    Formato: hpsv_<SAT>[_<SECTOR>]_<INSTANT>_<TIPO>[_<BANDAS>][_<OPS>].<ext>
-    if (bands[0] && has_ops) {
-        snprintf(filename, 512, "hpsv_%s_%s_%s_%s_%s%s",
-                 sat_prefix, instant, type, bands, ops, extension);
-    } else if (bands[0]) {
-        snprintf(filename, 512, "hpsv_%s_%s_%s_%s%s",
-                 sat_prefix, instant, type, bands, extension);
-    } else if (has_ops) {
-        snprintf(filename, 512, "hpsv_%s_%s_%s_%s%s",
-                 sat_prefix, instant, type, ops, extension);
-    } else {
-        snprintf(filename, 512, "hpsv_%s_%s_%s%s",
-                 sat_prefix, instant, type, extension);
-    }
-    
     return filename;
 }
 
-int metadata_save_json(MetadataContext *ctx, const char *filename) {
+/* Versions of the core spec and of each extension. They are a contract with
+ * every consumer and they are NOT inherited from the day this was written:
+ * phase 5 of docs/stac/STAC_PLAN.md revalidates them against the live schemas.
+ * Kept together so that revalidation is one edit. */
+#define STAC_VERSION "1.0.0"
+#define STAC_EXT_PROJ "https://stac-extensions.github.io/projection/v1.1.0/schema.json"
+#define STAC_EXT_EO "https://stac-extensions.github.io/eo/v1.1.0/schema.json"
+#define STAC_EXT_PROCESSING "https://stac-extensions.github.io/processing/v1.1.0/schema.json"
+
+/* Canonical platform name. The sidecar's "G16" is our own shorthand; STAC's
+ * platform field wants the published identifier. */
+static const char* stac_platform(const char *satellite) {
+    if (!satellite) return NULL;
+    if (strcmp(satellite, "G16") == 0) return "goes-16";
+    if (strcmp(satellite, "G17") == 0) return "goes-17";
+    if (strcmp(satellite, "G18") == 0) return "goes-18";
+    if (strcmp(satellite, "G19") == 0) return "goes-19";
+    return NULL;
+}
+
+/* ABI band centres in µm, indexed by band number. Taken from the table in
+ * docs/stac/STAC_PLAN.md, which still carries the note to check them against
+ * the ABI PUG. */
+static const double kBandCentre[17] = {
+    0.0, 0.47, 0.64, 0.86, 1.37, 1.6, 2.24, 3.9, 6.2,
+    6.9, 7.3, 8.4, 9.6, 10.3, 11.2, 12.3, 13.3
+};
+
+/* STAC's eo common names only cover the reflective bands unambiguously; there
+ * is no agreed name for the ABI thermal channels, and inventing one would
+ * assert something false to anybody filtering on it. Those simply go without. */
+static const char* stac_common_name(int band) {
+    switch (band) {
+        case 1: return "blue";
+        case 2: return "red";
+        case 3: return "nir08";
+        case 4: return "cirrus";
+        case 5: return "swir16";
+        case 6: return "swir22";
+        default: return NULL;
+    }
+}
+
+/// Band number from a "C13"-style channel name; 0 when it is not one.
+static int band_number(const char *name) {
+    if (!name || name[0] != 'C') return 0;
+    int n = atoi(name + 1);
+    return (n >= 1 && n <= 16) ? n : 0;
+}
+
+int metadata_save_stac_item(MetadataContext *ctx, const char *filename,
+                            const char *collection) {
+    if (!ctx) return -1;
+
+    // A STAC Item without geometry is valid but unsearchable, which defeats the
+    // whole point of emitting one. Fail loudly instead of writing an orphan.
+    if (!ctx->has_footprint) {
+        LOG_ERROR("No geographic footprint for this output, so no STAC Item can be written. "
+                  "The file carries no usable projection.");
+        return -1;
+    }
+
+    char *id = metadata_build_id(ctx);
+    if (!id) return -1;
+
     JsonWriter *w = json_create(filename);
-    if (!w) return -1;
+    if (!w) { free(id); return -1; }
 
-    // Campos requeridos del schema
-    json_write(w, "tool", ctx->tool[0] ? ctx->tool : "hpsatviews");
-    json_write(w, "version", HPSV_VERSION);
-    if (ctx->satellite) json_write(w, "satellite", ctx->satellite);
-    if (ctx->sector && ctx->sector[0]) json_write(w, "sector", ctx->sector);
-    if (ctx->time_iso[0]) json_write(w, "timestamp", ctx->time_iso);
-    if (ctx->product[0]) json_write(w, "product", ctx->product);
-    if (ctx->command[0]) json_write(w, "command", ctx->command);
-    
-    // Metadata fields required by mapdrawer (CRS and Bounds at JSON root).
-    if (ctx->projection[0]) {
-        json_write_string(w, "crs", ctx->projection);
-    }
-    if (ctx->has_bbox) {
-        json_write_double_array(w, "bounds", ctx->bbox, 4);
-    }
+    json_write(w, "type", "Feature");
+    json_write(w, "stac_version", STAC_VERSION);
 
-    // Geometry block.
-    if (ctx->has_bbox) {
-        json_begin_object(w, "geometry");
-        json_write(w, "projection", ctx->projection);
-        json_write_double_array(w, "bbox", ctx->bbox, 4);
-        json_end_object(w);
-    }
+    json_begin_array(w, "stac_extensions");
+    json_array_item_string(w, STAC_EXT_PROJ);
+    json_array_item_string(w, STAC_EXT_EO);
+    json_array_item_string(w, STAC_EXT_PROCESSING);
+    json_end_array(w);
 
-    // Geographic footprint. Always EPSG:4326, whatever `crs` says, and computed
-    // even when no reprojection happened: it is what a catalogue searches on.
-    if (ctx->has_footprint) {
-        json_write_double_array(w, "bbox_4326", ctx->footprint.bbox, 4);
-        json_write_polygon(w, "footprint", ctx->footprint.lon, ctx->footprint.lat,
-                           ctx->footprint.count);
+    json_write(w, "id", id);
+    if (collection && collection[0]) json_write(w, "collection", collection);
+
+    json_write_polygon(w, "geometry", ctx->footprint.lon, ctx->footprint.lat,
+                       ctx->footprint.count);
+    json_write_double_array(w, "bbox", ctx->footprint.bbox, 4);
+
+    json_begin_object(w, "properties");
+    if (ctx->time_iso[0]) json_write(w, "datetime", ctx->time_iso);
+
+    const char *platform = stac_platform(ctx->satellite);
+    if (platform) {
+        json_write(w, "platform", platform);
+        json_write(w, "constellation", "goes");
+        json_begin_array(w, "instruments");
+        json_array_item_string(w, "abi");
+        json_end_array(w);
     }
 
-    // Output grid, named after the STAC `proj:` extension it feeds.
+    json_begin_object(w, "processing:software");
+    json_write(w, "hpsatviews", HPSV_VERSION);
+    json_end_object(w);
+
     if (ctx->has_grid) {
-        json_write_double_array(w, "proj_transform", ctx->transform, 6);
-        json_write_int_array(w, "proj_shape", ctx->shape, 2);
-        if (ctx->epsg > 0) json_write_int(w, "proj_epsg", ctx->epsg);
-        if (ctx->wkt2) json_write_string(w, "proj_wkt2", ctx->wkt2);
+        if (ctx->epsg > 0) json_write_int(w, "proj:epsg", ctx->epsg);
+        if (ctx->wkt2) json_write_string(w, "proj:wkt2", ctx->wkt2);
+        json_write_double_array(w, "proj:transform", ctx->transform, 6);
+        json_write_int_array(w, "proj:shape", ctx->shape, 2);
     }
+    // The box in the output's own CRS: metres on the fixed grid, degrees once
+    // reprojected. The root bbox is always 4326, so this is not a duplicate.
+    if (ctx->has_bbox) json_write_double_array(w, "proj:bbox", ctx->bbox, 4);
 
-    // Canales (array de objetos)
     if (ctx->channel_count > 0) {
-        json_begin_array(w, "channels");
+        json_begin_array(w, "eo:bands");
         for (int i = 0; i < ctx->channel_count; i++) {
             ChannelInfo *ch = &ctx->channels[i];
             if (!ch->valid) continue;
-            
+            json_array_item_begin_object(w);
+            json_write(w, "name", ch->name);
+            int band = band_number(ch->name);
+            const char *common = stac_common_name(band);
+            if (common) json_write(w, "common_name", common);
+            if (band > 0) json_write(w, "center_wavelength", kBandCentre[band]);
+            json_end_object(w);
+        }
+        json_end_array(w);
+    }
+
+    if (ctx->sector && ctx->sector[0]) json_write(w, "hpsv:sector", ctx->sector);
+    if (ctx->product[0]) json_write(w, "hpsv:product", ctx->product);
+    if (ctx->command[0]) json_write(w, "hpsv:command", ctx->command);
+
+    // Physical ranges hang off the item, not off raster:bands of an asset: the
+    // assets are 8-bit renderings, and attaching kelvin statistics to them
+    // would assert something false that no validator would catch.
+    if (ctx->channel_count > 0) {
+        json_begin_array(w, "hpsv:channels");
+        for (int i = 0; i < ctx->channel_count; i++) {
+            ChannelInfo *ch = &ctx->channels[i];
+            if (!ch->valid) continue;
             json_array_item_begin_object(w);
             json_write(w, "name", ch->name);
             json_write(w, "quantity", ch->quantity);
@@ -483,11 +614,14 @@ int metadata_save_json(MetadataContext *ctx, const char *filename) {
         json_end_array(w);
     }
 
-    // Enhancements (objeto con gamma, clahe, etc.)
     if (ctx->count > 0) {
-        json_begin_object(w, "enhancements");
+        json_begin_object(w, "hpsv:enhancements");
         for (int i = 0; i < ctx->count; i++) {
             KeyVal *kv = &ctx->extra_fields[i];
+            // The written files are assets now, not enhancement parameters.
+            if (strcmp(kv->key, "output_file") == 0 ||
+                strcmp(kv->key, "output_width") == 0 ||
+                strcmp(kv->key, "output_height") == 0) continue;
             if (kv->type == 0) json_write(w, kv->key, kv->val_d);
             else if (kv->type == 1) json_write(w, kv->key, kv->val_s);
             else if (kv->type == 2) json_write_int(w, kv->key, (int)kv->val_d);
@@ -495,7 +629,36 @@ int metadata_save_json(MetadataContext *ctx, const char *filename) {
         }
         json_end_object(w);
     }
+    json_end_object(w);   /* properties */
+
+    // The tool does not know where the file will be published, so it cannot
+    // build self/root/parent links. An empty array is valid STAC; the indexer
+    // completes the graph.
+    json_begin_array(w, "links");
+    json_end_array(w);
+
+    json_begin_object(w, "assets");
+    for (int i = 0; i < ctx->asset_count; i++) {
+        AssetInfo *a = &ctx->assets[i];
+        json_begin_object(w, a->key);
+        json_write(w, "href", a->href);
+        if (a->media_type[0]) json_write(w, "type", a->media_type);
+        json_begin_array(w, "roles");
+        json_array_item_string(w, "data");
+        json_end_array(w);
+        if (a->width > 0 && a->height > 0) {
+            int shape[2] = {a->height, a->width};
+            json_write_int_array(w, "proj:shape", shape, 2);
+        }
+        if (a->has_transform) {
+            json_write_double_array(w, "proj:transform", a->transform, 6);
+            if (a->epsg > 0) json_write_int(w, "proj:epsg", a->epsg);
+        }
+        json_end_object(w);
+    }
+    json_end_object(w);   /* assets */
 
     json_close(w);
+    free(id);
     return 0;
 }

@@ -86,9 +86,9 @@ sudo apt install build-essential libnetcdf-dev libpng-dev libgdal-dev libwebp-de
 ```
 
 To run the test suite you also need **ImageMagick** (tolerant pixel diff),
-**python3-jsonschema** (validates the JSON sidecar against
-`docs/hpsatviews.schema.json`) and **python3-gdal** (reads the GeoTIFF's
-geotransform back, to check the sidecar describes the file written beside it):
+**python3-jsonschema** (validates the STAC Item against
+`docs/stac/hpsv-item.schema.json`) and **python3-gdal** (reads the GeoTIFF's
+geotransform back, to check the Item describes the file written beside it):
 
 ```bash
 sudo apt install imagemagick python3-jsonschema python3-gdal
@@ -420,69 +420,107 @@ and automatically applies Rayleigh correction and contrast enhancement.
 
 For `custom` mode see **Band algebra**.
 
-### 5.7 JSON sidecar file
+### 5.7 STAC Item
 
-`hpsv` can write a JSON file with processing metadata alongside the output image, useful for traceability and for integrations such as `mapdrawer`.
+With `-j`/`--json`, `hpsv` writes a **STAC Item** describing the output, in the
+same directory. STAC (*SpatioTemporal Asset Catalog*) is a specification, not a
+file format, so the result is indexable by standard tools — STAC Browser, QGIS,
+`pystac-client`, TiTiler — instead of by a house-specific reader. Until v1.1.0
+this flag wrote a sidecar of our own design; the Item replaces it.
 
-**Naming convention and activation:**
-* The JSON sidecar is opt-in: it is only generated when `-j`/`--json` is passed.
-* If the image is `output.png`, the JSON will be `output.json`.
+**Naming and activation:**
+* Opt-in: only with `-j`/`--json`.
+* The file is named after the **Item id**, not after `-o`: the id is the scene
+  plus the product (satellite, sector, instant, mode/band) with **no enhancement
+  segment**, so two runs over the same scene converge on one Item instead of
+  scattering one per rendering. A `gray` C13 CONUS scene gives
+  `hpsv_G16_conus_2024220_1302_gray_C13.json`, whether or not `--clahe` was used.
+* The directory comes from `-o`, because that is where the product went.
+* `--stac-collection <id>` sets the collection. It is optional: without it the
+  Item carries no `collection`, which is valid STAC, and the catalogue assigns
+  one on ingest. The tool deliberately takes **no** flag for a root URL — it does
+  not know where the file will be published, and that knowledge belongs to the
+  indexer, not to a processing tool.
 
-**JSON content** (real example, `hpsv gray file_CMIP_C13.nc -j -G --clahe -g 1.3`):
+**Content** (abridged; `hpsv rgb -m ash file.nc -j -t -B`):
 
 ```json
 {
-  "tool": "hpsatviews",
-  "version": "1.0.0",
-  "satellite": "G16",
-  "sector": "conus",
-  "timestamp": "2024-08-07T13:02:36Z",
-  "product": "CMIP",
-  "command": "gray",
-  "crs": "EPSG:4326",
-  "bounds": [-151.654, 14.571, -52.947, 56.640],
-  "geometry": {
-    "projection": "EPSG:4326",
-    "bbox": [-151.654, 14.571, -52.947, 56.640]
+  "type": "Feature",
+  "stac_version": "1.0.0",
+  "stac_extensions": ["...projection/v1.1.0...", "...eo/v1.1.0...", "...processing/v1.1.0..."],
+  "id": "hpsv_G16_conus_2024220_1302_ash",
+  "geometry": { "type": "Polygon", "coordinates": [[[-151.65, 14.57], ...]] },
+  "bbox": [-151.654, 14.571, -52.947, 56.640],
+  "properties": {
+    "datetime": "2024-08-07T13:02:36Z",
+    "platform": "goes-16",
+    "constellation": "goes",
+    "instruments": ["abi"],
+    "processing:software": { "hpsatviews": "1.1.0" },
+    "proj:epsg": 4326,
+    "proj:wkt2": "GEOGCRS[...]",
+    "proj:transform": [0.0721, 0, -151.654, 0, -0.0722, 56.640],
+    "proj:shape": [583, 1369],
+    "proj:bbox": [-151.654, 14.571, -52.947, 56.640],
+    "eo:bands": [{ "name": "C11", "center_wavelength": 8.4 }, ...],
+    "hpsv:sector": "conus",
+    "hpsv:product": "Volcanic Ash",
+    "hpsv:command": "rgb",
+    "hpsv:channels": [{ "name": "C11", "quantity": "brightness_temperature",
+                        "min": 191.383, "max": 298.163, "unit": "K" }, ...],
+    "hpsv:enhancements": { "mode": "ash" }
   },
-  "channels": [
-    {
-      "name": "C13",
-      "quantity": "brightness_temperature",
-      "min": 191.633,
-      "max": 301.757,
-      "unit": "K"
-    }
-  ],
-  "bbox_4326": [-152.113487, 14.561826, -52.918298, 56.78067],
-  "proj_transform": [8016.069, 0, -3627271.341, 0, -8016.069, 4589199.765],
-  "proj_shape": [375, 625],
-  "proj_wkt2": "PROJCRS[\"unknown\",BASEGEOGCRS[...]]",
-  "footprint": {
-    "type": "Polygon",
-    "coordinates": [[[-152.113487, 47.386871], ..., [-152.113487, 47.386871]]]
-  },
-  "enhancements": {
-    "gamma": 1.3,
-    "clahe": true,
-    "geographics": true,
-    "output_file": "output.png",
-    "output_width": 5476,
-    "output_height": 2334
+  "links": [],
+  "assets": {
+    "image":            { "href": "out.tif",     "type": "image/tiff; application=geotiff", "roles": ["data"] },
+    "image_geographic": { "href": "out_geo.tif", "type": "image/tiff; application=geotiff", "roles": ["data"] }
   }
 }
 ```
 
-* `crs` reflects the output's actual projection: `EPSG:4326` if reprojected with `-G`/`--both`, `goes16`/`goes17`/`goes18`/`goes19` (or `geostationary`) on the satellite's native grid, or the default value `geographics` when no geometry was computed (a plain PNG without `--clip`, neither GeoTIFF nor reprojection). `bounds`/`geometry.bbox` only appear when geometry was actually computed, and are redundant with each other (the same bounding box in two forms). Their order is `[x_min, y_min, x_max, y_max]` — that is `[W, S, E, N]`, the GeoJSON and STAC convention — and the **units follow `crs`**: degrees once reprojected, metres on the geostationary plane for the satellite's fixed grid.
-* `bbox_4326` and `footprint` are **always in EPSG:4326**, whatever `crs` says, and are emitted for every output — including a plain PNG, which carries no `crs`/`bounds` at all. They describe the raster's extent (pixel edges), and on the satellite's fixed grid they follow the Earth's **limb**, not the raster corners: a full disk's corners fall off the planet, so its footprint is the limb ellipse and its bbox comes out at `lon_0 ± 81.3°`, `±81.3°` of latitude. If the footprint crosses the antimeridian — a GOES-West full disk spans −218°…−56° — the west value is **greater** than the east one, which is the STAC convention, and no bbox is ever widened to the whole planet to paper over the wrap. Computing them needs no navigation grid and costs under a millisecond.
-* `proj_transform`, `proj_shape`, `proj_epsg` and `proj_wkt2` describe the **output raster's grid**, named after the STAC `proj:` extension they feed. `proj_transform` is in **STAC's order** — pixel width, row rotation, origin x, column rotation, pixel height, origin y — which is *not* GDAL's; on the fixed grid it is in metres and already carries the clip and the `-s` resampling, so it matches the geotransform of the GeoTIFF written beside it. `proj_shape` is `[height, width]`. `proj_epsg` is `4326` once reprojected and absent on the fixed grid, which has no authority code. These four, unlike the footprint, need GDAL, which costs about 6 ms the first time a process touches it — free when writing a GeoTIFF, since the writer got there first — so they are only computed when `-j` asks for them.
-* `product` only appears for L2 products (CMIP, ACHA, ACHT, ACTP, CTP, LST, SST); L1b (radiance) files don't include it because they have no "product" identity distinct from the channel.
-* `enhancements` adds one key per processing option that was actually applied (among others: `gamma`, `clahe`, `histogram`, `invert`, `rayleigh`/`stretch` in `rgb` mode, `scale`, `palette`, `expression`, `geographics`), plus `output_file`/`output_width`/`output_height`. Unused options simply don't appear.
-* **GeoTIFF (`-t`):** only a subset of these metadata fields is embedded as GDAL tags inside the file: `tool`, `satellite`, `sector`, `band`, `scan_time`, `product` (when applicable), and `colormap_min`/`colormap_max`/`colormap_size`/`colormap_units` in pseudocolor. `crs` and `bounds` aren't duplicated as text because the GeoTIFF already represents them natively (geotransform + WKT projection); `command`, `channels` (with min/max/quantity), and `enhancements` only exist in the JSON sidecar.
+* **`geometry` and `bbox` are always EPSG:4326**, and they follow the Earth's
+  **limb**, not the raster corners. A full disk's four corners fall off the
+  planet, so its footprint is the limb ellipse and its bbox comes out at
+  `lon_0 ± 81.3°`, `±81.3°` of latitude. A reprojected full disk gets the same
+  curved ring rather than its rectangular raster extent, because the corners of
+  that rectangle are nodata and claiming them would make a catalogue search
+  match open ocean. If the footprint crosses the antimeridian — a GOES-West full
+  disk spans −218°…−56° — the west value is **greater** than the east one, which
+  is the STAC convention; the bbox is never widened to the whole planet to paper
+  over the wrap.
+* **`proj:transform` is in STAC's order**, not GDAL's: pixel width, row
+  rotation, origin x, column rotation, pixel height, origin y. On the fixed grid
+  it is in metres and already carries the clip and the `-s` resampling, so it
+  matches the geotransform of the GeoTIFF written beside it. `proj:shape` is
+  `[height, width]`. `proj:bbox` is the box in the item's **own** CRS — metres on
+  the fixed grid — while the root `bbox` is always geographic.
+* **`assets` keys carry the operation**: `image` for the satellite's fixed grid
+  and `image_geographic` for the reprojected one, so a single `-B` run yields one
+  Item with two assets. `href` is relative, because the Item sits next to the
+  product and the tool does not know the publication URL. The media type follows
+  the flags: `image/png`, `image/tiff; application=geotiff`, and with `--cog`
+  the same plus `; profile=cloud-optimized`.
+* **`links` is always empty.** Building `self`, `root` and `parent` needs to know
+  where the file will be published; the indexer completes the graph.
+* **Physical ranges live in `hpsv:channels`, not in `raster:bands`** of an asset.
+  The assets are 8-bit renderings; hanging kelvin statistics off them would
+  assert something false that no validator would catch.
+* `hpsv:product` only appears for L2 products (CMIP, ACHA, ACHT, ACTP, CTP, LST,
+  SST) or when `-N` is given; L1b radiance files have no product identity
+  distinct from the channel.
+* **GeoTIFF (`-t`):** a subset of this also goes inside the file as GDAL tags —
+  `tool`, `satellite`, `sector`, `band`, `scan_time`, `product`, and the
+  `colormap_*` entries in pseudocolor. The CRS and the extent are not duplicated
+  as text, since the GeoTIFF represents them natively.
+* The structure is described by `docs/stac/hpsv-item.schema.json`, which
+  `tests/test_json.sh` validates on every run. That schema covers what this tool
+  emits and controls; validation against the official STAC core and extension
+  schemas is a separate step, tracked in `docs/stac/STAC_PLAN.md`.
 
 **Use cases:**
 * **Reproducibility:** exact documentation of the applied enhancement parameters (gamma, CLAHE, Rayleigh, etc.) and the source product/channel.
-* **Integration:** automation of visualization pipelines (e.g. `mapdrawer`), which consumes `crs`/`bounds`/`product` to locate and classify each image.
+* **Integration:** automation of visualization pipelines, and indexing by any STAC client without a house-specific reader.
 * **Traceability:** identifying the satellite, sector, channel(s), product, and projection that generated each image.
 
 ### 5.8 Output conventions
