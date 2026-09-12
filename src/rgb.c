@@ -1190,6 +1190,9 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
                                  ? cfg->product_short
                                  : (ctx.opts.mode ? ctx.opts.mode : "unknown");
     metadata_add(meta, "mode", mode_label);
+    // Without this the sidecar has no "command" and metadata_build_filename()
+    // falls through to the literal "output" as the product type.
+    metadata_set_command(meta, cfg->command);
 
     if (fabsf(ctx.opts.gamma[0] - 1.0f) > 1e-6f || fabsf(ctx.opts.gamma[1] - 1.0f) > 1e-6f ||
         fabsf(ctx.opts.gamma[2] - 1.0f) > 1e-6f) {
@@ -1363,10 +1366,6 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
 
     // -B: scale and save the fixed-grid output before reprojecting.
     if (ctx.opts.save_both) {
-        if (!apply_scaling(&ctx)) {
-            LOG_ERROR("Failure in scaling (fixed-grid).");
-            goto cleanup;
-        }
         if (ctx.opts.output_filename == NULL) {
             const char *ext_fg = ctx.opts.force_geotiff ? ".tif" : ".png";
             ctx.opts.output_filename = metadata_build_filename(meta, ext_fg);
@@ -1377,13 +1376,40 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
             }
         }
         LOG_INFO("Saving fixed-grid: %s", ctx.opts.output_filename);
+        // The scaled image is a local copy: ctx.final_image has to stay at full
+        // resolution because the reprojection below walks it through the
+        // reference channel's geotransform, which describes the unscaled grid.
+        // Scaling it in place made every -B -s run read out of bounds and
+        // segfault (the crash crea_rgbs_products.sh blames on the sidecar).
+        // Same shape as the fg_final copy in processing.c:405-412.
+        ImageData fg_full = ctx.final_image;
+        bool fg_scaled = false;
+        if (ctx.opts.scale != 1) {
+            ImageData fg = (ctx.opts.scale < 0)
+                               ? image_downsample_boxfilter(&fg_full, -ctx.opts.scale)
+                               : image_upsample_bilinear(&fg_full, ctx.opts.scale);
+            if (fg.data == NULL) {
+                LOG_ERROR("Failure in scaling (fixed-grid).");
+                goto cleanup;
+            }
+            LOG_INFO("%s fixed-grid image by factor %d",
+                     ctx.opts.scale < 0 ? "Reducing" : "Enlarging",
+                     ctx.opts.scale < 0 ? -ctx.opts.scale : ctx.opts.scale);
+            ctx.final_image = fg;
+            fg_scaled = true;
+        }
         // Temporarily disable reprojection flag so write_output uses the native projection.
         ctx.opts.do_reprojection = false;
-        if (!write_output(&ctx, product)) {
+        bool fg_written = write_output(&ctx, product);
+        ctx.opts.do_reprojection = true;
+        if (fg_scaled) {
+            image_destroy(&ctx.final_image);
+            ctx.final_image = fg_full;
+        }
+        if (!fg_written) {
             LOG_ERROR("Failed to save fixed-grid.");
             goto cleanup;
         }
-        ctx.opts.do_reprojection = true;
         // Append _geo suffix to the filename for the reprojected output.
         char *geo_filename = insert_geo_suffix(ctx.opts.output_filename);
         if (ctx.opts.output_generated) {
@@ -1519,8 +1545,10 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         }
     }
 
-    // Final scaling — after reprojection (for save_both, already applied before reprojection).
-    if (!ctx.opts.save_both && !apply_scaling(&ctx)) {
+    // Final scaling — after reprojection. Under -B the fixed-grid leg scaled a
+    // local copy, so the reprojected image still needs its own pass: -s applies
+    // to both outputs, as it already does in processing.c.
+    if (!apply_scaling(&ctx)) {
         LOG_ERROR("Failure in final scaling.");
         goto cleanup;
     }
