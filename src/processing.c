@@ -438,10 +438,14 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         {
             double asset_gt[6];
             projection_stac_transform(&c01, crop_x, crop_y, cfg->scale, asset_gt);
+            // El WKT2 sólo se arma si se va a escribir: cuesta ~6 ms la primera
+            // vez que el proceso toca GDAL.
+            char *asset_wkt = cfg->save_json ? projection_wkt2_from_nc(&c01) : NULL;
             metadata_add_asset(meta, "image", outfn,
                                metadata_media_type(is_geotiff, cfg->build_cog),
                                (int)fg_final.width, (int)fg_final.height,
-                               c01.proj_info.valid ? asset_gt : NULL, 0);
+                               c01.proj_info.valid ? asset_gt : NULL, 0, asset_wkt);
+            projection_free_wkt(asset_wkt);
         }
 
         // Fixed-grid extent in metres. gt[1] is the UNSCALED pixel size, so it
@@ -608,9 +612,14 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
                 (final_lon_max - final_lon_min) / (double)geo_final.width, 0.0, final_lon_min,
                 0.0, (final_lat_min - final_lat_max) / (double)geo_final.height, final_lat_max
             };
+            DataNC latlon_asset = c01;
+            latlon_asset.proj_code = PROJ_LATLON;
+            char *asset_wkt = cfg->save_json ? projection_wkt2_from_nc(&latlon_asset) : NULL;
             metadata_add_asset(meta, "image_geographic", outfn,
                                metadata_media_type(is_geotiff, cfg->build_cog),
-                               (int)geo_final.width, (int)geo_final.height, asset_gt, 4326);
+                               (int)geo_final.width, (int)geo_final.height,
+                               asset_gt, 4326, asset_wkt);
+            projection_free_wkt(asset_wkt);
         }
 
         metadata_set_geometry(meta, final_lon_min, final_lat_min, final_lon_max, final_lat_max);

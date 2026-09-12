@@ -1058,7 +1058,8 @@ static bool apply_scaling(RgbContext *ctx) {
     return true;
 }
 
-static bool write_output(RgbContext *ctx, const char *product_label, MetadataContext *meta) {
+static bool write_output(RgbContext *ctx, const char *product_label, MetadataContext *meta,
+                         bool want_wkt) {
     bool is_geotiff = ctx->opts.force_geotiff ||
                       (ctx->opts.output_filename && (strstr(ctx->opts.output_filename, ".tif") ||
                                                      strstr(ctx->opts.output_filename, ".tiff")));
@@ -1111,11 +1112,16 @@ static bool write_output(RgbContext *ctx, const char *product_label, MetadataCon
         projection_stac_transform(ref, ctx->crop_x_offset, ctx->crop_y_offset,
                                   ctx->opts.scale, asset_gt);
     }
+    DataNC crs_ref = ctx->channels[ctx->ref_channel_idx];
+    if (ctx->opts.do_reprojection) crs_ref.proj_code = PROJ_LATLON;
+    // Sólo si se va a escribir: el WKT2 cuesta ~6 ms la primera vez.
+    char *asset_wkt = want_wkt ? projection_wkt2_from_nc(&crs_ref) : NULL;
     metadata_add_asset(meta, ctx->opts.do_reprojection ? "image_geographic" : "image",
                        ctx->opts.output_filename,
                        metadata_media_type(is_geotiff, ctx->opts.build_cog),
                        (int)ctx->final_image.width, (int)ctx->final_image.height,
-                       has_gt ? asset_gt : NULL, asset_epsg);
+                       has_gt ? asset_gt : NULL, asset_epsg, asset_wkt);
+    projection_free_wkt(asset_wkt);
     return true;
 }
 
@@ -1423,7 +1429,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         }
         // Temporarily disable reprojection flag so write_output uses the native projection.
         ctx.opts.do_reprojection = false;
-        bool fg_written = write_output(&ctx, product, meta);
+        bool fg_written = write_output(&ctx, product, meta, cfg->save_json);
         ctx.opts.do_reprojection = true;
         if (fg_scaled) {
             image_destroy(&ctx.final_image);
@@ -1636,7 +1642,7 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         }
     }
 
-    if (!write_output(&ctx, product, meta)) {
+    if (!write_output(&ctx, product, meta, cfg->save_json)) {
         LOG_ERROR("Failed to save image.");
         goto cleanup;
     }

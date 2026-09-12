@@ -158,7 +158,11 @@
             "minItems": 6,
             "maxItems": 6
           },
-          "proj:epsg": { "type": "integer" }
+          "proj:epsg": { "type": "integer" },
+          "proj:wkt2": {
+            "type": "string",
+            "description": "Por activo, como proj:transform: el de rejilla fija no tiene código EPSG, así que sin su propio CRS heredaría el del Item —WGS 84 tras un -B— y su origen en metros se leería como grados."
+          }
         }
       }
     }

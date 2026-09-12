@@ -83,13 +83,15 @@ const char* metadata_media_type(bool is_geotiff, bool cog);
 /// key ("image", "image_geographic"): the operation goes in the key, per D1 of
 /// docs/stac/STAC_PLAN.md. Paths do NOT go through metadata_add_str(), which
 /// truncates at 63 characters.
-/// `transform` may be NULL. It is per-asset on purpose: a -B run writes two
-/// rasters on different grids, and the Item's own proj:transform can only
-/// describe one of them, so a client would otherwise georeference the other
-/// one wrong.
+/// The grid is per-asset on purpose: a -B run writes two rasters on different
+/// grids, and the Item's own proj:* can only describe one of them. The CRS is
+/// part of that — the fixed-grid asset has no EPSG code at all, so without its
+/// own wkt2 a client falls back to the Item's, reads a transform whose origin
+/// is -3.6e6 metres as degrees, and places the image nowhere.
+/// `transform` y `wkt2` pueden ser NULL.
 void metadata_add_asset(MetadataContext *ctx, const char *key, const char *href,
                         const char *media_type, int width, int height,
-                        const double transform[6], int epsg);
+                        const double transform[6], int epsg, const char *wkt2);
 
 /// Stable Item id: the scene plus the product, with no enhancement segment.
 /// metadata_build_filename() encodes gamma, CLAHE and clipping in the name, so

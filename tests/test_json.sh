@@ -119,6 +119,18 @@ for key, a in d["assets"].items():
     # rejillas distintas y la del Item solo puede describir uno.
     if "proj:transform" not in a:
         sys.exit("el activo '%s' no declara proj:transform" % key)
+    # Y su CRS. El activo de rejilla fija no tiene codigo EPSG, asi que sin
+    # wkt2 propio hereda el del Item: con -B eso es WGS 84, y su origen en
+    # metros se leeria como grados.
+    if "proj:wkt2" not in a:
+        sys.exit("el activo '%s' no declara proj:wkt2" % key)
+    metres = abs(a["proj:transform"][2]) > 1000.0
+    geographic = a["proj:wkt2"].startswith("GEOGCRS")
+    if metres and geographic:
+        sys.exit("el activo '%s' declara un CRS geografico con origen en metros (%s)"
+                 % (key, a["proj:transform"][2]))
+    if not metres and not geographic:
+        sys.exit("el activo '%s' declara un CRS proyectado con origen en grados" % key)
     gt = ds.GetGeoTransform()
     want = [gt[1], gt[2], gt[0], gt[4], gt[5], gt[3]]
     worst = max(abs(x - y) for x, y in zip(want, a["proj:transform"]))

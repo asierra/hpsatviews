@@ -40,6 +40,7 @@ typedef struct {
     double transform[6];
     bool has_transform;
     int epsg;
+    char *wkt2;
 } AssetInfo;
 
 typedef struct {
@@ -125,7 +126,10 @@ MetadataContext* metadata_create(void) {
 }
 
 void metadata_destroy(MetadataContext *ctx) {
-    if (ctx) free(ctx->wkt2);
+    if (ctx) {
+        free(ctx->wkt2);
+        for (int i = 0; i < ctx->asset_count; i++) free(ctx->assets[i].wkt2);
+    }
     free(ctx);
 }
 
@@ -238,7 +242,7 @@ const char* metadata_media_type(bool is_geotiff, bool cog) {
 
 void metadata_add_asset(MetadataContext *ctx, const char *key, const char *href,
                         const char *media_type, int width, int height,
-                        const double transform[6], int epsg) {
+                        const double transform[6], int epsg, const char *wkt2) {
     if (!ctx || !key || !href) return;
     for (int i = 0; i < ctx->asset_count; i++) {
         if (strcmp(ctx->assets[i].key, key) == 0) return;  /* first write wins */
@@ -261,6 +265,11 @@ void metadata_add_asset(MetadataContext *ctx, const char *key, const char *href,
     a->epsg = epsg;
     a->has_transform = (transform != NULL);
     if (transform) memcpy(a->transform, transform, sizeof(a->transform));
+    a->wkt2 = NULL;
+    if (wkt2 && wkt2[0]) {
+        a->wkt2 = malloc(strlen(wkt2) + 1);
+        if (a->wkt2) strcpy(a->wkt2, wkt2);
+    }
 }
 
 void metadata_set_clip(MetadataContext *ctx, bool clipped) {
@@ -653,6 +662,9 @@ int metadata_save_stac_item(MetadataContext *ctx, const char *filename,
         if (a->has_transform) {
             json_write_double_array(w, "proj:transform", a->transform, 6);
             if (a->epsg > 0) json_write_int(w, "proj:epsg", a->epsg);
+            // Sin esto el activo de rejilla fija, que no tiene código EPSG,
+            // hereda el CRS del Item y su origen en metros se lee como grados.
+            if (a->wkt2) json_write_string(w, "proj:wkt2", a->wkt2);
         }
         json_end_object(w);
     }
