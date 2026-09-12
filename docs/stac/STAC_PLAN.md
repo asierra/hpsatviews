@@ -513,6 +513,51 @@ quedan productos en disco que ningún lector entiende.
   visible desde un cliente y la más molesta de corregir después, porque los
   identificadores ya circularon.
 
+## Pendiente aparte: casos de producción en la suite (discutido 2026-09-12)
+
+**Hace falta, pero no replicando los guiones.** La evidencia son los tres
+defectos que aparecieron al hacer las fases 0 a 3 —el segfault de `rgb -B` con
+`-s`, la extensión en metros bajo `-s`, y `rgb` sin `command`—: los tres estaban
+en combinaciones que `LANOT_procesamiento_goes` usa a diario y que la suite no
+tocaba. Ninguno era exótico. El hueco entre la suite y producción era
+exactamente donde vivían los bugs, y no por casualidad: la suite prueba banderas
+de una en una y producción las combina.
+
+Replicar `crea_rgbs_products.sh` sería el error opuesto. Los guiones cambian; lo
+estable es **el contrato de la CLI**, y es eso lo que hay que cubrir.
+
+**Barato, sin datos nuevos:**
+
+* `-N "etiqueta:corta"`, la forma con dos puntos. Alimenta `product_short`, que
+  alimenta el `mode` de `rgb` y por tanto **el `id` del Item**. Un identificador
+  es contrato público y hoy no tiene una sola prueba.
+* `--expr "A;B;C"` en `rgb --mode custom`, que es como producción arma varios
+  productos.
+* `--minmax` invertido (max,min), que el propio guion documenta como truco
+  deliberado.
+
+**Caro: el disco completo.** Es donde el código de la fase 1 hace su trabajo más
+interesante —128 bisecciones al limbo, el antimeridiano de GOES-West, el pico de
+memoria de 10848²— y la suite no lo ha visto nunca. Pero meterlo en
+`sample_data/` multiplica por diez la descarga y el tiempo de CI en **cada**
+corrida. Tampoco alcanzan los canales: `airmass`, `severestorm` y `so2` no se
+prueban porque C05, C07–C10 y C12 no están en la muestra.
+
+Propuesta: una suite de disco completo **fuera** de `run_all_tests.sh`, invocada
+a mano con la ruta a un archivo local y deliberadamente **no contabilizada** en
+el marcador. La razón está en `CLAUDE.md`: la suite CUDA se salta sola y cuenta
+como aprobada, de modo que un 9/9 verde no significa que la GPU se probara.
+Añadir una segunda suite que se salta sola repetiría esa mentira; si no entra en
+el conteo, no puede mentir.
+
+**Observación incómoda sobre el método.** Lo que cazó los bugs de esta ronda no
+fueron las pruebas sino la **comparación diferencial** contra el binario
+anterior: tiempos, pico de RSS y `cmp` byte a byte de las salidas. Eso no está
+automatizado en ninguna parte. Automatizarlo exige guardar referencias, que es
+justo el mantenimiento que se decidió no pagar cuando se puso `check_nonblank`
+en vez de una referencia exacta por modo. Conviene revisar esa decisión con lo
+aprendido, pero es una discusión aparte de ésta.
+
 ## Primer paso de la siguiente sesión
 
 Fases 0 a 3 cerradas: `hpsv` emite `Item`s de STAC. Quedan las dos fases de
