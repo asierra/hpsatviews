@@ -564,7 +564,12 @@ Fases 0 a 3 cerradas: `hpsv` emite `Item`s de STAC. Quedan las dos fases de
 integración, y el orden entre ellas ya no es libre —los productos en disco ya
 llevan Item, así que `mapdrawer` es lo urgente—:
 
-**Fase 4, `mapdrawer`.** Los cuatro sitios de la tabla de D3, con una diferencia
+**Fase 4, `mapdrawer`.** Ojo con el tamaño: la tabla de D3 lista cuatro sitios,
+pero el trabajo real **no** está en ellos, sino en `Metadata.from_json_file()`
+(`mapdrawer.py:1376`), la clase que parsea el JSON. Hoy lee un formato plano con
+`crs` y `bounds` en la raíz; tiene que pasar a leer un `Item`, donde eso vive en
+`bbox` y en `properties["proj:wkt2"]`. Los cuatro sitios son la consecuencia, no
+la causa. Los cuatro sitios de la tabla de D3, con una diferencia
 respecto a lo que ese cuadro decía: `bounds` ya no existe, y lo que hay que leer
 es `bbox` en la raíz del Item y `properties["proj:wkt2"]`. Al hacerlo se borra
 `GOES_PROJECTIONS` de `mapdrawer.py:63-66`, la tabla privada de PROJ que hoy no
