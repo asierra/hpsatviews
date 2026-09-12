@@ -47,7 +47,10 @@ void metadata_set_projection(MetadataContext *ctx, const char *proj);
 /// Marks the output as user-clipped.
 void metadata_set_clip(MetadataContext *ctx, bool clipped);
 
-/// Records the final image bounding box (lon_min, lat_max, lon_max, lat_min).
+/// Records the final image bounding box as (x_min, y_min, x_max, y_max), i.e.
+/// [W, S, E, N] — the GeoJSON and STAC order, which is what the three callers
+/// already pass. Units follow the projection: degrees once reprojected
+/// (EPSG:4326), metres on the satellite's fixed grid.
 void metadata_set_geometry(MetadataContext *ctx, float x1, float y1, float x2, float y2);
 
 /// Canonical satellite name ("G16") for an identifier; "unknown" if out of range.

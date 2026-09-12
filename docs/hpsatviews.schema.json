@@ -1,14 +1,15 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "HPSatViews Metadata Sidecar v1.0",
-  "description": "Metadatos físicos y geoespaciales para visualización científica",
+  "$id": "https://github.com/asierra/hpsatviews/blob/main/docs/hpsatviews.schema.json",
+  "title": "HPSatViews Metadata Sidecar v1.1",
+  "description": "Metadatos físicos y geoespaciales del sidecar JSON que hpsv escribe con -j. Este esquema describe lo que src/metadata.c emite hoy; tests/test_json.sh lo valida en cada corrida de la suite. Cuando ambos discrepen, manda el emisor.",
   "type": "object",
   "required": [
     "tool",
     "version",
     "satellite",
-    "timestamp_iso",
-    "geometry",
+    "timestamp",
+    "command",
     "channels"
   ],
   "properties": {
@@ -17,23 +18,46 @@
       "const": "hpsatviews"
     },
     "version": {
-      "type": "string"
+      "type": "string",
+      "description": "Versión de hpsv, armada desde include/version.h"
     },
     "command": {
       "type": "string",
-      "enum": ["rgb", "gray", "pseudocolor", "composite"]
+      "enum": ["rgb", "gray", "pseudocolor"],
+      "description": "Subcomando ejecutado. No existe un subcomando 'composite'."
     },
     "satellite": {
       "type": "string",
-      "description": "Nombre oficial del satélite (ej: goes-16)"
+      "description": "Identificador corto del satélite tal como lo emite metadata_sat_name(): G16, G17, G18, G19 o unknown. El nombre canónico de STAC (goes-16) no se escribe aquí."
     },
-    "timestamp_iso": {
+    "sector": {
+      "type": "string",
+      "enum": ["fd", "conus", "m1", "m2"],
+      "description": "Sector de barrido. Se omite cuando no se pudo inferir."
+    },
+    "timestamp": {
       "type": "string",
       "format": "date-time",
-      "description": "Fecha/Hora de inicio del escaneo en UTC (ISO 8601)"
+      "description": "Inicio del barrido en UTC (ISO 8601, %Y-%m-%dT%H:%M:%SZ)."
+    },
+    "product": {
+      "type": "string",
+      "description": "Nombre del producto. Sólo aparece en L2 (CMIP, ACHA, ACHT, ACTP, CTP, LST, SST) o cuando se da -N; los L1b no lo llevan."
+    },
+    "crs": {
+      "type": "string",
+      "description": "Proyección de la salida: 'EPSG:4326' si se reproyectó (-G/-B); 'goes16'..'goes19' o 'geostationary' en la rejilla fija del satélite; 'geographics' cuando no se calculó geometría alguna. Los tres primeros casos son etiquetas de la casa, no códigos de autoridad."
+    },
+    "bounds": {
+      "type": "array",
+      "description": "Recuadro envolvente [x_min, y_min, x_max, y_max], es decir [W, S, E, N] como en GeoJSON y STAC. En EPSG:4326 son grados; en la rejilla fija son METROS sobre el plano geostacionario. Sólo aparece cuando se calculó geometría. Redundante con geometry.bbox.",
+      "items": { "type": "number" },
+      "minItems": 4,
+      "maxItems": 4
     },
     "geometry": {
       "type": "object",
+      "description": "Misma información que crs y bounds, en forma anidada. Sólo aparece cuando se calculó geometría: una corrida gray/pseudocolor sin -c, -t ni -G no carga navegación y no emite este bloque.",
       "required": ["bbox"],
       "properties": {
         "projection": {
@@ -42,7 +66,7 @@
         },
         "bbox": {
           "type": "array",
-          "description": "[lon_min, lat_max, lon_max, lat_min]",
+          "description": "[x_min, y_min, x_max, y_max]; ver bounds.",
           "items": { "type": "number" },
           "minItems": 4,
           "maxItems": 4
@@ -51,14 +75,15 @@
     },
     "channels": {
       "type": "array",
-      "description": "Lista de canales o componentes y sus magnitudes físicas",
+      "description": "Canales o componentes con su magnitud física. Hoy sólo se registra el canal de referencia, incluso en rgb.",
+      "minItems": 1,
       "items": {
         "type": "object",
         "required": ["name", "quantity", "min", "max"],
         "properties": {
-          "name": { 
-            "type": "string", 
-            "description": "Nombre del canal (C13) o componente (Red, Green)" 
+          "name": {
+            "type": "string",
+            "description": "Nombre del canal (C13) o de la variable del archivo"
           },
           "quantity": {
             "type": "string",
@@ -73,11 +98,33 @@
     },
     "enhancements": {
       "type": "object",
+      "description": "Una clave por opción efectivamente aplicada, más el archivo y las dimensiones de salida. Las opciones no usadas simplemente no aparecen.",
       "properties": {
-        "gamma": { "type": "number" },
-        "clahe": { "type": "boolean" }
+        "gamma": {
+          "type": ["number", "string"],
+          "description": "Número, salvo en rgb con gammas distintos por canal, donde se emite la cadena \"R;G;B\"."
+        },
+        "clahe": { "type": "boolean" },
+        "clahe_limit": { "type": "number" },
+        "histogram": { "type": "boolean" },
+        "invert": { "type": "boolean" },
+        "rayleigh": { "type": "boolean" },
+        "stretch": { "type": "boolean" },
+        "geographics": { "type": "boolean" },
+        "scale": { "type": "integer" },
+        "palette": {
+          "type": "string",
+          "description": "Ruta del .cpt, o 'rainbow' para la paleta interna"
+        },
+        "expression": { "type": "string" },
+        "mode": {
+          "type": "string",
+          "description": "Modo de rgb, o la etiqueta corta de -N cuando se da"
+        },
+        "output_file": { "type": "string" },
+        "output_width": { "type": "integer" },
+        "output_height": { "type": "integer" }
       }
     }
   }
 }
-

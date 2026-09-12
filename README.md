@@ -85,6 +85,14 @@ On Debian/Ubuntu:
 sudo apt install build-essential libnetcdf-dev libpng-dev libgdal-dev libwebp-dev
 ```
 
+To run the test suite you also need **ImageMagick** (tolerant pixel diff) and
+**python3-jsonschema** (validates the JSON sidecar against
+`docs/hpsatviews.schema.json`):
+
+```bash
+sudo apt install imagemagick python3-jsonschema
+```
+
 ### 3.3 Build and install
 
 ```bash
@@ -456,7 +464,7 @@ For `custom` mode see **Band algebra**.
 }
 ```
 
-* `crs` reflects the output's actual projection: `EPSG:4326` if reprojected with `-G`/`--both`, `goes16`/`goes17`/`goes18`/`goes19` (or `geostationary`) on the satellite's native grid, or the default value `geographics` when no geometry was computed (a plain PNG without `--clip`, neither GeoTIFF nor reprojection). `bounds`/`geometry.bbox` only appear when geometry was actually computed, and are redundant with each other (the same bounding box in two forms).
+* `crs` reflects the output's actual projection: `EPSG:4326` if reprojected with `-G`/`--both`, `goes16`/`goes17`/`goes18`/`goes19` (or `geostationary`) on the satellite's native grid, or the default value `geographics` when no geometry was computed (a plain PNG without `--clip`, neither GeoTIFF nor reprojection). `bounds`/`geometry.bbox` only appear when geometry was actually computed, and are redundant with each other (the same bounding box in two forms). Their order is `[x_min, y_min, x_max, y_max]` — that is `[W, S, E, N]`, the GeoJSON and STAC convention — and the **units follow `crs`**: degrees once reprojected, metres on the geostationary plane for the satellite's fixed grid.
 * `product` only appears for L2 products (CMIP, ACHA, ACHT, ACTP, CTP, LST, SST); L1b (radiance) files don't include it because they have no "product" identity distinct from the channel.
 * `enhancements` adds one key per processing option that was actually applied (among others: `gamma`, `clahe`, `histogram`, `invert`, `rayleigh`/`stretch` in `rgb` mode, `scale`, `palette`, `expression`, `geographics`), plus `output_file`/`output_width`/`output_height`. Unused options simply don't appear.
 * **GeoTIFF (`-t`):** only a subset of these metadata fields is embedded as GDAL tags inside the file: `tool`, `satellite`, `sector`, `band`, `scan_time`, `product` (when applicable), and `colormap_min`/`colormap_max`/`colormap_size`/`colormap_units` in pseudocolor. `crs` and `bounds` aren't duplicated as text because the GeoTIFF already represents them natively (geotransform + WKT projection); `command`, `channels` (with min/max/quantity), and `enhancements` only exist in the JSON sidecar.
