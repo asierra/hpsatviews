@@ -8,6 +8,7 @@
 #include "writer_geotiff.h"
 #include "logger.h"
 #include "timing.h"
+#include "projection.h"
 #include <gdal.h>
 #include <cpl_string.h>
 #include <ogr_srs_api.h>
@@ -82,40 +83,6 @@ static void set_gdal_metadata(GDALDatasetH ds, const DataNC *meta) {
             GDALSetMetadataItem(ds, "TIFFTAG_DATETIME", ts_tiff, "");
         }
     }
-}
-
-/**
- * Genera el string WKT usando PROJ.4 para máxima compatibilidad.
- * Reemplaza a OSRSetGeostationary para evitar errores de compilación.
- */
-static char* get_projection_wkt(const DataNC* meta) {
-    OGRSpatialReferenceH hSRS = OSRNewSpatialReference(NULL);
-    char *wkt = NULL;
-
-    if (meta->proj_code == PROJ_GEOS && meta->proj_info.valid) {
-        // Construimos la cadena PROJ.4 manualmente.
-        // +sweep=x es CRUCIAL para GOES-R.
-        char proj4[512];
-        snprintf(proj4, sizeof(proj4), 
-                 "+proj=geos +sweep=x +lon_0=%.6f +h=%.3f +x_0=0 +y_0=0 +ellps=GRS80 +units=m +no_defs",
-                 meta->proj_info.lon_origin,
-                 meta->proj_info.sat_height);
-        
-        if (OSRImportFromProj4(hSRS, proj4) != OGRERR_NONE) {
-            LOG_ERROR("Error importing PROJ.4 projection: %s", proj4);
-        }
-
-    } else if (meta->proj_code == PROJ_LATLON) {
-        // EPSG:4326 (Latitud/Longitud WGS84)
-        OSRImportFromEPSG(hSRS, 4326);
-    } else {
-        OSRDestroySpatialReference(hSRS);
-        return NULL;
-    }
-
-    OSRExportToWkt(hSRS, &wkt);
-    OSRDestroySpatialReference(hSRS);
-    return wkt;
 }
 
 /**
@@ -216,7 +183,7 @@ static GDALDatasetH create_mem_dataset(int width,
 
     if (meta) {
         // 1. Set projection (WKT).
-        char* wkt = get_projection_wkt(meta);
+        char* wkt = projection_wkt_from_nc(meta);
         if (wkt) {
             GDALSetProjection(ds, wkt);
             CPLFree(wkt);

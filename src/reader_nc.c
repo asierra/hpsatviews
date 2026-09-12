@@ -200,6 +200,14 @@ static int datanc_read_metadata(int ncid, int varid, DataNC *datanc, NCScaleConf
         nc_get_att_double(ncid, proj_varid, "semi_minor_axis", &datanc->proj_info.semi_minor);
         nc_get_att_double(ncid, proj_varid, "longitude_of_projection_origin", &datanc->proj_info.lon_origin);
         nc_get_att_double(ncid, proj_varid, "inverse_flattening", &datanc->proj_info.inv_flat);
+        // sweep_angle_axis decides the PROJ +sweep; ABI writes "x". It used to
+        // be hardcoded in the GeoTIFF writer instead of read from the file.
+        char sweep[8] = "";
+        if (nc_get_att_text(ncid, proj_varid, "sweep_angle_axis", sweep) == NC_NOERR &&
+            (sweep[0] == 'x' || sweep[0] == 'y')) {
+            datanc->proj_info.sweep[0] = sweep[0];
+            datanc->proj_info.sweep[1] = '\0';
+        }
         datanc->proj_info.valid = true;
         // x/y are coordinate VARIABLES (not just dimensions): need their own varid lookup.
         int xvar, yvar;

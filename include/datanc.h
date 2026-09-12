@@ -95,6 +95,7 @@ typedef struct {
       double semi_minor; ///< semi_minor_axis
       double lon_origin; ///< longitude_of_projection_origin
       double inv_flat;   ///< inverse_flattening
+      char sweep[4];     ///< sweep_angle_axis ("x" for ABI); empty if absent
       bool valid;        ///< True if projection params were read successfully
   } proj_info;
 } DataNC;
