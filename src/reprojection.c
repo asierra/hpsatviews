@@ -56,7 +56,7 @@ void reprojection_find_pixel_for_coord(const DataF* navla, const DataF* navlo,
                 local_checked++;
                 
                 // Skip invalid pixels in the navigation grid.
-                if (current_lat == NonData || current_lon == NonData) {
+                if (IS_NONDATA(current_lat) || IS_NONDATA(current_lon)) {
                     continue;
                 }
                 

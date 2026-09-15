@@ -41,7 +41,7 @@ ImageData create_single_gray(DataF c01, bool invert_value, bool use_alpha,
       int po = i * imout.bpp;
       uint8_t r = 0, a = 0;
 
-      if (c01.data_in[i] != NonData && !IS_NONDATA(c01.data_in[i])) {
+      if (!IS_NONDATA(c01.data_in[i])) {
         float val = c01.data_in[i];
         if (val < min_val) val = min_val;
         if (val > max_val) val = max_val;

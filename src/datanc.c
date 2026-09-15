@@ -150,7 +150,7 @@ DataF dataf_crop(const DataF *data, unsigned int x_start, unsigned int y_start, 
 #pragma omp parallel for reduction(min : new_min) reduction(max : new_max)
     for (size_t i = 0; i < cropped.size; i++) {
         float val = cropped.data_in[i];
-        if (val != NonData && !isnan(val)) {
+        if (!IS_NONDATA(val)) {
             if (val < new_min)
                 new_min = val;
             if (val > new_max)
@@ -163,6 +163,12 @@ DataF dataf_crop(const DataF *data, unsigned int x_start, unsigned int y_start, 
 
     return cropped;
 }
+
+// Same test as IS_NONDATA(), without its short-circuit branches: !(v < 1e30f) is
+// true for v >= 1e30, +inf and NaN, and the second term catches -inf. The two
+// resampling loops below apply it to every input they combine, once per output
+// pixel, where the macro's branches were a measurable share of a full disk.
+static inline int is_fill(float v) { return !(v < 1.0e30f) | (v == -HUGE_VALF); }
 
 DataF downsample_simple(DataF datanc_big, int factor) {
     DataF datanc = dataf_create(datanc_big.width / factor, datanc_big.height / factor);
@@ -208,14 +214,20 @@ DataF downsample_boxfilter(DataF datanc_big, int factor) {
                 nx -= datanc_big.width - (ii + nx);
             unsigned int acum = 0;
             double f = 0;
+            int fill = 0;
             for (unsigned int l = 0; l < ny; l++) {
                 int jx = (jj + l) * datanc_big.width;
                 for (unsigned int k = 0; k < nx; k++) {
-                    f += datanc_big.data_in[jx + ii + k];
+                    float v = datanc_big.data_in[jx + ii + k];
+                    fill |= is_fill(v);
+                    f += v;
                     acum++;
                 }
             }
-            datanc.data_in[j * datanc.width + i] = (float)(f / acum);
+            // A block that touches fill is fill. Averaging the 1e32 sentinel in
+            // leaves a value that is fill-like but not the sentinel, and the
+            // stages downstream do not all agree on how to read it.
+            datanc.data_in[j * datanc.width + i] = fill ? NonData : (float)(f / acum);
         }
     }
     double end = omp_get_wtime();
@@ -248,6 +260,19 @@ DataF upsample_bilinear(DataF datanc_small, int factor) {
             float xw = x - xl;
             float yw = y - yl;
 
+            // Any neighbour that is fill makes the result fill. Interpolating the
+            // 1e32 sentinel into real reflectances at the disk edge leaves values
+            // on both sides of the IS_NONDATA() threshold, and a later scale by a
+            // factor below one can carry one back across it as saturated data.
+            // (When xw or yw is 0 the high neighbour is the low one, so checking
+            // all four never discards a pixel the interpolation does not use.)
+            if (is_fill(datanc_small.data_in[yl * datanc_small.width + xl]) |
+                is_fill(datanc_small.data_in[yl * datanc_small.width + xh]) |
+                is_fill(datanc_small.data_in[yh * datanc_small.width + xl]) |
+                is_fill(datanc_small.data_in[yh * datanc_small.width + xh])) {
+                datanc.data_in[j * datanc.width + i] = NonData;
+                continue;
+            }
             double d = datanc_small.data_in[yl * datanc_small.width + xl] * (1 - xw) * (1 - yw) +
                        datanc_small.data_in[yl * datanc_small.width + xh] * xw * (1 - yw) +
                        datanc_small.data_in[yh * datanc_small.width + xl] * (1 - xw) * yw +
@@ -329,7 +354,7 @@ DataF dataf_op_dataf(const DataF *a, const DataF *b, Operation op) {
         float val_a = a->data_in[i];
         float val_b = b->data_in[i];
 
-        if (val_a == NonData || val_b == NonData) {
+        if (IS_NONDATA(val_a) || IS_NONDATA(val_b)) {
             result.data_in[i] = NonData;
             continue;
         }
@@ -354,7 +379,7 @@ DataF dataf_op_dataf(const DataF *a, const DataF *b, Operation op) {
         }
         result.data_in[i] = res_val;
 
-        if (res_val != NonData) {
+        if (!IS_NONDATA(res_val)) {
             if (res_val < fmin)
                 fmin = res_val;
             if (res_val > fmax)
@@ -377,7 +402,7 @@ DataF dataf_op_scalar(const DataF *a, float scalar, Operation op, bool scalar_fi
 #pragma omp parallel for reduction(min : fmin) reduction(max : fmax)
     for (size_t i = 0; i < a->size; i++) {
         float val_a = a->data_in[i];
-        if (val_a == NonData) {
+        if (IS_NONDATA(val_a)) {
             result.data_in[i] = NonData;
             continue;
         }
@@ -422,7 +447,7 @@ DataF dataf_op_scalar(const DataF *a, float scalar, Operation op, bool scalar_fi
         }
         result.data_in[i] = res_val;
 
-        if (res_val != NonData) {
+        if (!IS_NONDATA(res_val)) {
             if (res_val < fmin)
                 fmin = res_val;
             if (res_val > fmax)
@@ -441,7 +466,7 @@ void dataf_invert(DataF *a) {
 
 #pragma omp parallel for
     for (size_t i = 0; i < a->size; i++) {
-        if (a->data_in[i] != NonData) {
+        if (!IS_NONDATA(a->data_in[i])) {
             a->data_in[i] *= -1.0f;
         }
     }

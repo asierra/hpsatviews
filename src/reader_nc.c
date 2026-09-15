@@ -976,7 +976,7 @@ void compute_relative_azimuth(const DataF *saa, const DataF *vaa, DataF *raa) {
         float sa = saa->data_in[i];
         float va = vaa->data_in[i];
 
-        if (sa == NonData || va == NonData) {
+        if (IS_NONDATA(sa) || IS_NONDATA(va)) {
             raa->data_in[i] = NonData;
         } else {
             float diff = fabsf(sa - va);

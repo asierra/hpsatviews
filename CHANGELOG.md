@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Fill values leaking into real data at the edge of the disk.
+  `upsample_bilinear()` and `downsample_boxfilter()` mixed the 1e32 sentinel
+  with neighbouring reflectances, leaving limb pixels with values on both sides
+  of the `IS_NONDATA()` threshold (1e30); they now return `NonData` whenever an
+  input they combine is fill. The `DataF` arithmetic helpers, and a few other
+  checks, compared against the exact sentinel instead of using `IS_NONDATA()`,
+  so the CPU ratio sharpening could scale such a value back below the threshold
+  and render it as saturated data where the GPU path, which uses the threshold,
+  left it masked. On a GOES-19 full disk at 0.5 km (`--rayleigh -f --sharpen
+  --stretch`) the CPU path had 140 isolated blue samples at 255 on the limb
+  where the GPU path had 0, 501 without `--rayleigh`; the two paths now differ
+  only by one-count rounding.
+
 ## [1.1.0] - 2026-08-11
 
 DOI: [10.5281/zenodo.21893553](https://doi.org/10.5281/zenodo.21893553).
