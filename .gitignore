@@ -47,6 +47,7 @@ hpsatviews
 
 *.bin
 bin/
+bench_bin/
 
 # Archivos NetCDF grandes (datos satelitales)
 *.nc
