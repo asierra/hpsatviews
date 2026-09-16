@@ -59,14 +59,41 @@ except ImportError as exc:  # pragma: no cover
     sys.exit(f"falta el módulo de GDAL para Python ({exc}).\n"
              + _install_hint("python3-gdal", "python3-gdal", "*/osgeo/gdal.py"))
 
-try:
-    from pyproj import CRS, Transformer
-except ImportError as exc:  # pragma: no cover
-    sys.exit(f"falta pyproj ({exc}).\n"
-             + _install_hint("python3-pyproj", "python3-pyproj",
-                             "*/pyproj/__init__.py", pip="pyproj"))
-
 gdal.UseExceptions()
+
+
+class _Transformer:
+    """Transforma del CRS del GeoTIFF a EPSG:4326, en orden lon,lat.
+
+    Se apoya en osr y no en pyproj, aunque pyproj tiene la API más cómoda,
+    porque GDAL ya es dependencia dura de este script y pyproj no está
+    empaquetado para EPEL 10, que es lo que corre uno de los servidores de
+    producción: era una dependencia más que instalar a mano para ganar una
+    llamada. Las dos hablan con el mismo PROJ por debajo.
+    """
+
+    def __init__(self, wkt):
+        src = osr.SpatialReference()
+        src.ImportFromWkt(wkt)
+        dst = osr.SpatialReference()
+        dst.ImportFromEPSG(4326)
+        # Orden lon,lat en los dos extremos, que es lo que pedía always_xy=True
+        # en pyproj. Sin esto GDAL 3 respeta el orden de la autoridad y devuelve
+        # EPSG:4326 como lat,lon, con lo que la huella sale con las coordenadas
+        # intercambiadas -- y en silencio, porque ambas son números plausibles.
+        src.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+        dst.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+        self._ct = osr.CoordinateTransformation(src, dst)
+
+    def transform(self, x, y):
+        # Fuera del disco la transformación falla; con gdal.UseExceptions() eso
+        # llega como excepción en vez de como el infinito que devolvía pyproj.
+        # _project() espera lo segundo, así que se traduce aquí.
+        try:
+            lon, lat, _ = self._ct.TransformPoint(x, y)
+        except Exception:
+            return float("inf"), float("inf")
+        return lon, lat
 
 STAC_VERSION = "1.0.0"
 EXT_PROJ = "https://stac-extensions.github.io/projection/v1.1.0/schema.json"
@@ -130,7 +157,7 @@ def _bisect(tr, ax, ay, bx, by):
 
 
 def footprint(crs_wkt, gt, width, height, lon_ref):
-    tr = Transformer.from_crs(CRS.from_wkt(crs_wkt), CRS.from_epsg(4326), always_xy=True)
+    tr = _Transformer(crs_wkt)
     ax, ay = gt[0], gt[3]
     bx = ax + width * gt[1]
     by = ay + height * gt[5]

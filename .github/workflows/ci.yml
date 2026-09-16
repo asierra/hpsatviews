@@ -15,7 +15,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libnetcdf-dev libhdf5-dev libdeflate-dev libpng-dev libgdal-dev libwebp-dev imagemagick python3-jsonschema python3-gdal python3-pyproj
+          sudo apt-get install -y libnetcdf-dev libhdf5-dev libdeflate-dev libpng-dev libgdal-dev libwebp-dev imagemagick python3-jsonschema python3-gdal
 
       - name: Cache sample data
         uses: actions/cache@v4
