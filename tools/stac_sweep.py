@@ -27,11 +27,44 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+def _install_hint(deb, rpm, probe=None, pip=None):
+    """Cómo instalar, según el gestor de paquetes que haya en la máquina.
+
+    El proyecto se compila en Debian/Ubuntu y en RHEL/Rocky (ver CLAUDE.md), así
+    que un mensaje que sólo sepa de apt manda a media flota a buscar un paquete
+    con un nombre que ahí no existe.
+    """
+    import shutil
+
+    if shutil.which("apt-get"):
+        lines = [f"  sudo apt-get install {deb}"]
+    elif shutil.which("dnf"):
+        lines = [f"  sudo dnf install {rpm}"]
+        if probe:
+            lines.append(f"  (si ese nombre no existe: dnf provides '{probe}')")
+    elif shutil.which("zypper"):
+        lines = [f"  sudo zypper install {rpm}"]
+    else:
+        lines = [f"  {deb} en Debian/Ubuntu, {rpm} en RHEL/Rocky/Fedora"]
+    if pip:
+        lines.append(f"  o bien: python3 -m pip install {pip}")
+    return "\n".join(lines)
+
+
 try:
     from osgeo import gdal, osr
+except ImportError as exc:  # pragma: no cover
+    # Las ligaduras de GDAL no se instalan con pip de forma fiable: la rueda
+    # tiene que casar con la libgdal del sistema, así que aquí no se ofrece.
+    sys.exit(f"falta el módulo de GDAL para Python ({exc}).\n"
+             + _install_hint("python3-gdal", "python3-gdal", "*/osgeo/gdal.py"))
+
+try:
     from pyproj import CRS, Transformer
 except ImportError as exc:  # pragma: no cover
-    sys.exit(f"faltan dependencias (python3-gdal, python3-pyproj): {exc}")
+    sys.exit(f"falta pyproj ({exc}).\n"
+             + _install_hint("python3-pyproj", "python3-pyproj",
+                             "*/pyproj/__init__.py", pip="pyproj"))
 
 gdal.UseExceptions()
 
