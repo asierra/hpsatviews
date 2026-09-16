@@ -7,7 +7,12 @@
 #
 # Uso:
 #   reproduction/sweep_ir_overlay.sh <anchor.nc> [<anchor.nc> ...]
-#   reproduction/sweep_ir_overlay.sh /data1/input/abi/l1b/fd/*C01*.nc
+#
+# Las anclas las elige pick_scenes.sh, que además comprueba que la escena esté
+# completa --el acervo llega canal por canal y una escena a medio bajar falla
+# después, con un error que no señala la causa:
+#
+#   reproduction/sweep_ir_overlay.sh $(reproduction/pick_scenes.sh --hours 12,17,22)
 #
 # Overrides:
 #   HPSV_BASE_BIN   Binario de referencia, la rama que va a producción.
