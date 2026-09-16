@@ -128,24 +128,33 @@ __device__ float get_rayleigh_value_dev(const RayleighLUTDev lut, float s,
   return c0 * (1.0f - ds) + c1 * ds;
 }
 
-/* ---- solar-zenith correction --------------------------------------------- */
-__global__ void solar_zenith_kernel(float *data, const float *sza, size_t n) {
+/* ---- solar-zenith correction ---------------------------------------------
+ * Espejo de apply_solar_zenith_correction() (src/truecolor.c), que a su vez
+ * porta _sunzen_corr_cos_ndarray de satpy. inv_cos_limit e inv_log2 se calculan
+ * en host y se pasan como parámetros en vez de recalcularse aquí: así los dos
+ * caminos multiplican exactamente por el mismo float. */
+__global__ void solar_zenith_kernel(float *data, const float *sza, size_t n,
+                                    float inv_cos_limit, float inv_log2) {
   size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= n) return;
 
-  const float MAX_SZA = 85.0f;
+  const float FADE_SPAN = HPSV_SUNZ_MAX_SZA - HPSV_SUNZ_LIMIT;
   float refl = data[i];
   float sza_deg = sza[i];
 
-  if (is_nondata_dev(refl) || is_nondata_dev(sza_deg) || sza_deg > MAX_SZA) {
+  // Salida temprana por encima del límite de render: el clip a cero del factor
+  // lo anularía igual, y así la mitad nocturna no paga un logaritmo.
+  if (is_nondata_dev(refl) || is_nondata_dev(sza_deg) || sza_deg >= HPSV_SUNZ_MAX_SZA) {
     data[i] = 0.0f;
     return;
   }
-  float cos_sza = cosf(sza_deg * HPSV_DEG2RAD);
-  if (cos_sza > 0.087f) {
-    data[i] = refl / cos_sza;
+
+  if (sza_deg < HPSV_SUNZ_LIMIT) {
+    data[i] = refl / cosf(sza_deg * HPSV_DEG2RAD);
   } else {
-    data[i] = 0.0f;
+    float fade = 1.0f - log1pf((sza_deg - HPSV_SUNZ_LIMIT) / FADE_SPAN) * inv_log2;
+    if (fade < 0.0f) fade = 0.0f;
+    data[i] = refl * fade * inv_cos_limit;
   }
 }
 
@@ -160,7 +169,10 @@ extern "C" void apply_solar_zenith_correction_dev(DataFDev *data,
   cudaEventCreate(&t1);
   cudaEventRecord(t0);
 
-  solar_zenith_kernel<<<grid, block>>>(data->d_data, sza->d_data, data->size);
+  const float inv_cos_limit = 1.0f / cosf(HPSV_SUNZ_LIMIT * HPSV_DEG2RAD);
+  const float inv_log2 = 1.0f / logf(2.0f);
+  solar_zenith_kernel<<<grid, block>>>(data->d_data, sza->d_data, data->size,
+                                       inv_cos_limit, inv_log2);
 
   cudaEventRecord(t1);
   cudaEventSynchronize(t1);
@@ -188,14 +200,15 @@ __global__ void rayleigh_lut_kernel(float *img, const float *sza,
   if (is_nondata_dev(original)) return;
 
   float theta_s = sza[i];
-  // Night/twilight mask (SZA > 88°).
-  if (theta_s > 88.0f || is_nondata_dev(theta_s) || theta_s < 0.0f) {
+  // Night mask: mismo límite al que renderiza solar_zenith_kernel, o la
+  // corrección volvería a ennegrecer la franja crepuscular.
+  if (theta_s > HPSV_SUNZ_MAX_SZA || is_nondata_dev(theta_s) || theta_s < 0.0f) {
     img[i] = 0.0f;
     return;
   }
 
   float sza_clipped = theta_s;
-  if (sza_clipped > 87.68f) sza_clipped = 87.68f;
+  if (sza_clipped > HPSV_RAY_LUT_SZA_MAX) sza_clipped = HPSV_RAY_LUT_SZA_MAX;
   if (sza_clipped < 0.0f) sza_clipped = 0.0f;
 
   float vza_clipped = vza[i];
@@ -207,9 +220,10 @@ __global__ void rayleigh_lut_kernel(float *img, const float *sza,
 
   float r_corr = get_rayleigh_value_dev(lut, theta_s_sec, vza_sec, raa[i]);
 
-  // Taper for SZA 70–88°.
-  if (theta_s > 70.0f) {
-    float reduce_factor = 1.0f - (theta_s - 70.0f) / (88.0f - 70.0f);
+  // Taper desde HPSV_RAY_TAPER_LOW hasta el límite de render.
+  if (theta_s > HPSV_RAY_TAPER_LOW) {
+    float reduce_factor = 1.0f - (theta_s - HPSV_RAY_TAPER_LOW) /
+                                     (HPSV_SUNZ_MAX_SZA - HPSV_RAY_TAPER_LOW);
     if (reduce_factor < 0.0f) reduce_factor = 0.0f;
     r_corr *= reduce_factor;
   }

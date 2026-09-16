@@ -74,9 +74,17 @@ DataF create_truecolor_synthetic_green(const DataF *c_blue, const DataF *c_red, 
 
 void apply_solar_zenith_correction(DataF *data, const DataF *sza) {
     if (!data || !sza || !data->data_in || !sza->data_in) return;
-    
-    const float MAX_SZA = 85.0f; // conservative cutoff to avoid terminator noise
+
     const float RAD_PER_DEG = M_PI / 180.0f;
+    // Port of satpy's _sunzen_corr_cos_ndarray (satpy/modifiers/angles.py), the
+    // function behind the sunz_corrected modifier that geo2grid's true colour
+    // uses. Below HPSV_SUNZ_LIMIT the gain is 1/cos(SZA); above it the gain is
+    // frozen at its value there and faded out logarithmically, reaching zero at
+    // HPSV_SUNZ_MAX_SZA. Capping is what makes the twilight band renderable at
+    // all: plain 1/cos is 28.65 at 88 deg and diverges at 90.
+    const float INV_COS_LIMIT = 1.0f / cosf(HPSV_SUNZ_LIMIT * RAD_PER_DEG);
+    const float INV_LOG2 = 1.0f / logf(2.0f);
+    const float FADE_SPAN = HPSV_SUNZ_MAX_SZA - HPSV_SUNZ_LIMIT;
 
     float local_min = 1e30f;
     float local_max = -1e30f;
@@ -88,22 +96,29 @@ void apply_solar_zenith_correction(DataF *data, const DataF *sza) {
     for (size_t i = 0; i < data->size; i++) {
         float refl = data->data_in[i];
         float sza_deg = sza->data_in[i];
-        
-        if (IS_NONDATA(refl) || IS_NONDATA(sza_deg) || sza_deg > MAX_SZA) {
-            data->data_in[i] = 0.0f; // clamp to black at night/terminator
+
+        // satpy clips the fade factor at zero, so everything past max_sza gets a
+        // gain of zero anyway; bailing out here keeps the dark half of the disk
+        // as cheap as it was before, with no transcendental per night pixel.
+        if (IS_NONDATA(refl) || IS_NONDATA(sza_deg) || sza_deg >= HPSV_SUNZ_MAX_SZA) {
+            data->data_in[i] = 0.0f; // black beyond the rendered twilight
             continue;
         }
-        
-        float cos_sza = cosf(sza_deg * RAD_PER_DEG);
-        // Avoid division by zero (MAX_SZA guard already prevents cos_sza ~ 0).
-        if (cos_sza > 0.087f) { // cos(85) approx 0.087
-            float corrected = refl / cos_sza;
-            data->data_in[i] = corrected;
-            if (corrected < local_min) local_min = corrected;
-            if (corrected > local_max) local_max = corrected;
+
+        float corrected;
+        if (sza_deg < HPSV_SUNZ_LIMIT) {
+            corrected = refl / cosf(sza_deg * RAD_PER_DEG);
         } else {
-            data->data_in[i] = 0.0f;
+            // log1pf rather than logf(x + 1): the argument goes to zero as the
+            // angle approaches the limit, which is where the two disagree.
+            float fade = 1.0f - log1pf((sza_deg - HPSV_SUNZ_LIMIT) / FADE_SPAN) * INV_LOG2;
+            if (fade < 0.0f) fade = 0.0f;
+            corrected = refl * fade * INV_COS_LIMIT; // continuous at the limit: fade == 1
         }
+
+        data->data_in[i] = corrected;
+        if (corrected < local_min) local_min = corrected;
+        if (corrected > local_max) local_max = corrected;
     }
 
     LOG_TIMING_STAGE(TM_CORRECT, omp_get_wtime() - start, "Solar zenith correction");

@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- The solar terminator is now handled the way satpy, and therefore geo2grid,
+  handles it. Two visible changes, and they depend on each other.
+
+  `apply_solar_zenith_correction()` used to zero every pixel past 85° of solar
+  zenith, leaving a hard black wall across the image; it now ports satpy's
+  `_sunzen_corr_cos_ndarray` (the `sunz_corrected` modifier geo2grid's true
+  colour uses): `1/cos(SZA)` below 88°, then the gain frozen at its value there
+  and faded out logarithmically, reaching zero at 95°. Capping is the part that
+  matters — plain `1/cos` is 28.65 at 88° and diverges at 90°. The night mask
+  and the taper in the Rayleigh correction move to the same 95° limit, since
+  the Rayleigh step wrote a hard zero above 88° and would otherwise black out
+  the band the normalization just recovered. `--ray-analytic`, which had no
+  taper at all, gets the same one. On the GOES-16 CONUS sample scene
+  (day 220/2024, 13:00 UTC, terminator over the Pacific coast) `truecolor
+  --rayleigh` goes from 17.06 % pure black to 6.94 %: 10.12 % of the scene is
+  now twilight with visible cloud structure instead of a straight cut.
+
+  The day/night blend of `daynite` moves from 75–85° to 85–88°, satpy's
+  `DayNightCompositor` defaults. The two masks already interpolate on the same
+  variable — our `sin(elevation)` is identically satpy's `cos(SZA)` — so this is
+  the limits alone. Starting the blend at 75° was laying the nocturnal
+  composite over a wide band of broad daylight: on the same scene the night
+  fraction drops from 26.11 % to 14.83 %, and the grey wash over the central
+  states goes away. Measured max jump between neighbouring columns is unchanged
+  (12.22 DN, a pre-existing cloud edge), so the narrower blend introduces no
+  seam.
+
+  Rendering the twilight band costs very little compute and a little more I/O.
+  Seven interleaved runs of `truecolor --rayleigh --sharpen --stretch` over the
+  CONUS sample scene at 5000x3000, where the terminator crosses the image and
+  the band is ~10 % of it: the correction stage goes from 0.238 s to 0.254 s
+  and enhancement from 0.116 s to 0.123 s, so 0.023 s of actual work on a
+  2.8 s run, under 1 %. The visible part of the +0.226 s total is `t_write`,
+  0.157 s, which is deflate on a PNG that grew from 20.4 MB to 23.0 MB because
+  there is 10 % more image in it. `daynite` at 2500x1500 shows no cost above
+  run-to-run noise. A full disk spends ~3 % of itself at the terminator rather
+  than ~10 %, so both effects shrink by about a third there — re-measure on the
+  target host. The night side stays as cheap as before: everything past 95°
+  still leaves the loop before any transcendental.
+
+  This is what `compare_g2g_product.sh`'s `SZA_MAX` was working around: the
+  85–90° band was 2.2 % of a full disk but carried 48 % of the difference
+  against geo2grid, plus a red bias that was ours alone. The limits now live in
+  `include/rayleigh.h` and `include/daynight_mask.h`, shared with the CUDA
+  kernels so the two paths cannot drift.
+
 ### Fixed
 - Fill values leaking into real data at the edge of the disk.
   `upsample_bilinear()` and `downsample_boxfilter()` mixed the 1e32 sentinel

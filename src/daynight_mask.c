@@ -123,14 +123,14 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo, float *d
     float *temp_data = datanc.fdata.data_in;
     unsigned char *imout_data = imout.data;
 
-    float terminador = 85;
-    float penumbra = 10;
+    float terminador = HPSV_DN_TERMINATOR;
+    float penumbra = HPSV_DN_PENUMBRA;
 
     // Elevation thresholds as sin(elevation) to avoid per-pixel asin/atan:
-    // SZA > 85° <=> elev < 5°  => se0 < sin(5°)
-    // SZA > 75° <=> elev < 15° => se0 < sin(15°)
-    double se_nite = sin((90.0 - terminador) * M_PI / 180.0);         // sin(5°)
-    double se_twil = sin((90.0 - terminador + penumbra) * M_PI / 180.0); // sin(15°)
+    // SZA > 88° <=> elev <  2° => se0 < sin(2°)
+    // SZA > 85° <=> elev <  5° => se0 < sin(5°)
+    double se_nite = sin((90.0 - terminador) * M_PI / 180.0);         // sin(2°)
+    double se_twil = sin((90.0 - terminador + penumbra) * M_PI / 180.0); // sin(5°)
     double inv_se_range = 1.0 / (se_twil - se_nite);  // para interpolar penumbra
 
     // Precompute time-dependent solar ephemeris ONCE (was repeated per pixel)
@@ -156,10 +156,10 @@ ImageData create_daynight_mask(DataNC datanc, DataF navla, DataF navlo, float *d
 
             double se0 = sun_sin_elevation(la, lo, &eph);
             float w;
-            if (se0 < se_nite) {       // Noche (sza > 85°)
+            if (se0 < se_nite) {       // Noche (sza > 88°)
                 w = 1;
                 nite++;
-            } else if (se0 < se_twil) { // Penumbra (75° < sza < 85°)
+            } else if (se0 < se_twil) { // Penumbra (85° < sza < 88°)
                 w = (float)(1.0 - (se0 - se_nite) * inv_se_range);
                 if (w >= 0.5f)
                     nite++;

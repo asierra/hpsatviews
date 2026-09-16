@@ -221,15 +221,29 @@ void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lam
 
         float sza_val = sza->data_in[i];
         float vza_val = vza->data_in[i];
-        
-        float theta_s = sza_val * (float)(M_PI / 180.0);
+
+        // Same night handling as the LUT path, so the two implementations agree
+        // on where the image ends.
+        if (IS_NONDATA(sza_val) || sza_val < 0.0f || sza_val > HPSV_SUNZ_MAX_SZA) {
+            band->data_in[i] = 0.0f;
+            continue;
+        }
+
+        // 1/(4*mu_s*mu_v) runs away as the sun reaches the horizon, so cap the
+        // angle the geometry is evaluated at, the way the LUT path caps to the
+        // table's ceiling. The taper below is what actually retires the
+        // correction over the twilight band.
+        float sza_clipped = sza_val;
+        if (sza_clipped > HPSV_RAY_LUT_SZA_MAX) sza_clipped = HPSV_RAY_LUT_SZA_MAX;
+
+        float theta_s = sza_clipped * (float)(M_PI / 180.0);
         float theta_v = vza_val * (float)(M_PI / 180.0);
         float phi_rel = raa->data_in[i] * (float)(M_PI / 180.0);
 
         float mu_s = cosf(theta_s);
         float mu_v = cosf(theta_v);
 
-        if (mu_s < 0.01f || mu_v < 0.01f) {
+        if (mu_v < 0.01f) {
             band->data_in[i] = val;
             continue;
         }
@@ -238,6 +252,17 @@ void analytic_rayleigh_correction(DataF *band, const RayleighNav *nav, float lam
         float cos_scat = -mu_s * mu_v + sinf(theta_s) * sinf(theta_v) * cosf(phi_rel);
         float P_ray = calc_bucholtz_phase(cos_scat);
         float rho_ray = (tau_r * P_ray) / (4.0f * mu_s * mu_v);
+
+        // Same taper as luts_rayleigh_correction(): without it this path would
+        // subtract a full-strength path radiance across the twilight band and
+        // clamp the whole thing to black.
+        if (sza_val > HPSV_RAY_TAPER_LOW) {
+            float reduce_factor = 1.0f - (sza_val - HPSV_RAY_TAPER_LOW) /
+                                             (HPSV_SUNZ_MAX_SZA - HPSV_RAY_TAPER_LOW);
+            if (reduce_factor < 0.0f) reduce_factor = 0.0f;
+            rho_ray *= reduce_factor;
+        }
+
         float corrected = val - rho_ray;
 
         sum_orig += val;
@@ -464,9 +489,10 @@ void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t 
         if (original < min_original) min_original = original;
         if (original > max_original) max_original = original;
 
-        // Skip nighttime/twilight pixels (SZA > 88°); mask to 0.
-        // 88° instead of 85° to allow correction in twilight zone.
-        if (theta_s > 88.0f || IS_NONDATA(theta_s) || theta_s < 0.0f) {
+        // Skip night pixels; mask to 0. This has to match the limit
+        // apply_solar_zenith_correction() renders to, or the correction blacks
+        // out the very twilight band that one just made visible.
+        if (theta_s > HPSV_SUNZ_MAX_SZA || IS_NONDATA(theta_s) || theta_s < 0.0f) {
             img->data_in[i] = 0.0f;
             night_pixels++;
             continue;
@@ -474,8 +500,10 @@ void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t 
 
         // Clamp angles to LUT valid range (matching pyspectral convention).
         // SZA max = arccos(1/24.75) = 87.68°;  VZA max = arccos(1/3.0) = 70.53°
+        // This is the table's own ceiling, not a rendering limit: angles past
+        // it are evaluated here, exactly as pyspectral does.
         float sza_clipped = theta_s;
-        if (sza_clipped > 87.68f) sza_clipped = 87.68f;
+        if (sza_clipped > HPSV_RAY_LUT_SZA_MAX) sza_clipped = HPSV_RAY_LUT_SZA_MAX;
         if (sza_clipped < 0.0f) sza_clipped = 0.0f;
         
         float vza_clipped = nav->vza.data_in[i];
@@ -487,9 +515,17 @@ void luts_rayleigh_correction(DataF *img, const RayleighNav *nav, const uint8_t 
         
         float r_corr = get_rayleigh_value(&lut, theta_s_sec, vza_sec, nav->raa.data_in[i]);
         
-        // Taper correction linearly for SZA 70°-88° to avoid over-correction near the day/night terminator (matches satpy/pyspectral).
-        if (theta_s > 70.0f) {
-            float reduce_factor = 1.0f - (theta_s - 70.0f) / (88.0f - 70.0f);
+        // Taper the correction linearly from HPSV_RAY_TAPER_LOW to the
+        // rendering limit, to avoid over-correcting near the terminator. The
+        // upper end tracks HPSV_SUNZ_MAX_SZA so the fade spans exactly what
+        // still gets drawn; ending it earlier would leave the newly rendered
+        // band uncorrected, which is where the slant path is longest and the
+        // blue haze worst. pyspectral itself does not taper at all (satpy's
+        // reduce_strength defaults to 0), so a wider span is also a step
+        // towards it, not away.
+        if (theta_s > HPSV_RAY_TAPER_LOW) {
+            float reduce_factor = 1.0f - (theta_s - HPSV_RAY_TAPER_LOW) /
+                                             (HPSV_SUNZ_MAX_SZA - HPSV_RAY_TAPER_LOW);
             if (reduce_factor < 0.0f) reduce_factor = 0.0f;
             r_corr *= reduce_factor;
         }

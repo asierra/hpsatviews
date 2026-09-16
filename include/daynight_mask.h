@@ -14,6 +14,16 @@
 
 #include <time.h>
 
+/* Day/night blending limits, shared with src/cuda/daynite_cuda.cu (which pulls
+ * this header in through cuda_daynite.h). These are satpy's DayNightCompositor
+ * defaults, lim_low=85 / lim_high=88: full day below 85 deg of solar zenith,
+ * full night above 88, linear in between. The blend runs on sin(elevation),
+ * which is identically cos(SZA), the same variable satpy interpolates on.
+ * HPSV_DN_TERMINATOR must not exceed HPSV_SUNZ_LIMIT or the day side would be
+ * blended in where apply_solar_zenith_correction() has already zeroed it. */
+#define HPSV_DN_TERMINATOR 88.0f
+#define HPSV_DN_PENUMBRA    3.0f
+
 /// Efeméride solar dependiente solo del tiempo (constante para toda la imagen).
 /// Se expone para que el kernel CUDA de la máscara reciba los mismos escalares
 /// que usa la ruta CPU, en vez de recalcularlos con otra implementación.

@@ -416,7 +416,11 @@ Especially useful with `--mode custom` to identify the composition.
 
 The `daynite` mode intelligently blends the `truecolor` and `night` modes
 with background city lights, using a precise mask based on solar geometry,
-and automatically applies Rayleigh correction and contrast enhancement.
+and automatically applies Rayleigh correction and contrast enhancement. The
+blend limits are satpy's `DayNightCompositor` defaults: full day below 85° of
+solar zenith, full night above 88°, linear in between. High cold clouds
+(`--cloud-temp`) are forced to the night side regardless of geometry, which is
+an addition of ours with no satpy counterpart.
 
 For `custom` mode see **Band algebra**.
 
@@ -606,6 +610,16 @@ the correction where the red channel's reflectance (C02, 0.64 µm) exceeds
 0.20, following pyspectral's criterion. The correction fades out
 linearly as reflectance reaches 1.0, avoiding over-correction over clouds
 and highly reflective surfaces.
+
+**Terminator handling.** Before the Rayleigh step the visible channels are
+normalized by the solar zenith angle, following satpy's `sunz_corrected`
+modifier (`correction_limit = 88°`, `max_sza = 95°`), which is what geo2grid
+runs with. Below 88° the gain is `1/cos(SZA)`; above it the gain is frozen at
+its value there and faded out logarithmically, reaching zero at 95°. Capping is
+what makes the twilight band renderable at all — plain `1/cos` is 28.65 at 88°
+and diverges at 90°. The Rayleigh correction itself is tapered linearly from
+70° to the same 95° limit, so the fade spans exactly the range that still gets
+drawn.
 
 ### 6.3 CLAHE
 

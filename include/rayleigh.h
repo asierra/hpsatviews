@@ -11,6 +11,24 @@
 #include "datanc.h"
 #include <stdbool.h>
 
+/* Terminator limits, shared by the OpenMP and CUDA paths so the two cannot
+ * drift (src/cuda/rayleigh_cuda.cu includes this header). The values are
+ * satpy's: SunZenithCorrector.correction_limit and SunZenithCorrectorBase
+ * .max_sza, which is what geo2grid runs with — polar2grid's abi.yaml does not
+ * override them. Past HPSV_SUNZ_LIMIT the 1/cos gain is capped at its value
+ * there and faded out logarithmically, reaching zero at HPSV_SUNZ_MAX_SZA. */
+#define HPSV_SUNZ_LIMIT    88.0f
+#define HPSV_SUNZ_MAX_SZA  95.0f
+
+/* Solar zenith angle at which the Rayleigh correction starts fading out; it
+ * reaches zero at HPSV_SUNZ_MAX_SZA, so the fade covers exactly the range that
+ * still gets rendered. */
+#define HPSV_RAY_TAPER_LOW 70.0f
+
+/* Hard ceiling of the pyspectral LUT, arccos(1/24.75): angles above this are
+ * evaluated at this value, as pyspectral itself does. Not a rendering limit. */
+#define HPSV_RAY_LUT_SZA_MAX 87.68f
+
 typedef struct {
     DataF sza; ///< Solar Zenith Angle
     DataF vza; ///< View Zenith Angle

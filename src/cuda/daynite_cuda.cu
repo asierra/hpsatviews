@@ -200,7 +200,7 @@ extern "C" bool create_daynight_mask_dev(const DataFDev *temp, const DataFDev *n
   *d_mask = NULL;
 
   // Mismos umbrales que la ruta CPU, en sin(elevación) para evitar asin/atan.
-  const float terminador = 85.0f, penumbra = 10.0f;
+  const float terminador = HPSV_DN_TERMINATOR, penumbra = HPSV_DN_PENUMBRA;
   double se_nite = sin((90.0 - terminador) * DN_PI / 180.0);
   double se_twil = sin((90.0 - terminador + penumbra) * DN_PI / 180.0);
   double inv_se_range = 1.0 / (se_twil - se_nite);
