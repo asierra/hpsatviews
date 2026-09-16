@@ -7,12 +7,31 @@
 
 SCHEMA=../docs/stac/hpsv-item.schema.json
 
+# Sugerencia de instalación según la familia de la distribución. El proyecto se
+# compila tanto en Debian/Ubuntu como en RHEL/Rocky (ver CLAUDE.md), así que un
+# mensaje que sólo sepa de apt manda a quien esté en Rocky a buscar un paquete
+# que no existe con ese nombre. Para las ligaduras de GDAL además se imprime
+# cómo averiguar el nombre, porque varía entre Fedora y EPEL y entre versiones.
+install_hint() {
+    local deb="$1" rpm="$2" probe="${3:-}"
+    if command -v apt-get >/dev/null 2>&1; then
+        echo "      Instálalo con: sudo apt-get install $deb" >&2
+    elif command -v dnf >/dev/null 2>&1; then
+        echo "      Instálalo con: sudo dnf install $rpm" >&2
+        [[ -n "$probe" ]] && echo "      Si ese nombre no existe: dnf provides '$probe'" >&2
+    elif command -v zypper >/dev/null 2>&1; then
+        echo "      Instálalo con: sudo zypper install $rpm" >&2
+    else
+        echo "      Paquete: $deb (Debian/Ubuntu) o $rpm (RHEL/Rocky/Fedora)" >&2
+    fi
+}
+
 # Validación contra el esquema declarado. Es dependencia dura a propósito: un
 # SKIP silencioso que cuenta como aprobado es justo cómo la suite CUDA llegó a
-# mentir un 9/9 verde (ver CLAUDE.md). Debian/Ubuntu: python3-jsonschema.
+# mentir un 9/9 verde (ver CLAUDE.md).
 if ! python3 -c 'import jsonschema' 2>/dev/null; then
     echo "FAIL: falta el validador de JSON Schema." >&2
-    echo "      Instálalo con: sudo apt-get install python3-jsonschema" >&2
+    install_hint python3-jsonschema python3-jsonschema
     exit 1
 fi
 # Las ligaduras de GDAL son la única forma de leer la geotransformación del
@@ -20,7 +39,7 @@ fi
 # comprobar que el Item describe el archivo que se escribió al lado.
 if ! python3 -c 'from osgeo import gdal' 2>/dev/null; then
     echo "FAIL: faltan las ligaduras de GDAL para Python." >&2
-    echo "      Instálalas con: sudo apt-get install python3-gdal" >&2
+    install_hint python3-gdal python3-gdal '*/osgeo/gdal.py'
     exit 1
 fi
 
