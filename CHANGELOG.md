@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 - The solar terminator is now handled the way satpy, and therefore geo2grid,
-  handles it. Two visible changes, and they depend on each other.
+  handles it, in the modes where that is a correctness question.
 
   `apply_solar_zenith_correction()` used to zero every pixel past 85° of solar
   zenith, leaving a hard black wall across the image; it now ports satpy's
@@ -25,15 +25,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   --rayleigh` goes from 17.06 % pure black to 6.94 %: 10.12 % of the scene is
   now twilight with visible cloud structure instead of a straight cut.
 
-  The day/night blend of `daynite` moves from 75–85° to 85–88°, satpy's
-  `DayNightCompositor` defaults. The two masks already interpolate on the same
-  variable — our `sin(elevation)` is identically satpy's `cos(SZA)` — so this is
-  the limits alone. Starting the blend at 75° was laying the nocturnal
-  composite over a wide band of broad daylight: on the same scene the night
-  fraction drops from 26.11 % to 14.83 %, and the grey wash over the central
-  states goes away. Measured max jump between neighbouring columns is unchanged
-  (12.22 DN, a pre-existing cloud edge), so the narrower blend introduces no
-  seam.
+  `daynite`'s blend limits are **not** moved to satpy's, and the operational
+  rendering is left exactly as it was. Aligning them too is a two-constant
+  change and costs nothing, but on a GOES-19 full disk at dusk it replaces the
+  nocturnal composite with true colour across a ten-degree band and takes the
+  cloud-top temperature coding with it — a whole frontal system went from a
+  blue-to-yellow thermal structure to a featureless white mass. `--cloud-temp`
+  cannot stand in for it: it is a global threshold, so `-T 250` restores the
+  structure at dusk while scattering IR patches over the entire sunlit disk
+  (19.65 % of the disk then differs from the current rendering, against 1.42 %,
+  mean 0.66 DN, for what shipped). Whether to make that trade is a forecasting
+  decision rather than a correctness one; `include/daynight_mask.h` records what
+  was measured, and the change is two constants away if it is ever wanted.
 
   Rendering the twilight band costs very little compute and a little more I/O.
   Seven interleaved runs of `truecolor --rayleigh --sharpen --stretch` over the
@@ -42,11 +45,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   and enhancement from 0.116 s to 0.123 s, so 0.023 s of actual work on a
   2.8 s run, under 1 %. The visible part of the +0.226 s total is `t_write`,
   0.157 s, which is deflate on a PNG that grew from 20.4 MB to 23.0 MB because
-  there is 10 % more image in it. `daynite` at 2500x1500 shows no cost above
-  run-to-run noise. A full disk spends ~3 % of itself at the terminator rather
-  than ~10 %, so both effects shrink by about a third there — re-measure on the
-  target host. The night side stays as cheap as before: everything past 95°
-  still leaves the loop before any transcendental.
+  there is 10 % more image in it. The night side stays as cheap as before:
+  everything past 95° still leaves the loop before any transcendental.
+
+  On what production actually runs — a GOES-19 full disk through
+  `hpsv rgb -o out.tif -B`, that is `daynite` at 2 km writing two GeoTIFFs —
+  five interleaved runs put the total at 8.206 s before and 8.044 s after,
+  every stage delta inside the run-to-run range: no measurable cost at all. The
+  CONUS PNG figures above are the worst case, a small scene the terminator
+  crosses end to end.
 
   This is what `compare_g2g_product.sh`'s `SZA_MAX` was working around: the
   85–90° band was 2.2 % of a full disk but carried 48 % of the difference

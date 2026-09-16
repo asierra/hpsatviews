@@ -417,10 +417,14 @@ Especially useful with `--mode custom` to identify the composition.
 The `daynite` mode intelligently blends the `truecolor` and `night` modes
 with background city lights, using a precise mask based on solar geometry,
 and automatically applies Rayleigh correction and contrast enhancement. The
-blend limits are satpy's `DayNightCompositor` defaults: full day below 85° of
-solar zenith, full night above 88°, linear in between. High cold clouds
-(`--cloud-temp`) are forced to the night side regardless of geometry, which is
-an addition of ours with no satpy counterpart.
+blend runs from 75° of solar zenith (full day) to 85° (full night), linear in
+between — wider and earlier than satpy's `DayNightCompositor`, which blends
+85°–88°. The difference is deliberate: the narrower window trades the
+nocturnal composite's cloud-top temperature coding for true colour across a
+band ten degrees wide, which is a forecasting call rather than a correctness
+one. High cold clouds (`--cloud-temp`) are forced to the night side regardless
+of geometry, which is an addition of ours with no satpy counterpart; note it is
+a global threshold, so it cannot be used to restore that coding only at dusk.
 
 For `custom` mode see **Band algebra**.
 
