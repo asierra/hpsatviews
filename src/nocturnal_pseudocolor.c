@@ -83,3 +83,58 @@ ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* 
 
   return imout;
 }
+
+
+/* PROTOTIPO. Superpone la paleta infrarroja sobre una imagen ya compuesta, en
+ * vez de sustituirla como hace la máscara día/noche.
+ *
+ * La idea viene de que create_nocturnal_pseudocolor() ya sabe componer la
+ * paleta sobre un fondo con el alfa de la propia paleta; lo que le falta al
+ * lado diurno es que ese fondo sea el color verdadero. Aquí el peso no se toma
+ * de la paleta porque su curva está pensada para la noche —a 295 K todavía
+ * vale 0.29, que sobre color verdadero lo deslavaría entero— sino de una rampa
+ * explícita entre dos umbrales:
+ *
+ *   T <= t_opaque : infrarrojo puro (topes fríos, convección)
+ *   t_opaque..t_clear : desvanecido lineal
+ *   T >= t_clear : color verdadero intacto
+ */
+void image_overlay_ir(ImageData *base, const DataF *temp, float t_opaque, float t_clear) {
+  if (!base || !base->data || !temp || !temp->data_in) return;
+  if (base->bpp < 3) return;
+  if ((size_t)base->width * base->height != temp->size) {
+    LOG_WARN("image_overlay_ir: dimensiones distintas (%dx%d vs %zu), se omite",
+             base->width, base->height, temp->size);
+    return;
+  }
+  float span = t_clear - t_opaque;
+  if (span <= 0.0f) return;
+
+  double start = omp_get_wtime();
+  size_t n = temp->size;
+
+#pragma omp parallel for
+  for (size_t i = 0; i < n; i++) {
+    float f = temp->data_in[i];
+    if (IS_NONDATA(f) || f >= t_clear) continue;
+
+    float a = (t_clear - f) / span;
+    if (a > 1.0f) a = 1.0f;
+
+    unsigned int t;
+    for (t = 0; t < 255; t++)
+      if (f >= atmosrainbow[t].d && f < atmosrainbow[t + 1].d) break;
+    if (t == 255) t = 254;
+
+    size_t po = i * base->bpp;
+    float pr = 255.0f * atmosrainbow[t].r;
+    float pg = 255.0f * atmosrainbow[t].g;
+    float pb = 255.0f * atmosrainbow[t].b;
+    base->data[po]     = (unsigned char)(pr * a + base->data[po] * (1.0f - a));
+    base->data[po + 1] = (unsigned char)(pg * a + base->data[po + 1] * (1.0f - a));
+    base->data[po + 2] = (unsigned char)(pb * a + base->data[po + 2] * (1.0f - a));
+  }
+
+  LOG_TIMING_STAGE(TM_COMPOSE, omp_get_wtime() - start,
+                   "IR overlay on day side (%.1f-%.1f K)", t_opaque, t_clear);
+}

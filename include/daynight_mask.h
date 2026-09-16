@@ -38,8 +38,8 @@
  * pull in a day side that apply_solar_zenith_correction() has already faded,
  * and a seam appears. Raising it to 88 is what the satpy-aligned variant did,
  * and it works — that direction is available; lowering HPSV_SUNZ_LIMIT is not. */
-#define HPSV_DN_TERMINATOR 85.0f
-#define HPSV_DN_PENUMBRA   10.0f
+#define HPSV_DN_TERMINATOR 88.0f
+#define HPSV_DN_PENUMBRA    3.0f
 
 /// Efeméride solar dependiente solo del tiempo (constante para toda la imagen).
 /// Se expone para que el kernel CUDA de la máscara reciba los mismos escalares

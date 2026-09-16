@@ -983,6 +983,23 @@ static bool apply_enhancements(RgbContext *ctx) {
         DataF *nav_lat_ptr = &ctx->nav_lat;
         DataF *nav_lon_ptr = &ctx->nav_lon;
 
+        // PROTOTIPO (HPSV_IR_OVERLAY="t_opaque,t_clear"): en vez de que la
+        // máscara sustituya el compuesto diurno por el nocturno donde hace
+        // frío, superpone la paleta infrarroja sobre el color verdadero. El
+        // lado diurno conserva así la estructura térmica sin dejar de ser color
+        // verdadero, que es lo que la máscara sola no puede dar.
+        const char *ir_ov = getenv("HPSV_IR_OVERLAY");
+        if (ir_ov) {
+            float t_opaque = 0.0f, t_clear = 0.0f;
+            if (sscanf(ir_ov, "%f,%f", &t_opaque, &t_clear) == 2) {
+                LOG_INFO("IR overlay on day side: %.1f-%.1f K", t_opaque, t_clear);
+                image_overlay_ir(&ctx->final_image, &ctx->channels[13].fdata, t_opaque, t_clear);
+                ctx->final_image_touched = true;
+            } else {
+                LOG_WARN("HPSV_IR_OVERLAY='%s' no es 't_opaque,t_clear'; se ignora", ir_ov);
+            }
+        }
+
         float day_pct = 0.0f;
         ImageData mask = create_daynight_mask(ctx->channels[13], *nav_lat_ptr, *nav_lon_ptr,
                                               &day_pct, ctx->opts.cloud_temp);

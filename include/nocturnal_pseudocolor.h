@@ -14,4 +14,8 @@
 /// Generates a nighttime pseudocolor image from ABI C13 brightness temperature, optionally blended with city lights.
 ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* fondo);
 
+/// PROTOTIPO: superpone la paleta infrarroja sobre @p base con una rampa lineal
+/// entre @p t_opaque (infrarrojo puro) y @p t_clear (base intacta).
+void image_overlay_ir(ImageData *base, const DataF *temp, float t_opaque, float t_clear);
+
 #endif /* HPSATVIEWS_NOCTURNAL_PSEUDOCOLOR_H_ */
