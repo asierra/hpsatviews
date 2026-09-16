@@ -4,8 +4,13 @@
 #
 #   reproduction/sweep_ir_overlay.sh $(reproduction/pick_scenes.sh --hours 12,17,22)
 #
-# El acervo de /data1 guarda 4 días con cadencia de 10 minutos, así que a mano
-# son cientos de archivos por canal y hay que cruzarlos para saber cuáles
+# El acervo rotativo de /data1 guarda unos 4 días con cadencia de 10 minutos,
+# pero no completos: en septiembre de 2026 los días anteriores solo conservaban
+# las 20-23 UTC. Los días completos están en /depot, un directorio por día:
+#
+#   reproduction/pick_scenes.sh --dir /depot/goes-east/l1b/abi/fd/2026/245 --hours 12,20
+#
+# A mano son cientos de archivos por canal y hay que cruzarlos para saber cuáles
 # forman una escena utilizable.
 #
 # Uso:
@@ -30,12 +35,16 @@
 #                   truecolor y daynite.
 #   --copy DIR      Copia ahí los canales de cada escena elegida, además de
 #                   imprimir la ruta (que entonces apunta a la copia). Para que
-#                   el barrido siga siendo repetible cuando el acervo purgue:
-#                   con 4 días de ventana, una escena de hoy no existe el lunes.
+#                   el barrido siga siendo repetible cuando /data1 purgue; con
+#                   /depot no hace falta.
 #   --lit           Ordena por tamaño de C01 en vez de por fecha. El tamaño es
 #                   buen proxy de cuánto disco está iluminado, porque C01 es
 #                   visible y el lado nocturno comprime a casi nada.
 #   --verbose       Explica en stderr qué descartó y por qué.
+#
+# Solo comprueba que los canales existan, no que estén sanos: un archivo
+# truncado (en /data1 hubo uno de 4.6 MB con inicio igual a fin) cuenta como
+# presente. --hours lo esquiva en la práctica porque elige el minuto 00.
 #
 # Por qué comprueba los canales: hpsv infiere los hermanos del ancla por el
 # sello de tiempo, así que si la escena está a medio llegar --pasa, porque los
@@ -67,7 +76,7 @@ while [[ $# -gt 0 ]]; do
         --copy)     COPY="$2"; shift 2 ;;
         --lit)      LIT=1; shift ;;
         --verbose)  VERBOSE=1; shift ;;
-        -h|--help)  sed -n '2,40p' "$0"; exit 0 ;;
+        -h|--help)  sed -n '2,52p' "$0"; exit 0 ;;
         *) echo "opción desconocida: $1" >&2; exit 2 ;;
     esac
 done

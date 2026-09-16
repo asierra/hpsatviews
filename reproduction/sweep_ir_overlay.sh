@@ -1,76 +1,92 @@
 #!/bin/bash
-# Barrido de escenas para decidir los umbrales de la superposición infrarroja
-# (rama daynite-ir-overlay). Para cada escena renderiza la salida de producción
-# y la del prototipo con varios umbrales, y arma montajes recortados en las dos
-# zonas donde se juega la decisión: donde más cambia la imagen (el terminador,
-# normalmente) y donde hay color verdadero que perder (tierra o mar a la vista).
+# Barrido de umbrales de --ir-overlay (realce IR diurno de daynite). Para cada
+# escena renderiza daynite sin realce y con varios pares --ir-range, y arma
+# montajes lado a lado: el disco completo, la ventana donde más cambia la
+# imagen y las regiones fijas que se le pidan.
+#
+# Con él se eligieron los umbrales por omisión (220,240). Si alguien propone
+# cambiarlos, o mover la penumbra de include/daynight_mask.h, este es el
+# estudio que hay que repetir.
 #
 # Uso:
 #   reproduction/sweep_ir_overlay.sh <anchor.nc> [<anchor.nc> ...]
 #
 # Las anclas las elige pick_scenes.sh, que además comprueba que la escena esté
-# completa --el acervo llega canal por canal y una escena a medio bajar falla
-# después, con un error que no señala la causa:
+# completa. En LANOT los días completos están en /depot; /data1 solo guarda
+# fragmentos de los últimos días:
 #
-#   reproduction/sweep_ir_overlay.sh $(reproduction/pick_scenes.sh --hours 12,17,22)
+#   D=/depot/goes-east/l1b/abi/fd/2026
+#   reproduction/sweep_ir_overlay.sh \
+#       $(reproduction/pick_scenes.sh --dir $D/245 --hours 12,14,16,20,22 --tolerance 10)
 #
 # Overrides:
-#   HPSV_BASE_BIN   Binario de referencia, la rama que va a producción.
-#                   Por omisión bench_bin/hpsv-base.
-#   HPSV_PROTO_BIN  Binario del prototipo, con image_overlay_ir().
-#                   Por omisión bench_bin/hpsv-overlay.
-#   THRESHOLDS      Pares t_opaque,t_clear a probar. Por omisión
-#                   "230,255 240,270 250,285".
-#   OUTDIR          Dónde dejar tif y png. Por omisión ./sweep_ir_<fecha>.
-#   KEEP_TIF        1 para conservar los GeoTIFF (son ~30 MB cada uno y salen
-#                   4 por escena; por omisión se borran tras el montaje).
+#   HPSV_BIN       Binario con el que se renderizan las variantes con realce.
+#                  Por omisión bin/hpsv.
+#   HPSV_BASE_BIN  Binario del panel de referencia, que se renderiza sin
+#                  --ir-overlay. Por omisión el mismo HPSV_BIN. Separarlos sirve
+#                  para aislar otro cambio: p.ej. una penumbra distinta
+#                  compilada aparte, contra la referencia de producción.
+#   THRESHOLDS     Pares T1,T2 a probar. Por omisión "220,240 225,245 230,250".
+#   WINDOWS        Regiones fijas, "nombre:LAT,LON" separadas por espacios.
+#                  Por omisión las que decidieron los umbrales (ver abajo).
+#                  Las que caen fuera de la imagen se omiten con un aviso.
+#   WINDOW_SIZE    Lado de cada recorte, en píxeles nativos. Por omisión 600.
+#   OUTDIR         Dónde dejar tif y png. Por omisión ./sweep_ir_<fecha>.
+#   KEEP_TIF       1 para conservar los GeoTIFF (~30 MB cada uno) y poder
+#                  rehacer montajes con otras ventanas; por omisión se borran.
 #
-# Los dos binarios se construyen así, desde la raíz del repo:
-#   mkdir -p bench_bin
-#   git checkout terminador-satpy && make clean && make && cp bin/hpsv bench_bin/hpsv-base
-#   git checkout daynite-ir-overlay && make clean && make && cp bin/hpsv bench_bin/hpsv-overlay
-#
-# Qué mirar en cada montaje, por si lo revisa alguien que no siguió la
-# discusión: en el recorte "color" la tierra y el mar tienen que salir igual que
-# en el primer panel — si se tiñen, el umbral alto está demasiado caliente. En
-# el recorte "cambio" la estructura térmica de los topes fríos tiene que estar
-# al menos tan legible como en el primer panel. El caso que falta por ver, y la
-# razón de barrer varias escenas, es estratocúmulo marino frío: es nube baja
-# pero fría, así que un t_clear alto la pintaría de azul como si fuera
-# convección.
+# Qué mirar, por si lo revisa alguien que no siguió la discusión original:
+#   - weddell: el hielo marino antártico está bajo 260 K, y un T2 de 250 K o
+#     más lo pinta de cian. Fue lo que descartó los pares calientes.
+#   - scperu, scchile: estratocúmulo marino. Se temía que un T2 alto lo
+#     pintara como convección; con los pares probados no ocurrió.
+#   - altiplano: superficie alta y fría; solo debe colorearse la convección.
+#   - cambio: suele caer en un sistema frío en pleno día. La estructura térmica
+#     tiene que leerse igual con todos los pares, y la nube media alrededor no
+#     debe quedar bajo un velo azul o lavanda.
+#   Las coordenadas por omisión están pensadas para GOES-East (75.2 W).
 
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(dirname "$SCRIPT_DIR")"
 
-BASE_BIN="${HPSV_BASE_BIN:-$ROOT/bench_bin/hpsv-base}"
-PROTO_BIN="${HPSV_PROTO_BIN:-$ROOT/bench_bin/hpsv-overlay}"
-THRESHOLDS="${THRESHOLDS:-230,255 240,270 250,285}"
+BIN="${HPSV_BIN:-$ROOT/bin/hpsv}"
+BASE_BIN="${HPSV_BASE_BIN:-$BIN}"
+THRESHOLDS="${THRESHOLDS:-220,240 225,245 230,250}"
+WINDOWS="${WINDOWS:-weddell:-65,-45 scperu:-18,-82 scchile:-25,-78 altiplano:-18,-68}"
+WINDOW_SIZE="${WINDOW_SIZE:-600}"
 OUTDIR="${OUTDIR:-$PWD/sweep_ir_$(date +%Y%m%d_%H%M%S)}"
 KEEP_TIF="${KEEP_TIF:-0}"
 
 if [[ $# -lt 1 ]]; then
-    sed -n '2,30p' "$0" >&2
+    sed -n '2,45p' "$0" >&2
     exit 2
 fi
 
-for b in "$BASE_BIN" "$PROTO_BIN"; do
+for b in "$BIN" "$BASE_BIN"; do
     if [[ ! -x "$b" ]]; then
-        echo "Error: no encuentro el binario '$b'." >&2
-        echo "Constrúyelo como dice la cabecera de este script, o apunta" >&2
-        echo "HPSV_BASE_BIN / HPSV_PROTO_BIN a donde estén." >&2
+        echo "Error: no encuentro el binario '$b'. Compila con make o apunta" >&2
+        echo "HPSV_BIN / HPSV_BASE_BIN a donde esté." >&2
         exit 1
     fi
 done
-if ! python3 -c "from osgeo import gdal" 2>/dev/null; then
-    echo "Error: falta python3-gdal, que es lo que arma los montajes." >&2
+if ! "$BIN" rgb --help 2>&1 | grep -q -- "--ir-overlay"; then
+    echo "Error: '$BIN' no conoce --ir-overlay." >&2
     exit 1
 fi
+if ! python3 -c "from osgeo import gdal; from PIL import Image" 2>/dev/null; then
+    echo "Error: los montajes necesitan las ligaduras de GDAL para Python y Pillow." >&2
+    exit 1
+fi
+
+win_args=()
+for w in $WINDOWS; do win_args+=(--at "$w"); done
 
 mkdir -p "$OUTDIR"
 echo "Salida: $OUTDIR"
 echo "Umbrales: $THRESHOLDS"
+echo "Ventanas: $WINDOWS"
 echo
 
 for anchor in "$@"; do
@@ -91,22 +107,22 @@ for anchor in "$@"; do
     labels=()
 
     out="$OUTDIR/${tag}_base.tif"
-    echo -n "  producción... "
+    echo -n "  sin realce... "
     if "$BASE_BIN" rgb -o "$out" "$anchor" >"$OUTDIR/${tag}_base.log" 2>&1; then
-        echo "ok"; tifs+=("$out"); labels+=("produccion")
+        echo "ok"; tifs+=("$out"); labels+=("sin realce")
     else
         echo "FALLÓ (ver ${tag}_base.log)"; continue
     fi
 
     for th in $THRESHOLDS; do
         safe="${th/,/-}"
-        out="$OUTDIR/${tag}_ov${safe}.tif"
-        echo -n "  overlay $th... "
-        if HPSV_IR_OVERLAY="$th" "$PROTO_BIN" rgb -o "$out" "$anchor" \
-               >"$OUTDIR/${tag}_ov${safe}.log" 2>&1; then
+        out="$OUTDIR/${tag}_ir${safe}.tif"
+        echo -n "  --ir-range $th... "
+        if "$BIN" rgb --ir-overlay --ir-range "$th" -o "$out" "$anchor" \
+               >"$OUTDIR/${tag}_ir${safe}.log" 2>&1; then
             echo "ok"; tifs+=("$out"); labels+=("$th K")
         else
-            echo "FALLÓ (ver ${tag}_ov${safe}.log)"
+            echo "FALLÓ (ver ${tag}_ir${safe}.log)"
         fi
     done
 
@@ -115,14 +131,16 @@ for anchor in "$@"; do
         continue
     fi
 
-    echo -n "  montajes... "
+    echo "  montajes..."
     if python3 "$SCRIPT_DIR/ir_overlay_montage.py" \
            --out-prefix "$OUTDIR/${tag}" \
            --labels "$(IFS='|'; echo "${labels[*]}")" \
-           "${tifs[@]}"; then
+           --window-size "$WINDOW_SIZE" "${win_args[@]}" "${tifs[@]}"; then
         [[ "$KEEP_TIF" == "1" ]] || rm -f "${tifs[@]}"
+    else
+        echo "  el montaje falló; se conservan los GeoTIFF" >&2
     fi
     echo
 done
 
-echo "Listo. Revisa los *_cambio.png y *_color.png en $OUTDIR"
+echo "Listo. Revisa los *_cambio.png y las ventanas en $OUTDIR"
