@@ -381,6 +381,17 @@ Genera un compuesto RGB a partir de combinaciones lineales de varias bandas.
 							día/noche por sí sola seguiría clasificando como diurnas. `0` desactiva
 							la opción (por omisión); valor típico: `230`.
 
+* `--ir-overlay`            Superpone la paleta IR en el lado diurno de `daynite` (y en la parte
+							diurna de la franja crepuscular): los topes fríos se ven sobre el
+							color verdadero en vez de sustituirlo. El peso es una rampa lineal que
+							fija `--ir-range`. Desactivada por omisión.
+
+* `--ir-range <T1,T2>`      Rampa de `--ir-overlay`, en Kelvin: paleta IR pura en `T1` o menos,
+							color verdadero intacto en `T2` o más, lineal entre ambos. Por omisión
+							`220,240`: en discos completos de GOES-19, un `T2` de 250 K o más ya
+							tiñe el hielo antártico y la nube media diurna, y el estratocúmulo
+							marino no se tiñe con ninguno de los valores probados.
+
 * `-l, --citylights`        Usa un fondo de luces de ciudad detrás del lado nocturno de la
 							composición, en modo `night` independiente (sin la opción, el fondo es
 							liso por omisión). En modo `daynite` esto siempre está activo sin
@@ -418,7 +429,9 @@ Especialmente útil con `--mode custom` para identificar la composición.
 El modo `daynite` hace una mezcla inteligente de los modos `truecolor` 
 y `night` con luces de ciudad de fondo, usando una máscara precisa con 
 base en la geometría solar, y aplica automáticamente corrección 
-Rayleigh y realce de contraste.
+Rayleigh y realce de contraste. Con `--ir-overlay`, el lado diurno conserva
+el color verdadero y solo los topes fríos se pintan encima, con una rampa en
+lugar del umbral de `--cloud-temp`.
 
 Para modo `custom` ver **Álgebra de bandas**.
 

@@ -46,6 +46,14 @@ bool create_daynight_mask_dev(const DataFDev *temp, const DataFDev *navla,
                               float max_temp, unsigned char **d_mask,
                               float *dnratio);
 
+/* Realce IR diurno en sitio sobre una imagen de 3 bpp ya en device.
+ * Réplica de image_overlay_ir() (src/nocturnal_pseudocolor.c). d_mask es la
+ * máscara día/noche en device (255 = noche) o NULL; sus píxeles de noche plena
+ * se saltan porque la mezcla los sustituye. */
+bool image_overlay_ir_dev(unsigned char *d_img, const DataFDev *temp,
+                          const unsigned char *d_mask, float t_opaque,
+                          float t_clear);
+
 /* Mezcla out = mask*bg + (1-mask)*fg sobre imágenes de 3 bpp ya en device.
  * Réplica de blend_images() (src/image.c). d_out recibe un buffer nuevo. */
 bool blend_images_dev(const unsigned char *d_bg, const unsigned char *d_fg,

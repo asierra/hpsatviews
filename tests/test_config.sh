@@ -124,6 +124,20 @@ test_command "RGB con --rayleigh" \
 test_command "RGB con --citylights" \
     "./bin/hpsv rgb $C02_FILE --citylights --help"
 
+test_command "RGB con --ir-overlay y --ir-range" \
+    "./bin/hpsv rgb $C02_FILE --ir-overlay --ir-range 225,245 --help"
+
+# Con --help el parser no llega a config.c; un rango invertido tiene que fallar
+# ahí, antes de procesar nada.
+echo -n "Test: --ir-range invertido se rechaza ... "
+if ./bin/hpsv rgb $C02_FILE --ir-overlay --ir-range 240,220 -o /dev/null >/dev/null 2>&1; then
+    echo -e "${RED}✗ FAIL${NC}"
+    ((FAILED++))
+else
+    echo -e "${GREEN}✓ PASS${NC}"
+    ((PASSED++))
+fi
+
 echo
 echo "--- Tests de Álgebra de Bandas ---"
 echo

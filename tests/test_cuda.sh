@@ -117,4 +117,16 @@ fi
 ../bin/hpsv rgb -v "$ANCHOR_C01" --mode daynite -G --cuda -o daynite_cuda.png
 ./compare_image.sh daynite_cuda.png daynite_cpu.png
 
-echo "OK: salida CUDA equivalente a la ruta CPU en los 11 casos."
+# Realce IR diurno: el kernel corre sobre la imagen diurna residente, antes de la
+# mezcla. Sin él la ruta CUDA saltaba el realce en silencio. -T mete también
+# noche forzada dentro del lado diurno, que el realce debe respetar igual en
+# ambas rutas.
+../bin/hpsv rgb -v "$ANCHOR_C01" --mode daynite --ir-overlay -T 225 -G -o daynite_ir_cpu.png
+../bin/hpsv rgb -v "$ANCHOR_C01" --mode daynite --ir-overlay -T 225 -G --cuda -o daynite_ir_cuda.png
+./compare_image.sh daynite_ir_cuda.png daynite_ir_cpu.png
+if cmp -s daynite_ir_cpu.png daynite_cpu.png; then
+    echo "  FALLO: --ir-overlay no cambió la salida de daynite"
+    exit 1
+fi
+
+echo "OK: salida CUDA equivalente a la ruta CPU en los 12 casos."

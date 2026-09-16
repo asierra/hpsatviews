@@ -122,6 +122,87 @@ cleanup:
   return true;
 }
 
+/* ---- realce IR diurno -----------------------------------------------------
+ * Réplica de image_overlay_ir() (src/nocturnal_pseudocolor.c), en sitio sobre
+ * la imagen diurna residente. La búsqueda del tramo es la misma binaria que
+ * atmosrainbow_index() (include/palette.h), con los mismos bordes y comparando
+ * en double como la CPU, para que ambas rutas elijan el mismo color. */
+__device__ __forceinline__ unsigned int palette_index_dev(const PaletteData *pal, float f) {
+  if (!(f >= pal[0].d && f < pal[255].d)) return 254;
+  unsigned int lo = 0, hi = 255;
+  while (hi - lo > 1) {
+    unsigned int mid = (lo + hi) / 2;
+    if (f >= pal[mid].d) lo = mid;
+    else hi = mid;
+  }
+  return lo;
+}
+
+__global__ void ir_overlay_kernel(unsigned char *img, const float *temp,
+                                  const unsigned char *mask, size_t n,
+                                  const PaletteData *pal, float t_opaque,
+                                  float t_clear) {
+  size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n) return;
+
+  float f = temp[i];
+  if (is_nondata_dev(f) || f >= t_clear) return;
+  if (mask && mask[i] == 255) return; // la mezcla lo sustituye entero
+
+  float a = (t_clear - f) / (t_clear - t_opaque);
+  if (a > 1.0f) a = 1.0f;
+
+  unsigned int t = palette_index_dev(pal, f);
+  size_t po = i * 3;
+  float pr = 255.0f * pal[t].r;
+  float pg = 255.0f * pal[t].g;
+  float pb = 255.0f * pal[t].b;
+  img[po] = (unsigned char)(pr * a + img[po] * (1.0f - a));
+  img[po + 1] = (unsigned char)(pg * a + img[po + 1] * (1.0f - a));
+  img[po + 2] = (unsigned char)(pb * a + img[po + 2] * (1.0f - a));
+}
+
+extern "C" bool image_overlay_ir_dev(unsigned char *d_img, const DataFDev *temp,
+                                     const unsigned char *d_mask, float t_opaque,
+                                     float t_clear) {
+  if (!d_img || !temp || !temp->d_data) return false;
+  if (!(t_clear > t_opaque)) return true; // igual que la CPU: nada que hacer
+
+  size_t n = temp->size;
+  bool ok = false;
+  PaletteData *d_pal = NULL;
+  cudaEvent_t t0 = NULL, t1 = NULL;
+  float ms = 0.0f;
+  unsigned int block = 256;
+  unsigned int grid = (unsigned int)((n + block - 1) / block);
+
+  CUDA_CHECK(cudaEventCreate(&t0));
+  CUDA_CHECK(cudaEventCreate(&t1));
+  CUDA_CHECK(cudaEventRecord(t0));
+
+  CUDA_CHECK(cudaMalloc((void **)&d_pal, 256 * sizeof(PaletteData)));
+  CUDA_CHECK(cudaMemcpy(d_pal, atmosrainbow, 256 * sizeof(PaletteData),
+                        cudaMemcpyHostToDevice));
+
+  ir_overlay_kernel<<<grid, block>>>(d_img, temp->d_data, d_mask, n, d_pal,
+                                     t_opaque, t_clear);
+  CUDA_CHECK(cudaGetLastError());
+
+  CUDA_CHECK(cudaEventRecord(t1));
+  CUDA_CHECK(cudaEventSynchronize(t1));
+  CUDA_CHECK(cudaEventElapsedTime(&ms, t0, t1));
+  LOG_TIMING_STAGE(TM_COMPOSE, ms / 1000.0,
+                   "IR overlay on day side (%.1f-%.1f K, CUDA, device-resident)",
+                   t_opaque, t_clear);
+  ok = true;
+
+cleanup:
+  if (d_pal) cudaFree(d_pal);
+  if (t0) cudaEventDestroy(t0);
+  if (t1) cudaEventDestroy(t1);
+  return ok;
+}
+
 /* ---- máscara día/noche ---------------------------------------------------- */
 __device__ __forceinline__ double sun_sin_elev_dev(float la, float lo, double sd,
                                                    double cd, double ha_base) {

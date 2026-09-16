@@ -379,6 +379,17 @@ Generates an RGB composite from linear combinations of multiple bands.
 							would still classify as daytime. `0` disables it (default); typical
 							value: `230`.
 
+* `--ir-overlay`            Overlays the IR palette on the day side of `daynite` (and on the day
+							part of the twilight band), so cold cloud tops show over true colour
+							instead of replacing it. The weight is a linear ramp set by
+							`--ir-range`. Off by default.
+
+* `--ir-range <T1,T2>`      Ramp for `--ir-overlay`, in Kelvin: pure IR palette at or below `T1`,
+							true colour left untouched at or above `T2`, linear in between. Default
+							`220,240`: on GOES-19 full disks a `T2` of 250 K or more already tints
+							Antarctic sea ice and mid-level daytime cloud, while marine
+							stratocumulus stays untouched at any of the values tried.
+
 * `-l, --citylights`        Uses a city-lights background behind the night side of the composite,
 							in standalone `night` mode (default without the flag: plain backdrop).
 							In `daynite` mode this is always on regardless of the flag — the night
@@ -425,6 +436,8 @@ band ten degrees wide, which is a forecasting call rather than a correctness
 one. High cold clouds (`--cloud-temp`) are forced to the night side regardless
 of geometry, which is an addition of ours with no satpy counterpart; note it is
 a global threshold, so it cannot be used to restore that coding only at dusk.
+`--ir-overlay` is the gentler alternative on the day side: it keeps true colour
+and paints only the cold tops over it, with a ramp instead of a threshold.
 
 For `custom` mode see **Band algebra**.
 

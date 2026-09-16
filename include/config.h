@@ -43,6 +43,8 @@ typedef struct {
     bool use_citylights;        // Composite city-lights background (night)
     bool use_full_res;          // Full resolution output (L2 products)
     float cloud_temp;           // --cloud-temp: BT threshold (K); colder pixels treated as night (0 = disabled)
+    bool ir_overlay;            // --ir-overlay: IR palette over the day side of daynite
+    float ir_range[2];          // --ir-range: [t_opaque, t_clear] in K for --ir-overlay
 
     // Band algebra (custom mode)
     bool is_custom_mode;

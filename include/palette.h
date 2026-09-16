@@ -19,6 +19,25 @@ typedef struct {
 /// Meteorological palette for surface and high clouds.
 extern PaletteData atmosrainbow[];
 
+/// Tramo de atmosrainbow que contiene @p f: el t con d[t] <= f < d[t+1].
+///
+/// Búsqueda binaria con la misma semántica que el recorrido lineal de
+/// create_nocturnal_pseudocolor(), incluidos sus bordes: fuera de [d[0], d[255])
+/// —y con NaN, donde ninguna comparación es verdadera— devuelve 254. La
+/// equivalencia descansa en que los umbrales son estrictamente crecientes; no
+/// están espaciados uniformemente (de 0.81 a 3 K), así que un índice directo
+/// no daría el mismo tramo.
+static inline unsigned int atmosrainbow_index(float f) {
+  if (!(f >= atmosrainbow[0].d && f < atmosrainbow[255].d)) return 254;
+  unsigned int lo = 0, hi = 255;
+  while (hi - lo > 1) {
+    unsigned int mid = (lo + hi) / 2;
+    if (f >= atmosrainbow[mid].d) lo = mid;
+    else hi = mid;
+  }
+  return lo;
+}
+
 /// Converts the meteorological palette to a ColorArray.
 ColorArray *atmosrainbow_to_color_array();
 

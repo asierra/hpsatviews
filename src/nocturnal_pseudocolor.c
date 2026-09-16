@@ -83,3 +83,64 @@ ImageData create_nocturnal_pseudocolor(const DataF* temp_data, const ImageData* 
 
   return imout;
 }
+
+
+/* Realce IR diurno (--ir-overlay): superpone la paleta infrarroja sobre el
+ * color verdadero ya compuesto, en vez de sustituirlo como hace la máscara
+ * día/noche. Así el lado diurno muestra los topes convectivos fríos sin dejar
+ * de ser color verdadero.
+ *
+ * El peso no sale del alfa de la paleta, cuya curva está pensada para la noche
+ * —a 295 K todavía vale 0.29 y deslavaría el color verdadero entero—, sino de
+ * una rampa explícita:
+ *
+ *   T <= t_opaque          : infrarrojo puro
+ *   t_opaque < T < t_clear : desvanecido lineal
+ *   T >= t_clear           : base intacta
+ *
+ * Los umbrales por omisión (220-240 K) salen de barrer escenas GOES-19 de disco
+ * completo: con t_clear de 250 K en adelante se tiñen el hielo antártico y la
+ * nube media diurna, y el estratocúmulo marino no se tiñe en ningún caso. */
+void image_overlay_ir(ImageData *base, const DataF *temp, const ImageData *night_mask,
+                      float t_opaque, float t_clear) {
+  if (!base || !base->data || !temp || !temp->data_in) return;
+  if (base->bpp < 3) return;
+  if ((size_t)base->width * base->height != temp->size) {
+    LOG_WARN("IR overlay: image %ux%u does not match C13 (%zu px); skipped",
+             base->width, base->height, temp->size);
+    return;
+  }
+  if (night_mask && (!night_mask->data || night_mask->width != base->width ||
+                     night_mask->height != base->height)) {
+    night_mask = NULL;
+  }
+  float span = t_clear - t_opaque;
+  if (span <= 0.0f) return;
+
+  double start = omp_get_wtime();
+  size_t n = temp->size;
+  unsigned int bpp = base->bpp;
+  const unsigned char *mask = night_mask ? night_mask->data : NULL;
+
+#pragma omp parallel for
+  for (size_t i = 0; i < n; i++) {
+    float f = temp->data_in[i];
+    if (IS_NONDATA(f) || f >= t_clear) continue;
+    if (mask && mask[i] == 255) continue; // la mezcla lo sustituye entero
+
+    float a = (t_clear - f) / span;
+    if (a > 1.0f) a = 1.0f;
+
+    unsigned int t = atmosrainbow_index(f);
+    size_t po = i * bpp;
+    float pr = 255.0f * atmosrainbow[t].r;
+    float pg = 255.0f * atmosrainbow[t].g;
+    float pb = 255.0f * atmosrainbow[t].b;
+    base->data[po]     = (unsigned char)(pr * a + base->data[po] * (1.0f - a));
+    base->data[po + 1] = (unsigned char)(pg * a + base->data[po + 1] * (1.0f - a));
+    base->data[po + 2] = (unsigned char)(pb * a + base->data[po + 2] * (1.0f - a));
+  }
+
+  LOG_TIMING_STAGE(TM_COMPOSE, omp_get_wtime() - start,
+                   "IR overlay on day side (%.1f-%.1f K)", t_opaque, t_clear);
+}

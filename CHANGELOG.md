@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `rgb --ir-overlay` (daynite): overlays the IR palette on the day side, so cold
+  cloud tops show over true colour instead of the day/night mask swapping one
+  composite for the other. The weight is a linear ramp set by
+  `--ir-range T1,T2` — pure IR at or below `T1`, true colour untouched at or
+  above `T2` — defaulting to 220,240 K. Opt-in; the operational rendering does
+  not change unless the flag is passed. Both thresholds are recorded in the
+  STAC Item's `hpsv:enhancements` (`ir_overlay_opaque_k`, `ir_overlay_clear_k`),
+  and the CUDA build runs it on the device-resident composite.
+
+  The defaults come from sweeping ten GOES-19 full disks (days 245 and 255 of
+  2026, 12–22 UTC) at native resolution. Marine stratocumulus off Peru and
+  Chile — the case a warm `T2` was expected to break — stays untouched at every
+  pair tried. What breaks first is cold *surface*: with `T2` at 250 K or above,
+  Antarctic sea ice in the Weddell Sea turns cyan, and wide areas of mid-level
+  daytime cloud turn blue. 225,245 already lays a lavender veil over mid-level
+  cloud; 220,240 leaves both alone while deep convection reads the same as with
+  any of the warmer pairs.
+
+  This was first explored as the way to adopt satpy's 85–88° day/night blend
+  without losing the thermal coding at dusk. It is not: with thresholds cold
+  enough to spare ice and mid-level cloud, the overlay only covers the deepest
+  tops, and the 75–85° band still turns into dark twilight true colour. The
+  blend therefore stays at 75–85°, and the overlay is a day-side enhancement
+  on top of it.
+
 ### Changed
 - The solar terminator is now handled the way satpy, and therefore geo2grid,
   handles it, in the modes where that is a correctness question.

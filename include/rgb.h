@@ -50,6 +50,9 @@ typedef struct {
     bool build_cog;                ///< --cog: full COG with overviews (default: fast tiled GeoTIFF)
     bool use_full_res;
     float cloud_temp;              ///< Cloud IR threshold (K); 0=disabled
+    bool ir_overlay;               ///< --ir-overlay: IR palette over the day side (daynite)
+    float ir_t_opaque;             ///< Below this BT (K) the overlay is pure IR
+    float ir_t_clear;              ///< Above this BT (K) the base is left intact
 
     char *expr;                    ///< Band algebra expression
     char *minmax;                  ///< Per-channel range override

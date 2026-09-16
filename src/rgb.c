@@ -506,6 +506,12 @@ static bool compose_daynite_cuda(RgbContext *ctx) {
             goto done;
         float night_pct = 100.0f - day_pct;
 
+        // Realce IR diurno, en el mismo punto que en apply_enhancements().
+        if (ctx->opts.ir_overlay &&
+            !image_overlay_ir_dev(d_day, &temp, d_mask, ctx->opts.ir_t_opaque,
+                                  ctx->opts.ir_t_clear))
+            goto done;
+
         // Igual que apply_enhancements(): por debajo del 0.1% nocturno la escena
         // se considera diurna y se deja el compuesto visible tal cual.
         if (night_pct > 0.1f) {
@@ -530,6 +536,12 @@ static bool compose_daynite_cuda(RgbContext *ctx) {
         } else {
             LOG_INFO("Scene is mostly daytime (%.2f%%), using only visible composite.",
                      day_pct);
+            // La copia en host la bajó compose_truecolor_cuda() antes del
+            // realce; sin mezcla que la reemplace, hay que refrescarla.
+            if (ctx->opts.ir_overlay &&
+                !cuda_download_device_image(d_day, ctx->final_image.data,
+                                            (size_t)temp.size * 3))
+                goto done;
         }
     }
 
@@ -988,6 +1000,16 @@ static bool apply_enhancements(RgbContext *ctx) {
                                               &day_pct, ctx->opts.cloud_temp);
         float night_pct = 100.0f - day_pct;
 
+        // Realce IR diurno: antes de la mezcla, para que la penumbra combine el
+        // lado diurno ya realzado con el nocturno. La máscara le ahorra los
+        // píxeles que la mezcla va a sustituir enteros.
+        if (ctx->opts.ir_overlay) {
+            image_overlay_ir(&ctx->final_image, &ctx->channels[13].fdata,
+                             mask.data ? &mask : NULL, ctx->opts.ir_t_opaque,
+                             ctx->opts.ir_t_clear);
+            ctx->final_image_touched = true;
+        }
+
         // Blend if nighttime fraction exceeds 0.1%; for fully nocturnal scenes night_pct=100.
         if (night_pct > 0.1f && mask.data) {
             LOG_INFO("Blending day/night images (night: %.2f%%)", night_pct);
@@ -1159,6 +1181,9 @@ static void config_to_rgb_context(const ProcessConfig *cfg, RgbContext *ctx) {
     ctx->opts.use_alpha = cfg->use_alpha;
     ctx->opts.use_full_res = cfg->use_full_res;
     ctx->opts.cloud_temp = cfg->cloud_temp;
+    ctx->opts.ir_overlay = cfg->ir_overlay;
+    ctx->opts.ir_t_opaque = cfg->ir_range[0];
+    ctx->opts.ir_t_clear = cfg->ir_range[1];
 
     // CLAHE
     ctx->opts.apply_clahe = cfg->apply_clahe;
@@ -1244,6 +1269,10 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         metadata_add_bool(meta, "histogram", true);
     if (ctx.opts.use_piecewise_stretch)
         metadata_add_bool(meta, "stretch", true);
+    if (ctx.opts.ir_overlay && strcmp(ctx.opts.mode, "daynite") == 0) {
+        metadata_add_dbl(meta, "ir_overlay_opaque_k", ctx.opts.ir_t_opaque);
+        metadata_add_dbl(meta, "ir_overlay_clear_k", ctx.opts.ir_t_clear);
+    }
     if (ctx.opts.do_reprojection && !ctx.opts.save_both)
         metadata_add_bool(meta, "geographics", true);
     if (ctx.opts.has_clip)

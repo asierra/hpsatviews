@@ -37,3 +37,14 @@ check_nonblank ash_out.png
 
 ../bin/hpsv rgb -m daynite -s -4 -v ../sample_data/OR_ABI-L2-CMIPC-M6C01_G16_s20242201301171_e20242201303543_c20242201304004.nc -o "daynite_out.png"
 check_nonblank daynite_out.png
+
+# Realce IR diurno: además de no quedar en blanco, tiene que cambiar algo. La
+# escena de muestra tiene topes fríos del lado diurno, así que una salida
+# idéntica a la de arriba significa que --ir-overlay no llegó al pipeline.
+../bin/hpsv rgb -m daynite --ir-overlay -s -4 -v ../sample_data/OR_ABI-L2-CMIPC-M6C01_G16_s20242201301171_e20242201303543_c20242201304004.nc -o "daynite_ir_out.png"
+check_nonblank daynite_ir_out.png
+if cmp -s daynite_out.png daynite_ir_out.png; then
+    echo "FAIL: --ir-overlay no cambió la salida de daynite" >&2
+    exit 1
+fi
+echo "OK: --ir-overlay modifica la salida de daynite"

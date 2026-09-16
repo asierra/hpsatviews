@@ -449,6 +449,29 @@ bool config_from_argparser(ArgParser* parser, ProcessConfig* cfg) {
                 return false;
             }
         }
+        // Realce IR diurno. Umbrales por omisión medidos en disco completo: con
+        // t_clear >= 250 K se tiñen el hielo polar y la nube media diurna.
+        cfg->ir_overlay = ap_found(parser, "ir-overlay");
+        cfg->ir_range[0] = 220.0f;
+        cfg->ir_range[1] = 240.0f;
+        if (ap_found(parser, "ir-range")) {
+            const char *r_str = ap_get_str_value(parser, "ir-range");
+            float lo, hi;
+            char tail;
+            if (!r_str || sscanf(r_str, "%f,%f%c", &lo, &hi, &tail) != 2 || !(lo < hi)) {
+                LOG_ERROR("--ir-range: invalid value '%s', expected T_OPAQUE,T_CLEAR in Kelvin "
+                          "with T_OPAQUE < T_CLEAR (e.g. 220,240).", r_str ? r_str : "");
+                return false;
+            }
+            cfg->ir_range[0] = lo;
+            cfg->ir_range[1] = hi;
+            if (!cfg->ir_overlay)
+                LOG_WARN("--ir-range has no effect without --ir-overlay.");
+        }
+        // Sin --mode, strategy queda en "default", que rgb trata como daynite.
+        if (cfg->ir_overlay && cfg->strategy && strcmp(cfg->strategy, "daynite") != 0 &&
+            strcmp(cfg->strategy, "default") != 0)
+            LOG_WARN("--ir-overlay only applies to --mode daynite; ignored.");
     }
     
     // --- Pseudocolor (Paletas CPT) ---
