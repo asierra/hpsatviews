@@ -138,17 +138,29 @@ lost their lights on the first run after the upgrade and now pass `-l`.
 - `.github/copilot-instructions.md`, stale and unused.
 
 ### Fixed
-- Sibling channels loaded from the wrong scene. The key used to find them cut
-  the start time at the tens of minutes and ignored sector and satellite, and
-  the last match `readdir()` returned won. In a mesoscale directory, with one
-  scene per minute, an anchor could load its channels — itself included — from
-  any of up to ten scenes: the 22:01 anchor loaded all four channels of 22:00.
+- Sibling channels loaded from the wrong scene. The key used to find them was
+  meant to be the eleven digits of `YYYYJJJHHMM`, but it was copied with its
+  leading `s`, so the last minute digit fell off and the key stopped at the
+  tens of minutes; sector and satellite were not checked either, and the last
+  match `readdir()` returned won. Any directory holding two scenes in the same
+  ten minutes was exposed:
+  - Mesoscale, one scene per minute: an anchor could load its channels —
+    itself included — from any of up to ten scenes.
+  - CONUS, every five minutes, always has two scenes per ten minutes. Over
+    the 153 such pairs in LANOT's input directory, the pre-fix binary loaded
+    all four channels of the other scene for every `x1` anchor (20 of 40
+    tried). In real time the `x1` scene is rendered before its `x6` partner
+    arrives, so the damage there was rare — by that directory's listing order
+    an `x6` anchor would have picked up `x1` in 2 of 153 pairs — but any
+    reprocessing after both arrived mixed them.
+  - Full disk, one scene per ten minutes in its own directory, was not
+    affected.
+
   The key now reaches the minute and a sibling must share product, sector,
   scan mode and satellite; if two files still match, the one with the anchor's
   exact start wins. Over a whole day of full disk, CONUS and mesoscale every
-  channel of a scene carries the identical start. Full disk and CONUS were not
-  affected in production, where each has its own directory and no two scenes
-  share a start minute. `tests/test_siblings.sh` covers it with decoy scenes.
+  channel of a scene carries the identical start, so the minute is a safe
+  key. `tests/test_siblings.sh` covers it with decoy scenes.
 - `rgb -B -s` crashed: the fixed-grid output scaled the composite in place and
   the reprojection then read the smaller image with the full-size geotransform.
   `-s` now applies to both outputs.
