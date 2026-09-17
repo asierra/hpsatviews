@@ -120,9 +120,14 @@ lost their lights on the first run after the upgrade and now pass `-l`.
 
   This is what `compare_g2g_product.sh`'s `SZA_MAX` was working around: the
   85–90° band was 2.2 % of a full disk but carried 48 % of the difference
-  against geo2grid, plus a red bias that was ours alone. The limits now live in
-  `include/rayleigh.h` and `include/daynight_mask.h`, shared with the CUDA
-  kernels so the two paths cannot drift.
+  against geo2grid, plus a red bias that was ours alone. With the wall gone
+  that cut no longer corresponds to anything in the code, so its default moves
+  from 85° to 95°, `HPSV_SUNZ_MAX_SZA`, where both tools have faded to zero —
+  the two now blank in the same place and the statistics cover the whole
+  illuminated disk. Pass `SZA_MAX=85` to reproduce figures published under the
+  old behaviour. The limits themselves now live in `include/rayleigh.h` and
+  `include/daynight_mask.h`, shared with the CUDA kernels so the two paths
+  cannot drift.
 
 - `tests/run_all_tests.sh` reports a suite that skipped as skipped instead of
   counting it as passed, and with `CUDA=1` in the environment a skipped CUDA
