@@ -327,16 +327,6 @@ void datanc_destroy(DataNC *datanc) {
     }
 }
 
-DataF datanc_get_float_base(DataNC *datanc) {
-    if (datanc && datanc->is_float) {
-        return datanc->fdata;
-    }
-    // TODO: This case should be handled by the caller.
-    // For now, return an empty struct if it's not float.
-    // A better approach might be to convert byte to float here if needed.
-    return dataf_create(0, 0);
-}
-
 DataF dataf_op_dataf(const DataF *a, const DataF *b, Operation op) {
     if (a->width != b->width || a->height != b->height) {
         LOG_ERROR("Dimensions of DataF operators must be the same.");

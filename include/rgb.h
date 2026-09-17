@@ -133,9 +133,6 @@ void rgb_context_init(RgbContext *ctx);
 /// Frees all dynamic memory in an RgbContext.
 void rgb_context_destroy(RgbContext *ctx);
 
-/// Parses CLI arguments into RgbOptions within ctx.
-bool rgb_parse_options(ArgParser *parser, RgbContext *ctx);
-
 /**
  * Runs the full RGB composite pipeline.
  * 

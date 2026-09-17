@@ -13,18 +13,13 @@
 /// Loads GOES ABI L1b or L2 data and metadata from a NetCDF file.
 int load_nc_sf(const char *filename, DataNC *datanc);
 
-/// Loads a single float variable from a NetCDF file.
-int load_nc_float(const char *filename, DataF *datanc, const char *variable);
-
-/// Computes lat/lon navigation grids from the GOES-R fixed-grid projection metadata.
-/// Computes the lat/lon grids for a GOES fixed-grid file. The projection setup is
-/// shared with the CUDA path via nav_build_plan() (include/nav_plan.h).
+/// Computes the lat/lon navigation grids from a GOES-R fixed-grid file's
+/// projection metadata. The projection setup is shared with the CUDA path via
+/// nav_build_plan() (include/nav_plan.h).
 int compute_navigation_nc(const char *GOES_L1b_filename, DataF *navla, DataF *navlo);
 
 /// Builds navigation grids for an already-reprojected geographic (equirectangular) grid.
 int create_navigation_from_reprojected_bounds(DataF *navla, DataF *navlo, size_t width, size_t height, float lon_min, float lon_max, float lat_min, float lat_max);
-
-DataF dataf_load_from_netcdf(const char *filename, const char *varname);
 
 /// Computes per-pixel Solar Zenith Angle (SZA) and Solar Azimuth Angle (SAA).
 /// Reopens the file just to read the scene time; prefer compute_solar_angles_at()

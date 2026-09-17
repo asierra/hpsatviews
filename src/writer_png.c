@@ -238,13 +238,3 @@ int writer_save_png(const char *filename, const ImageData *image) {
 
   return write_png_core(filename, image, color_type, NULL, NULL);
 }
-
-/* --- Funciones antiguas, mantenidas por compatibilidad pero marcadas como obsoletas --- */
-
-int write_image_png_palette(const char *filename, ImageData *image, ColorArray *palette) {
-    return writer_save_png_palette(filename, image, palette);
-}
-
-int write_image_png(const char *filename, ImageData *image) {
-    return writer_save_png(filename, image);
-}
