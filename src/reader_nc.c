@@ -372,36 +372,7 @@ cleanup:
 }
 
 
-double rad2deg = 180.0 / M_PI;
-double hsat, sm_maj, sm_min, lambda_0, H;
-
-void compute_lalo(double x, double y, double *la, double *lo) {
-    double snx, sny, csx, csy, sx, sy, sz, rs, a, b, c;
-    double sm_maj2 = sm_maj * sm_maj;
-    double sm_min2 = sm_min * sm_min;
-
-    snx = sin(x);
-    csx = cos(x);
-    sny = sin(y);
-    csy = cos(y);
-    a = snx * snx + csx * csx * (csy * csy + sm_maj2 * sny * sny / sm_min2);
-    b = -2.0 * H * csx * csy;
-    c = H * H - sm_maj2;
-    rs = (-b - sqrt(b * b - 4.0 * a * c)) / (2.0 * a);
-    sx = rs * csx * csy;
-    sy = -rs * snx;
-    sz = rs * csx * sny;
-
-    *la =
-        (double)(atan2(sm_maj2 * sz, sm_min2 * sqrt(((H - sx) * (H - sx)) + (sy * sy))) * rad2deg);
-    double lon_rad = lambda_0 - atan2(sy, H - sx);
-
-    // Normalize longitude to [-PI, PI] before converting to degrees.
-    lon_rad = fmod(lon_rad + M_PI, 2.0 * M_PI);
-    if (lon_rad < 0)
-        lon_rad += 2.0 * M_PI;
-    *lo = (double)((lon_rad - M_PI) * rad2deg);
-}
+static const double rad2deg = 180.0 / M_PI;
 
 int nav_build_plan(const char *filename, NavPlan *plan) {
     if (!plan) return -1;
@@ -596,35 +567,6 @@ int compute_navigation_nc(const char *filename, DataF *navla, DataF *navlo) {
     return 0;
 }
 
-int create_navigation_from_reprojected_bounds(DataF *navla, DataF *navlo, size_t width,
-                                              size_t height, float lon_min, float lon_max,
-                                              float lat_min, float lat_max) {
-    *navla = dataf_create(width, height);
-    *navlo = dataf_create(width, height);
-    if (navla->data_in == NULL || navlo->data_in == NULL) {
-        LOG_FATAL("Memory allocation failed for navigation grids of reprojected data.");
-        return -1;
-    }
-
-    float lat_range = lat_max - lat_min;
-    float lon_range = lon_max - lon_min;
-
-#pragma omp parallel for collapse(2)
-    for (size_t y = 0; y < height; y++) {
-        for (size_t x = 0; x < width; x++) {
-            size_t i = y * width + x;
-            navlo->data_in[i] = lon_min + ((float)x / (float)(width - 1)) * lon_range;
-            navla->data_in[i] = lat_max - ((float)y / (float)(height - 1)) * lat_range;
-        }
-    }
-    navla->fmin = lat_min;
-    navla->fmax = lat_max;
-    navlo->fmin = lon_min;
-    navlo->fmax = lon_max;
-    return 0;
-}
-
-/// Computes solar zenith/azimuth angle for a given lat/lon and UTC time; uses the same algorithm as sun_zenith_angle in daynight_mask.c for consistency.
 /// Time-only part of the solar geometry (independent of pixel lat/lon). Hoisting
 /// this out of the per-pixel loop removes ~20 redundant trig ops per pixel and
 /// gives the device kernel (src/cuda/nav_cuda.cu) the scalars it needs.

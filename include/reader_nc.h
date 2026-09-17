@@ -18,9 +18,6 @@ int load_nc_sf(const char *filename, DataNC *datanc);
 /// nav_build_plan() (include/nav_plan.h).
 int compute_navigation_nc(const char *GOES_L1b_filename, DataF *navla, DataF *navlo);
 
-/// Builds navigation grids for an already-reprojected geographic (equirectangular) grid.
-int create_navigation_from_reprojected_bounds(DataF *navla, DataF *navlo, size_t width, size_t height, float lon_min, float lon_max, float lat_min, float lat_max);
-
 /// Computes per-pixel Solar Zenith Angle (SZA) and Solar Azimuth Angle (SAA).
 /// Reopens the file just to read the scene time; prefer compute_solar_angles_at()
 /// when the caller already holds a loaded DataNC.

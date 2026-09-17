@@ -88,26 +88,6 @@ ColorArray* cpt_to_color_array(CPTData* cpt) {
 }
 
 
-// Parse a single CPT color entry line.
-bool parse_cpt_line(const char* line, ColorEntry* entry1, ColorEntry* entry2) {
-    int result = sscanf(line, "%f %hhu %hhu %hhu %f %hhu %hhu %hhu",
-                       &entry1->value, &entry1->color.r, &entry1->color.g, &entry1->color.b,
-                       &entry2->value, &entry2->color.r, &entry2->color.g, &entry2->color.b);
-    
-    // A valid color line has 8 values.
-    if (result == 8) {
-        return true;
-    }
-
-    // Check for 4-value format (value r g b)
-    result = sscanf(line, "%f %hhu %hhu %hhu", &entry1->value, &entry1->color.r, &entry1->color.g, &entry1->color.b);
-    if (result == 4) {
-        return true; // Indicates a 4-value line was parsed
-    }
-    
-    return false;
-}
-
 // Parse special color entries (F = foreground, B = background, N = NaN).
 bool parse_special_color(const char* line, CPTData* cpt) {
     char type;
