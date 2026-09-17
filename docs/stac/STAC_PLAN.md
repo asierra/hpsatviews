@@ -514,10 +514,13 @@ completa de `crea_rgb_meso.py`: costa de 1 px alineada y `"satellite": "G19"`.
 
 **Pendientes.**
 
-* Desplegar juntos en tren2 el hpsv con `a6e97dd`, LANOT_tools y
-  LANOT_procesamiento_goes.
+* ~~Desplegar juntos en tren2 el hpsv con `a6e97dd`, LANOT_tools y
+  LANOT_procesamiento_goes.~~ **Hecho el 2026-09-12 en tren2 y en kawak**, los
+  tres a la vez; queda registrado en el README de LANOT_procesamiento_goes.
 * Grosor en disco completo: `0.0005` da 5 px en 10000² donde tren2 hoy pinta
-  1 px. Revisarlo guion por guion.
+  1 px. Revisarlo guion por guion. **Sigue abierto:** el valor no se movió en
+  `crea_rgbs.sh` ni en `crea_rgbs_products.sh`, y lo único que hay es la
+  impresión de que «las líneas se ven bien» en el despliegue de kawak.
 * Otros guiones podrían dejar de pasarle `-o` a hpsv.
 * Lo que mesoescala publica junto a la imagen sigue siendo el sidecar plano de
   `mapdrawer --o_crs`, no el Item.
@@ -683,17 +686,19 @@ transformación por activo, `mapdrawer` los lee, la suite valida contra los
 esquemas oficiales versionados, y `tools/stac_sweep.py` reconstruye el acervo ya
 producido. Lo que queda no es implementación:
 
-**1. Despliegue, y tiene que ir junto.** tren2 sigue con `LANOT_tools` de abril,
-así que `hpsatviews`, `LANOT_tools` (`stac-fase4`) y `LANOT_procesamiento_goes`
-(`meso-item-stac`) deben llegar a la vez. Las dos últimas están en rama, sin
-fusionar. Desplegar sólo una parte rompe: la fase 4 asume el emisor nuevo, y el
-hallazgo del grosor de `--layer` dejaría blanca la mesoescala.
+**1. Despliegue — hecho el 2026-09-12, y fue junto.** `hpsatviews`,
+`LANOT_tools` y `LANOT_procesamiento_goes` llegaron a la vez a tren2 y a kawak,
+que es lo que este punto exigía. Las dos ramas ya no existen como tales: la
+fase 4 de LANOT_tools está fusionada en su `main` (`63f5da7`) y la de
+mesoescala en el de LANOT_procesamiento_goes (`0bf40ab`). El estado por
+servidor lo lleva el README de LANOT_procesamiento_goes, no este plan.
 
-**2. El cambio de `crea_rgbs_products.sh` sigue sin comitear**, y con él la
-decisión que nadie ha tomado: **el guion sigue borrando el Item como
-temporal**, que es lo que hacía con el sidecar desechable. Ahora que el catálogo
-puede ingerirlo, ese guion es exactamente el sitio donde los Items dejan de
-borrarse. Es la frase del Contexto de este documento —«el cambio de fondo no es
+**2. La decisión de retención, que nadie ha tomado.** El cambio de
+`crea_rgbs_products.sh` ya está comiteado y en `origin/main` (`0e4a155`): sabe
+localizar el Item que `-j` escribe, porque su nombre viene del `id` y no de
+`-o`. Pero **lo mete en `TMP_FILES` y lo borra al final**, que es lo que hacía
+con el sidecar desechable. Ahora que el catálogo puede ingerirlo, ese guion es
+exactamente el sitio donde los Items dejan de borrarse. Es la frase del Contexto de este documento —«el cambio de fondo no es
 de formato, es de retención»— aplicada al único lugar donde se decide.
 
 **3. Casos de producción en la suite**, discutido y anotado más arriba. Su
