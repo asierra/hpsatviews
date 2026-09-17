@@ -19,6 +19,7 @@ NC='\033[0m'
 
 TOTAL_PASSED=0
 TOTAL_FAILED=0
+TOTAL_SKIPPED=0
 
 # run_test_suite <nombre> <script relativo a SCRIPT_DIR> [<workdir>]
 #   workdir: directorio desde el que se ejecuta el script (por defecto: REPO_DIR)
@@ -41,6 +42,15 @@ run_test_suite() {
     chmod +x "$test_script"
 
     if (cd "$work_dir" && bash "$test_script") > /tmp/hpsv_test_output.txt 2>&1; then
+        # Una suite que se salta sale con 0, pero no probó nada: se cuenta
+        # aparte para que un resumen verde no esconda que no corrió.
+        skip_reason=$(grep -m1 '^SKIP:' /tmp/hpsv_test_output.txt)
+        if [ -n "$skip_reason" ]; then
+            TOTAL_SKIPPED=$((TOTAL_SKIPPED + 1))
+            echo -e "${YELLOW}⊘ Suite saltada${NC}: ${skip_reason#SKIP: }"
+            echo
+            return 0
+        fi
         passed=$(grep -oP '(?<=Tests pasados:\s)\d+' /tmp/hpsv_test_output.txt | head -1)
         failed=$(grep -oP '(?<=Tests fallidos:\s)\d+' /tmp/hpsv_test_output.txt | head -1)
 
@@ -87,7 +97,8 @@ run_test_suite "Reprojection"   "test_reprojection.sh" "$SCRIPT_DIR"
 run_test_suite "STAC Item"     "test_json.sh"         "$SCRIPT_DIR"
 run_test_suite "Barrido STAC"  "test_sweep.sh"        "$SCRIPT_DIR"
 run_test_suite "Fast NetCDF read" "test_fastread.sh"   "$SCRIPT_DIR"
-# Se salta solo (exit 0) si el binario no tiene CUDA o no hay GPU.
+# Se salta (y se reporta como saltada) si el binario no tiene CUDA o no hay GPU;
+# con CUDA=1 en el entorno, saltarse es un fallo.
 run_test_suite "CUDA vs CPU"    "test_cuda.sh"         "$SCRIPT_DIR"
 
 # Resumen final
@@ -96,6 +107,9 @@ echo "  Resumen Global"
 echo "========================================"
 echo -e "Total tests pasados: ${GREEN}${TOTAL_PASSED}${NC}"
 echo -e "Total tests fallidos: ${RED}${TOTAL_FAILED}${NC}"
+if [ $TOTAL_SKIPPED -gt 0 ]; then
+    echo -e "Suites saltadas: ${YELLOW}${TOTAL_SKIPPED}${NC}"
+fi
 echo
 
 if [ $TOTAL_FAILED -eq 0 ]; then

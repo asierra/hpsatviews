@@ -101,6 +101,8 @@ TARGET = $(BIN_DIR)/$(TARGET_NAME)
 
 # Inclusión de cabeceras
 CFLAGS += -I$(INC_DIR)
+# Definiciones propias del sitio, p.ej. CFLAGS_EXTRA='-DRUTA_CLIPS=\"/ruta/recortes.csv\"'
+CFLAGS += $(CFLAGS_EXTRA)
 DEPS = $(OBJS:.o=.d)
 
 # ==========================================

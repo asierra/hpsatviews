@@ -3,7 +3,7 @@
 # tolerancia de compare_image.sh) con la ruta OpenMP de referencia sobre los
 # mismos datos de sample_data/.
 #
-# Se salta con éxito (exit 0) si el binario no fue compilado con CUDA=1 o si
+# Se salta (exit 0, "SKIP:") si el binario no fue compilado con CUDA=1 o si
 # no hay GPU NVIDIA visible — así puede registrarse en run_all_tests.sh sin
 # romper entornos sin GPU. Para ejecutarlo de verdad:
 #   make CUDA=1 && cd tests && ./test_cuda.sh
@@ -13,17 +13,27 @@ set -e
 ANCHOR_C13=../sample_data/OR_ABI-L2-CMIPC-M6C13_G16_s20242201301171_e20242201303555_c20242201304066.nc
 ANCHOR_C01=../sample_data/OR_ABI-L2-CMIPC-M6C01_G16_s20242201301171_e20242201303543_c20242201304004.nc
 
+# Sin GPU la suite se salta, salvo que se haya pedido CUDA=1: entonces saltarse
+# esconde justo lo que se quería probar (un driver desalineado, por ejemplo,
+# deja nvidia-smi sin responder y la suite pasaba en verde sin correr).
+skip() {
+    if [ "${CUDA:-}" = 1 ]; then
+        echo "FAIL: se pidió CUDA=1 pero la suite no puede correr: $1" >&2
+        exit 1
+    fi
+    echo "SKIP: $1"
+    exit 0
+}
+
 # ¿Binario compilado con CUDA? (sin soporte, --cuda falla en el parseo de config)
 if ../bin/hpsv gray "$ANCHOR_C13" --cuda -o cuda_probe.png 2>&1 | grep -q "without CUDA support"; then
-    echo "SKIP: binario sin soporte CUDA (compila con 'make CUDA=1')."
-    exit 0
+    skip "binario sin soporte CUDA (compila con 'make CUDA=1')."
 fi
 rm -f cuda_probe.png
 
 # ¿Hay GPU visible?
 if ! command -v nvidia-smi > /dev/null || ! nvidia-smi -L > /dev/null 2>&1; then
-    echo "SKIP: no se detecta GPU NVIDIA (nvidia-smi)."
-    exit 0
+    skip "no se detecta GPU NVIDIA (nvidia-smi -L falla)."
 fi
 
 # Gray IR (C13, invertido): CPU vs CUDA

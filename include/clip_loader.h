@@ -8,6 +8,12 @@
 #ifndef HPSATVIEWS_CLIP_LOADER_H_
 #define HPSATVIEWS_CLIP_LOADER_H_
 
+// Clip catalog used by -c <key> and --list-clips. A LANOT deployment path;
+// another site overrides it at build time: make CFLAGS_EXTRA='-DRUTA_CLIPS=\"/ruta/recortes.csv\"'
+#ifndef RUTA_CLIPS
+#define RUTA_CLIPS "/usr/local/share/lanot/docs/recortes_coordenadas.csv"
+#endif
+
 // Geographic bounding box entry loaded from a clip config file.
 typedef struct {
     char clave[32];   // clip key (e.g., "MEX", "CAM")

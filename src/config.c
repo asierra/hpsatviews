@@ -160,7 +160,7 @@ static bool config_parse_clip(ArgParser* parser, ProcessConfig* cfg) {
     }
     
     // Intentar cargar desde CSV
-    const char* clip_csv = "/usr/local/share/lanot/docs/recortes_coordenadas.csv";
+    const char* clip_csv = RUTA_CLIPS;
     GeoClip clip = buscar_clip_por_clave(clip_csv, clip_value);
     
     if (!clip.encontrado) {

@@ -25,9 +25,6 @@
 #include "help_en.h"
 #endif
 
-/// Default path to the clip catalog; overridable via a build-time -D macro.
-#define RUTA_CLIPS "/usr/local/share/lanot/docs/recortes_coordenadas.csv"
-
 /// Function pointer type shared by the command runners (run_rgb, run_processing).
 typedef int (*ProcessingFunc)(const ProcessConfig *, MetadataContext *);
 

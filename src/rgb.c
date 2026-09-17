@@ -1357,11 +1357,10 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
         // sharpening and piecewise stretch. Still CPU-only: analytic Rayleigh
         // and the other modes.
         bool truecolor_cuda = truecolor_cuda_eligible(&ctx.opts);
-        // daynite: mismo gate salvo el modo, más las luces de ciudad, que siguen
-        // en CPU (habría que subir el fondo WebP y no están en la ruta operativa).
-        bool daynite_cuda = strcmp(ctx.opts.mode, "daynite") == 0 &&
-                            !ctx.opts.rayleigh_analytic && !ctx.opts.use_sharpen &&
-                            !ctx.opts.use_citylights && ctx.channels[13].fdata.data_in;
+        // daynite: el gate vive en daynite_cuda_eligible(), que también consulta
+        // process_geospatial; aquí solo se añade que C13 esté cargado.
+        bool daynite_cuda = daynite_cuda_eligible(&ctx.opts) &&
+                            ctx.channels[13].fdata.data_in;
         if (daynite_cuda) {
             LOG_INFO("Generating 'daynite' composite (CUDA, device-resident)...");
             cuda_handled = compose_daynite_cuda(&ctx);
