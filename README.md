@@ -391,9 +391,11 @@ Generates an RGB composite from linear combinations of multiple bands.
 							stratocumulus stays untouched at any of the values tried.
 
 * `-l, --citylights`        Uses a city-lights background behind the night side of the composite,
-							in standalone `night` mode (default without the flag: plain backdrop).
-							In `daynite` mode this is always on regardless of the flag — the night
-							side of the day/night blend always shows city lights.
+							in `night` and `daynite` modes. Without the flag the night side has a
+							plain backdrop. Before v1.1.0 `daynite` always drew the lights; an
+							installation upgrading from an older release has to add `-l` to keep
+							them. The CUDA path does not implement it yet, so `daynite -l --cuda`
+							composes on the CPU.
 
 * `-N, --name <label>`      Descriptive product name. Written to the JSON and GeoTIFF metadata as
 						the root-level `product` field (alongside `satellite`, `sector`, `timestamp`).
@@ -426,7 +428,7 @@ Especially useful with `--mode custom` to identify the composition.
   ```
 
 The `daynite` mode intelligently blends the `truecolor` and `night` modes
-with background city lights, using a precise mask based on solar geometry,
+(with city lights behind the night side when `-l` is given), using a precise mask based on solar geometry,
 and automatically applies Rayleigh correction and contrast enhancement. The
 blend runs from 75° of solar zenith (full day) to 85° (full night), linear in
 between — wider and earlier than satpy's `DayNightCompositor`, which blends
@@ -478,7 +480,7 @@ this flag wrote a sidecar of our own design; the Item replaces it.
     "platform": "goes-16",
     "constellation": "goes",
     "instruments": ["abi"],
-    "processing:software": { "hpsatviews": "1.1.0" },
+    "processing:software": { "hpsatviews": "1.2.0" },
     "proj:epsg": 4326,
     "proj:wkt2": "GEOGCRS[...]",
     "proj:transform": [0.0721, 0, -151.654, 0, -0.0722, 56.640],
@@ -864,7 +866,7 @@ button from it on the repo's main page.
 @software{aguilar_sierra_hpsatviews,
   author    = {Aguilar Sierra, Alejandro},
   title     = {hpsatviews: High Performance Satellite Views},
-  version   = {1.1.0},
+  version   = {1.2.0},
   year      = {2026},
   publisher = {Zenodo},
   doi       = {10.5281/zenodo.20817973},

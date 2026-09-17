@@ -7,8 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-16
+
+STAC Items, a solar terminator aligned with satpy, a day-side IR enhancement
+for `daynite`, and a fix to how sibling channels are found that matters for
+mesoscale.
+
+**Upgrading:** `-j` writes a STAC Item instead of the previous sidecar, named
+after the Item id rather than after `-o` (see below); anything that read the
+sidecar has to read the Item. From a release older than 1.1.0 there is a
+second change: `daynite` no longer draws city lights unless `-l` is passed (a
+1.1.0 change its notes did not mention). LANOT's full-disk and CONUS scripts
+lost their lights on the first run after the upgrade and now pass `-l`.
+
 ### Added
-- `rgb --ir-overlay` (daynite): overlays the IR palette on the day side, so cold
+- STAC Items. `-j` writes a STAC 1.0.0 Item (projection, processing and, for
+  single-band outputs, eo extensions) instead of the sidecar of our own design,
+  in the output directory and named after the Item id — the scene plus the
+  product, without the enhancement segment — so two renderings of one scene
+  converge on one file. Each asset carries its own `proj:transform`,
+  `proj:shape` and CRS, which `-B` needs: the fixed-grid and geographic files
+  live on different grids. `--stac-collection <id>` sets the collection. The
+  footprint is the EPSG:4326 outline of the data, following the limb on a full
+  disk and folding the antimeridian into STAC's west > east convention for
+  GOES-West. `hpsv:enhancements` records the real mode, `--expr` for
+  `--mode custom`, and `--minmax`; the id's product segment is sanitized to
+  `[A-Za-z0-9._-]`. The suite validates every Item against the vendored
+  official schemas and checks it against the GeoTIFF it describes.
+- `tools/stac_sweep.py`: rebuilds Items for GeoTIFFs hpsv wrote before Items
+  existed. What was never stored in the file (`hpsv:channels`,
+  `hpsv:enhancements`) is omitted and the Item says `hpsv:reconstructed`.
+- `--timing-csv <file>`: one CSV row per run with per-stage times, the scene,
+  end-to-end latency and host context, identical in the OpenMP and CUDA builds.
+  Concurrent runs can share a file; a file written under another column schema
+  is never appended to.
+ (daynite): overlays the IR palette on the day side, so cold
   cloud tops show over true colour instead of the day/night mask swapping one
   composite for the other. The weight is a linear ramp set by
   `--ir-range T1,T2` — pure IR at or below `T1`, true colour untouched at or
@@ -32,6 +65,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   tops, and the 75–85° band still turns into dark twilight true colour. The
   blend therefore stays at 75–85°, and the overlay is a day-side enhancement
   on top of it.
+
+- `reproduction/sweep_ir_overlay.sh`, `ir_overlay_montage.py` and
+  `pick_scenes.sh`: the study behind the `--ir-overlay` defaults, to be rerun
+  before changing them or the blend limits.
 
 ### Changed
 - The solar terminator is now handled the way satpy, and therefore geo2grid,
@@ -87,7 +124,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `include/rayleigh.h` and `include/daynight_mask.h`, shared with the CUDA
   kernels so the two paths cannot drift.
 
+- `tests/run_all_tests.sh` reports a suite that skipped as skipped instead of
+  counting it as passed, and with `CUDA=1` in the environment a skipped CUDA
+  suite fails. A driver/library mismatch on the GPU server had left
+  `nvidia-smi` unable to answer, and the suite used to go green without
+  running.
+- The clip catalog path is defined once, as `RUTA_CLIPS` in
+  `include/clip_loader.h`, and can be overridden at build time with
+  `make CFLAGS_EXTRA='-DRUTA_CLIPS=\"..\"'`. The override the source
+  advertised was silently discarded before.
+
+### Removed
+- `.github/copilot-instructions.md`, stale and unused.
+
 ### Fixed
+- Sibling channels loaded from the wrong scene. The key used to find them cut
+  the start time at the tens of minutes and ignored sector and satellite, and
+  the last match `readdir()` returned won. In a mesoscale directory, with one
+  scene per minute, an anchor could load its channels — itself included — from
+  any of up to ten scenes: the 22:01 anchor loaded all four channels of 22:00.
+  The key now reaches the minute and a sibling must share product, sector,
+  scan mode and satellite; if two files still match, the one with the anchor's
+  exact start wins. Over a whole day of full disk, CONUS and mesoscale every
+  channel of a scene carries the identical start. Full disk and CONUS were not
+  affected in production, where each has its own directory and no two scenes
+  share a start minute. `tests/test_siblings.sh` covers it with decoy scenes.
+- `rgb -B -s` crashed: the fixed-grid output scaled the composite in place and
+  the reprojection then read the smaller image with the full-size geotransform.
+  `-s` now applies to both outputs.
+- `rgb` metadata had no `command`, so automatic names used the literal
+  `output` as the product type.
 - Fill values leaking into real data at the edge of the disk.
   `upsample_bilinear()` and `downsample_boxfilter()` mixed the 1e32 sentinel
   with neighbouring reflectances, leaving limb pixels with values on both sides
@@ -104,6 +170,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [1.1.0] - 2026-08-11
 
 DOI: [10.5281/zenodo.21893553](https://doi.org/10.5281/zenodo.21893553).
+
+*Note added in 1.2.0:* this release also made city lights optional in
+`daynite` (`f0d4130`): the night side shows them only with `-l`. These notes
+did not say so, and an installation upgrading from 1.0.x loses its lights.
 
 Optional CUDA backend and a rewritten I/O path. On the production server
 (NVIDIA A30, 64 threads) a full-disk GOES-19 true colour with Rayleigh

@@ -1,4 +1,4 @@
-.TH HPSV 1 "August 2026" "hpsatviews 1.1.0" "User Commands"
+.TH HPSV 1 "September 2026" "hpsatviews 1.2.0" "User Commands"
 .SH NAME
 hpsatviews \- High-performance generation of satellite visual products from GOES imagery
 
@@ -268,8 +268,25 @@ disables it (default); typical value:
 .BR 230 .
 
 .TP
+.B "--ir-overlay"
+Overlay the IR palette on the day side of the daynite composite, so cold
+cloud tops show over true color instead of replacing it. Off by default.
+
+.TP
+.BI "--ir-range " t1,t2
+Ramp for
+.BR --ir-overlay ,
+in Kelvin: pure IR palette at or below
+.IR t1 ,
+true color untouched at or above
+.IR t2 .
+Default
+.BR 220,240 .
+
+.TP
 .B "-l, --citylights"
 Use a city-lights background image for the night/daynite composite.
+Before 1.1.0 daynite always drew them; since then it needs this flag.
 
 .TP
 .BI "-N, --name " label

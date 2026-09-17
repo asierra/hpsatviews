@@ -393,10 +393,11 @@ Genera un compuesto RGB a partir de combinaciones lineales de varias bandas.
 							marino no se tiñe con ninguno de los valores probados.
 
 * `-l, --citylights`        Usa un fondo de luces de ciudad detrás del lado nocturno de la
-							composición, en modo `night` independiente (sin la opción, el fondo es
-							liso por omisión). En modo `daynite` esto siempre está activo sin
-							importar la opción — el lado nocturno de la mezcla día/noche siempre
-							muestra luces de ciudad.
+							composición, en los modos `night` y `daynite`. Sin la opción, el lado
+							nocturno tiene un fondo liso. Antes de v1.1.0 `daynite` ponía las luces
+							siempre; una instalación que actualice desde una versión anterior tiene
+							que agregar `-l` para conservarlas. La ruta CUDA todavía no lo
+							implementa, así que `daynite -l --cuda` compone en CPU.
 
 * `-N, --name <etiqueta>`   Nombre descriptivo del producto. Se escribe en los metadatos JSON y GeoTIFF
 						como campo `product` al nivel raíz (junto a `satellite`, `sector`, `timestamp`).
@@ -427,7 +428,7 @@ Especialmente útil con `--mode custom` para identificar la composición.
   ```
   
 El modo `daynite` hace una mezcla inteligente de los modos `truecolor` 
-y `night` con luces de ciudad de fondo, usando una máscara precisa con 
+y `night` (con luces de ciudad detrás del lado nocturno si se pasa `-l`), usando una máscara precisa con 
 base en la geometría solar, y aplica automáticamente corrección 
 Rayleigh y realce de contraste. Con `--ir-overlay`, el lado diurno conserva
 el color verdadero y solo los topes fríos se pintan encima, con una rampa en
@@ -474,7 +475,7 @@ diseño propio; el Item lo sustituye.
     "platform": "goes-16",
     "constellation": "goes",
     "instruments": ["abi"],
-    "processing:software": { "hpsatviews": "1.1.0" },
+    "processing:software": { "hpsatviews": "1.2.0" },
     "proj:epsg": 4326,
     "proj:wkt2": "GEOGCRS[...]",
     "proj:transform": [0.0721, 0, -151.654, 0, -0.0722, 56.640],
@@ -858,7 +859,7 @@ archivo un botón "Cite this repository" en la página principal del repo.
 @software{aguilar_sierra_hpsatviews,
   author    = {Aguilar Sierra, Alejandro},
   title     = {hpsatviews: High Performance Satellite Views},
-  version   = {1.1.0},
+  version   = {1.2.0},
   year      = {2026},
   publisher = {Zenodo},
   doi       = {10.5281/zenodo.20817973},

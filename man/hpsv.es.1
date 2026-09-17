@@ -1,4 +1,4 @@
-.TH HPSV 1 "agosto de 2026" "hpsatviews 1.1.0" "Manual del usuario"
+.TH HPSV 1 "septiembre de 2026" "hpsatviews 1.2.0" "Manual del usuario"
 .SH NOMBRE
 hpsv \- High Performance Satellite Views processing tool
 
@@ -272,8 +272,26 @@ desactiva la opción (defecto); valor típico:
 .BR 230 .
 
 .TP
+.B "--ir-overlay"
+Superpone la paleta IR en el lado diurno de la composición daynite: los topes
+fríos se ven sobre el color verdadero en vez de sustituirlo. Desactivada por
+defecto.
+
+.TP
+.BI "--ir-range " t1,t2
+Rampa de
+.BR --ir-overlay ,
+en Kelvin: paleta IR pura en
+.I t1
+o menos, color verdadero intacto en
+.I t2
+o más. Por defecto
+.BR 220,240 .
+
+.TP
 .B "-l, --citylights"
 Usa una imagen de fondo de luces de ciudad para la composición night/daynite.
+Antes de 1.1.0 daynite las ponía siempre; desde entonces requiere esta opción.
 
 .TP
 .BI "-N, --name " etiqueta
