@@ -80,6 +80,7 @@ run_test_suite "Config Parser"  "test_config.sh"  "$REPO_DIR"
 # Los demás usan ../bin/hpsv y ../sample_data/ → ejecutar desde tests/ (SCRIPT_DIR)
 run_test_suite "Pseudocolor"    "test_pseudo.sh"       "$SCRIPT_DIR"
 run_test_suite "RGB Composites" "test_rgb.sh"          "$SCRIPT_DIR"
+run_test_suite "Canales hermanos" "test_siblings.sh"   "$SCRIPT_DIR"
 run_test_suite "CLAHE"          "test_clahe.sh"        "$SCRIPT_DIR"
 run_test_suite "GeoTIFF"        "test_geotiff.sh"      "$SCRIPT_DIR"
 run_test_suite "Reprojection"   "test_reprojection.sh" "$SCRIPT_DIR"

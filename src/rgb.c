@@ -797,9 +797,7 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
         free(input_dup_id);
         return false;
     }
-    strcpy(ctx->channel_set->id_signature, ctx->id_signature);
-    find_scan_mode_from_name(basename_input, ctx->channel_set->scan_mode,
-                             sizeof(ctx->channel_set->scan_mode));
+    channelset_set_anchor(ctx->channel_set, basename_input);
     free(input_dup_id);
 
     // 3. Locate channel files.

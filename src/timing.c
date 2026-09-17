@@ -264,10 +264,10 @@ static void write_header(int fd) {
 /* Scene signature "sYYYYDDDHHMM", the join key between the records of
  * different hosts and builds.
  *
- * Deliberately not find_id_from_name(): that one keeps 11 characters, one
- * short of the full minute, which is enough to find sibling channels of a
- * full disk but collapses ten consecutive mesoscale scenes onto the same
- * key. A join key has to identify the scene exactly. */
+ * Deliberately separate from find_id_from_name(), which kept one character
+ * less until 1.2.0 and collapsed ten consecutive mesoscale scenes onto one
+ * key: a join key has to identify the scene exactly, whatever the channel
+ * lookup does. */
 static const char *scene_signature(const char *path) {
     static char id[16];
     id[0] = '\0';

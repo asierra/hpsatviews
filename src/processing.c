@@ -167,8 +167,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
             LOG_ERROR("Could not extract identification signature: %s", basename_input);
             free(input_dup); channelset_destroy(cset); goto cleanup;
         }
-        strcpy(cset->id_signature, id_signature);
-        find_scan_mode_from_name(basename_input, cset->scan_mode, sizeof(cset->scan_mode));
+        channelset_set_anchor(cset, basename_input);
         free(input_dup);
         
         // Locate channel files.

@@ -21,8 +21,14 @@ typedef struct {
 typedef struct {
     ChannelInfo *channels;      // Channel array
     int count;                  // Number of channels
-    char id_signature[40];      // Scene timestamp token, e.g. "s20253231800"
+    char id_signature[40];      // Scene start to the minute, e.g. "s20253231800"
     char scan_mode[4];          // ABI scan mode of the anchor file, e.g. "M6"
+    // Filled by channelset_set_anchor(); empty when the anchor name is not in
+    // the standard GOES form, and then find_channel_filenames() falls back to
+    // matching id_signature and scan_mode anywhere in the name.
+    char name_prefix[48];       // Everything before the channel digits, e.g. "OR_ABI-L1b-RadM1-M6C"
+    char satellite[8];          // e.g. "G19"
+    char start[16];             // Full start token of the anchor, e.g. "20262570001261"
 } ChannelSet;
 
 // Creates a ChannelSet for the given channel names (NULL-terminated array). Returns NULL on failure.
@@ -35,10 +41,15 @@ void channelset_destroy(ChannelSet *set);
 // is_l2_product: true for CMIP (L2), false for Rad (L1b). Returns 0 on success, -1 on error.
 int find_channel_filenames(const char *directory, ChannelSet *set, bool is_l2_product);
 
-// Extracts the scene timestamp token from a GOES filename into id_out (≥40 bytes).
-// e.g. "OR_ABI-L2-CMIPC-M6C13_G19_s20253231800172_..." → "s20253231800"
+// Extracts the scene start, to the minute, from a GOES filename into id_out (≥13 bytes):
+// "s" + YYYYJJJHHMM, e.g. "OR_ABI-L2-CMIPC-M6C13_G19_s20253231800172_..." → "s20253231800".
 // Returns 0 on success, -1 on error.
 int find_id_from_name(const char *filename, char *id_out, size_t id_size);
+
+// Records the anchor file (basename) in @set: id_signature, scan_mode and the
+// name parts that siblings must share (product, sector, mode, satellite).
+// Returns 0 on success, -1 if no start token was found.
+int channelset_set_anchor(ChannelSet *set, const char *basename);
 
 // Extracts the ABI scan mode from a GOES filename into mode_out (≥4 bytes).
 // e.g. "OR_ABI-L2-CMIPC-M3C13_G16_..." → "M3". Returns 0 on success, -1 if not found.
