@@ -10,11 +10,20 @@
 #               Full-disk pairs are ~2 GB together; comparing them at native
 #               size buys nothing here and costs a lot of RAM.
 #   SZA_MAX     Solar zenith angle, in degrees, beyond which pixels are left out.
-#               Default 85, which is where hpsv blanks the true-color composite
-#               (MAX_SZA in src/truecolor.c); geo2grid keeps rendering to ~90.
-#               Without the cut the statistics mostly measure that band rather
-#               than the product, so it is reported separately below. Set
-#               SZA_MAX=180 to compare the whole disk.
+#               Default 95: HPSV_SUNZ_MAX_SZA (include/rayleigh.h), where the
+#               solar-zenith gain has faded to zero and hpsv stops painting the
+#               composite. satpy's SunZenithCorrector defaults to the same 88/95
+#               pair and geo2grid's true color runs that modifier, so both tools
+#               now blank at the same place and the cut no longer hides a band
+#               they render differently by construction.
+#
+#               It used to default to 85, and that was not a free choice: until
+#               a2b521d, apply_solar_zenith_correction() zeroed every pixel past
+#               MAX_SZA = 85 and left a straight black wall, while geo2grid kept
+#               rendering to ~90. Comparing across that wall measured the wall.
+#               Pass SZA_MAX=85 to reproduce the figures published under that
+#               behaviour, or SZA_MAX=180 for the whole disk; either way the
+#               excluded band is reported separately below.
 #   SCENE_TIME  UTC time for the solar geometry, as YYYY-MM-DDTHH:MM:SSZ.
 #               Default: the scan_time tag hpsv writes into its GeoTIFF, which
 #               is the time hpsv itself uses for the cut.
@@ -29,7 +38,7 @@ set -eu
 G2G="${1:?Usage: $0 <geo2grid.tif> <hpsv.tif>}"
 HPSV="${2:?Usage: $0 <geo2grid.tif> <hpsv.tif>}"
 SIZE="${SIZE:-1024}"
-export SZA_MAX="${SZA_MAX:-85}"
+export SZA_MAX="${SZA_MAX:-95}"
 export SCENE_TIME="${SCENE_TIME:-}"
 command -v gdal_translate >/dev/null || { echo "gdal_translate not found" >&2; exit 1; }
 
