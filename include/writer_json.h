@@ -26,8 +26,6 @@ void json_write_string(JsonWriter* w, const char* key, const char* val);
 void json_write_double(JsonWriter* w, const char* key, double val);
 void json_write_int(JsonWriter* w, const char* key, int val);
 void json_write_bool(JsonWriter* w, const char* key, bool val);
-
-void json_write_float_array(JsonWriter* w, const char* key, const float* vals, int count);
 void json_write_double_array(JsonWriter* w, const char* key, const double* vals, int count);
 void json_write_int_array(JsonWriter* w, const char* key, const int* vals, int count);
 /// GeoJSON Polygon from an open ring; the closing vertex is added here.

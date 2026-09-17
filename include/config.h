@@ -80,8 +80,6 @@ bool config_from_argparser(ArgParser *parser, ProcessConfig *cfg);
 // Validates logical consistency of the configuration. Returns false on error.
 bool config_validate(const ProcessConfig *cfg);
 
-void config_print_debug(const ProcessConfig *cfg);
-
 // Frees dynamically allocated fields (output_path_override). Safe to call on a zeroed struct.
 void config_destroy(ProcessConfig *cfg);
 

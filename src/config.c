@@ -598,63 +598,6 @@ bool config_validate(const ProcessConfig* cfg) {
     return true;
 }
 
-void config_print_debug(const ProcessConfig* cfg) {
-    if (!cfg) {
-        LOG_DEBUG("config_print_debug: cfg is NULL");
-        return;
-    }
-    
-    LOG_DEBUG("=== ProcessConfig ===");
-    LOG_DEBUG("  command: %s", cfg->command ? cfg->command : "NULL");
-    LOG_DEBUG("  strategy: %s", cfg->strategy ? cfg->strategy : "NULL");
-    LOG_DEBUG("  input_file: %s", cfg->input_file ? cfg->input_file : "NULL");
-    LOG_DEBUG("  is_l2_product: %s", cfg->is_l2_product ? "true" : "false");
-    
-    LOG_DEBUG("--- Enhancement ---");
-    LOG_DEBUG("  gamma: %.2f;%.2f;%.2f", cfg->gamma[0], cfg->gamma[1], cfg->gamma[2]);
-    LOG_DEBUG("  apply_clahe: %s", cfg->apply_clahe ? "true" : "false");
-    if (cfg->apply_clahe) {
-        LOG_DEBUG("    tiles: %dx%d, clip_limit: %.2f", 
-                 cfg->clahe_tiles_x, cfg->clahe_tiles_y, cfg->clahe_clip_limit);
-    }
-    LOG_DEBUG("  apply_histogram: %s", cfg->apply_histogram ? "true" : "false");
-    LOG_DEBUG("  apply_rayleigh: %s", cfg->apply_rayleigh ? "true" : "false");
-    LOG_DEBUG("  rayleigh_analytic: %s", cfg->rayleigh_analytic ? "true" : "false");
-    LOG_DEBUG("  use_piecewise_stretch: %s", cfg->use_piecewise_stretch ? "true" : "false");
-    LOG_DEBUG("  invert_values: %s", cfg->invert_values ? "true" : "false");
-    
-    LOG_DEBUG("--- Composition ---");
-    LOG_DEBUG("  scale: %d", cfg->scale);
-    LOG_DEBUG("  use_alpha: %s", cfg->use_alpha ? "true" : "false");
-    LOG_DEBUG("  use_citylights: %s", cfg->use_citylights ? "true" : "false");
-    LOG_DEBUG("  use_full_res: %s", cfg->use_full_res ? "true" : "false");
-    
-    LOG_DEBUG("--- Custom Mode ---");
-    LOG_DEBUG("  is_custom_mode: %s", cfg->is_custom_mode ? "true" : "false");
-    if (cfg->is_custom_mode) {
-        LOG_DEBUG("    expr: %s", cfg->custom_expr ? cfg->custom_expr : "NULL");
-    }
-    LOG_DEBUG("  minmax: %s", cfg->custom_minmax ? cfg->custom_minmax : "NULL");
-    
-    LOG_DEBUG("--- Pseudocolor ---");
-    LOG_DEBUG("  palette_file: %s", cfg->palette_file ? cfg->palette_file : "NULL");
-    
-    LOG_DEBUG("--- Geometry ---");
-    LOG_DEBUG("  has_clip: %s", cfg->has_clip ? "true" : "false");
-    if (cfg->has_clip) {
-        LOG_DEBUG("    coords: [%.3f, %.3f, %.3f, %.3f]", 
-                 cfg->clip_coords[0], cfg->clip_coords[1], 
-                 cfg->clip_coords[2], cfg->clip_coords[3]);
-    }
-    LOG_DEBUG("  do_reprojection: %s", cfg->do_reprojection ? "true" : "false");
-    
-    LOG_DEBUG("--- Output ---");
-    LOG_DEBUG("  force_geotiff: %s", cfg->force_geotiff ? "true" : "false");
-    LOG_DEBUG("  output_override: %s", 
-             cfg->output_path_override ? cfg->output_path_override : "NULL");
-    LOG_DEBUG("=====================");
-}
-
 void config_destroy(ProcessConfig* cfg) {
     if (!cfg) {
         return;

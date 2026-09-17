@@ -7,7 +7,6 @@
  */
 #include "palette.h"
 
-
 PaletteData atmosrainbow[257] = {
     { 170.00, 1.000000, 1.000000, 1.000000, 1.000000 },
     { 170.81, 1.000000, 1.000000, 1.000000, 1.000000 },
@@ -316,18 +315,4 @@ ColorArray *create_rainbow_color_array(unsigned int size) {
 	palette->colors[size-1] = (Color){.r = 0, .g = 0, .b = 0};
 	
     return palette;
-}
-
-ColorArray* atmosrainbow_to_color_array() {
-	unsigned int palette_size = 256;
-	ColorArray* color_array = color_array_create(palette_size);
-    if (!color_array) {
-        return NULL;
-    }
-    for (unsigned int t = 0; t < palette_size; t++) {
-        color_array->colors[t].r = (unsigned char)(255.0f * atmosrainbow[t].r);
-        color_array->colors[t].g = (unsigned char)(255.0f * atmosrainbow[t].g);
-        color_array->colors[t].b = (unsigned char)(255.0f * atmosrainbow[t].b);
-    }
-	return color_array;
 }

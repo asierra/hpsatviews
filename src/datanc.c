@@ -106,88 +106,11 @@ void dataf_fill(DataF *data, float value) {
     }
 }
 
-DataF dataf_crop(const DataF *data, unsigned int x_start, unsigned int y_start, unsigned int width,
-                 unsigned int height) {
-    if (data == NULL || data->data_in == NULL || data->size == 0) {
-        return dataf_create(0, 0); // Return empty DataF
-    }
-
-    // Clamp crop region to source boundaries
-    if (x_start >= data->width || y_start >= data->height) {
-        return dataf_create(0, 0); // Start position is outside bounds
-    }
-
-    unsigned int effective_width = width;
-    unsigned int effective_height = height;
-
-    if (x_start + width > data->width) {
-        effective_width = data->width - x_start;
-    }
-    if (y_start + height > data->height) {
-        effective_height = data->height - y_start;
-    }
-
-    // Create new DataF for cropped region
-    DataF cropped = dataf_create(effective_width, effective_height);
-    if (cropped.data_in == NULL) {
-        return cropped; // Allocation failed
-    }
-
-// Copy data row by row
-#pragma omp parallel for
-    for (unsigned int y = 0; y < effective_height; y++) {
-        unsigned int src_y = y_start + y;
-        size_t src_offset = src_y * data->width + x_start;
-        size_t dst_offset = y * effective_width;
-        memcpy(&cropped.data_in[dst_offset], &data->data_in[src_offset],
-               effective_width * sizeof(float));
-    }
-
-    // Recalculate min/max values for the cropped region
-    float new_min = FLT_MAX;
-    float new_max = -FLT_MAX;
-
-#pragma omp parallel for reduction(min : new_min) reduction(max : new_max)
-    for (size_t i = 0; i < cropped.size; i++) {
-        float val = cropped.data_in[i];
-        if (!IS_NONDATA(val)) {
-            if (val < new_min)
-                new_min = val;
-            if (val > new_max)
-                new_max = val;
-        }
-    }
-
-    cropped.fmin = (new_min != FLT_MAX) ? new_min : data->fmin;
-    cropped.fmax = (new_max != -FLT_MAX) ? new_max : data->fmax;
-
-    return cropped;
-}
-
 // Same test as IS_NONDATA(), without its short-circuit branches: !(v < 1e30f) is
 // true for v >= 1e30, +inf and NaN, and the second term catches -inf. The two
 // resampling loops below apply it to every input they combine, once per output
 // pixel, where the macro's branches were a measurable share of a full disk.
 static inline int is_fill(float v) { return !(v < 1.0e30f) | (v == -HUGE_VALF); }
-
-DataF downsample_simple(DataF datanc_big, int factor) {
-    DataF datanc = dataf_create(datanc_big.width / factor, datanc_big.height / factor);
-
-    if (datanc.data_in == NULL) {
-        return datanc;
-    }
-
-    datanc.fmin = datanc_big.fmin;
-    datanc.fmax = datanc_big.fmax;
-
-#pragma omp parallel for
-    for (unsigned int j = 0; j < datanc_big.height; j += factor)
-        for (unsigned int i = 0; i < datanc_big.width; i += factor) {
-            int is = (j * datanc.width + i) / factor;
-            datanc.data_in[is] = datanc_big.data_in[j * datanc_big.width + i];
-        }
-    return datanc;
-}
 
 DataF downsample_boxfilter(DataF datanc_big, int factor) {
     DataF datanc = dataf_create(datanc_big.width / factor, datanc_big.height / factor);
@@ -448,23 +371,6 @@ DataF dataf_op_scalar(const DataF *a, float scalar, Operation op, bool scalar_fi
     result.fmin = fmin;
     result.fmax = fmax;
     return result;
-}
-
-void dataf_invert(DataF *a) {
-    if (a == NULL || a->data_in == NULL)
-        return;
-
-#pragma omp parallel for
-    for (size_t i = 0; i < a->size; i++) {
-        if (!IS_NONDATA(a->data_in[i])) {
-            a->data_in[i] *= -1.0f;
-        }
-    }
-
-    // Swap and invert min/max
-    float old_fmin = a->fmin;
-    a->fmin = -a->fmax;
-    a->fmax = -old_fmin;
 }
 
 void dataf_apply_gamma(DataF *data, float gamma, float min_val, float max_val) {

@@ -60,17 +60,6 @@ void image_destroy(ImageData *image) {
     }
 }
 
-ImageData copy_image(ImageData orig) {
-    size_t size = orig.width * orig.height;
-    ImageData imout = image_create(orig.width, orig.height, orig.bpp);
-
-    if (imout.data != NULL && orig.data != NULL) {
-        memcpy(imout.data, orig.data, size * orig.bpp);
-    }
-
-    return imout;
-}
-
 ImageData image_crop(const ImageData *src, unsigned int x, unsigned int y, unsigned int width,
                      unsigned int height) {
     if (src == NULL || src->data == NULL || width == 0 || height == 0) {

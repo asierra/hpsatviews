@@ -38,9 +38,6 @@ static inline unsigned int atmosrainbow_index(float f) {
   return lo;
 }
 
-/// Converts the meteorological palette to a ColorArray.
-ColorArray *atmosrainbow_to_color_array();
-
 /// Creates a typical blue-to-red rainbow palette.
 ColorArray *create_rainbow_color_array(unsigned int size);
 

@@ -143,15 +143,6 @@ void json_write_bool(JsonWriter* w, const char* key, bool val) {
     fprintf(w->fp, val ? "true" : "false");
 }
 
-void json_write_float_array(JsonWriter* w, const char* key, const float* vals, int count) {
-    write_key(w, key);
-    fprintf(w->fp, "[");
-    for (int i = 0; i < count; i++) {
-        fprintf(w->fp, "%.8g%s", vals[i], (i < count - 1) ? ", " : "");
-    }
-    fprintf(w->fp, "]");
-}
-
 void json_write_double_array(JsonWriter* w, const char* key, const double* vals, int count) {
     write_key(w, key);
     fprintf(w->fp, "[");

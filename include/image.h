@@ -52,9 +52,6 @@ ImageData image_create(unsigned int width, unsigned int height, unsigned int bpp
 /// Frees an ImageData buffer.
 void image_destroy(ImageData *image);
 
-/// Creates a deep copy of an ImageData buffer.
-ImageData copy_image(ImageData orig);
-
 /// Extracts a rectangular subimage.
 ImageData image_crop(const ImageData* src, unsigned int x, unsigned int y, unsigned int width, unsigned int height);
 

@@ -112,20 +112,6 @@ DataF dataf_copy(const DataF *data);
 /// Fills the DataF buffer with a constant value.
 void dataf_fill(DataF *data, float value);
 
-/**
- * Extracts a rectangular subgrid from a DataF.
- *
- * @param x_start Top-left X pixel of the crop window.
- * @param y_start Top-left Y pixel of the crop window.
- * @param width Crop width in pixels.
- * @param height Crop height in pixels.
- */
-DataF dataf_crop(const DataF *data, unsigned int x_start, unsigned int y_start, 
-                 unsigned int width, unsigned int height);
-
-/// Nearest-neighbor decimation by integer factor.
-DataF downsample_simple(DataF datanc_big, int factor);
-
 /// Box-filter (averaging) downsampling by integer factor.
 DataF downsample_boxfilter(DataF datanc_big, int factor);
 
@@ -143,9 +129,6 @@ DataF dataf_op_dataf(const DataF* a, const DataF* b, Operation op);
 
 /// Element-wise arithmetic between a DataF grid and a scalar.
 DataF dataf_op_scalar(const DataF* a, float scalar, Operation op, bool scalar_first);
-
-/// Negates all values in a DataF grid in-place.
-void dataf_invert(DataF* a);
 
 /// Frees DataNC resources.
 void datanc_destroy(DataNC *datanc);
