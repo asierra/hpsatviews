@@ -115,7 +115,7 @@ Both apply cloud relaxation: correction fades to zero when C02 reflectance excee
 - **Language**: C11 with POSIX extensions (`-std=c11 -D_POSIX_C_SOURCE=200809L`)
 - **Naming**: `snake_case` for functions, `PascalCase` for types
 - **Error handling**: Return `int` (0=success, non-zero=error) or NULL pointer on failure
-- **Logging**: `LOG_ERROR()`, `LOG_WARN()`, `LOG_INFO()` from `include/logger.h`. Verbose mode (`-v`) activates `LOG_INFO`.
+- **Logging**: `LOG_ERROR()`, `LOG_WARN()`, `LOG_INFO()` from `include/logger.h`. The default level is **`LOG_INFO`, so `LOG_INFO` prints without `-v`** — what `-v` does is lower the threshold to `LOG_DEBUG` (`logger_init(verbose_mode ? LOG_DEBUG : LOG_INFO)` in `src/main.c`), which is where `LOG_TIMING`/`LOG_TIMING_STAGE` live, and that is why the per-stage times only show with `-v`. A `make DEBUG=1` build defines `DEBUG_MODE` and starts at `LOG_DEBUG` regardless. Put anything that would be noise in a cron run behind `LOG_DEBUG`, not `LOG_INFO`: every message carries a timestamp and `file:line`, and production runs these commands unattended.
 - **No global state**: Pass context structs explicitly (`ProcessConfig`, `MetadataContext`, `RgbContext`)
 - **OpenMP**: Most pixel loops use `#pragma omp parallel for`. Always use `reduction()` for aggregates (min/max/sum).
 
