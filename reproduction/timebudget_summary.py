@@ -13,7 +13,9 @@ column, which is why the taxonomy is shared (see include/timing.h).
 
 Two guards, both for failure modes the paper describes:
   * a group whose build is "cuda" but whose path is "cpu" fell back silently,
-    and its numbers are not GPU numbers;
+    and its numbers are not GPU numbers; one whose path is "mixed" composed on
+    the CPU and ran only some stages (reprojection, viewing geometry) on the
+    GPU, so it is neither a CPU nor a GPU number;
   * groups drawn from different git commits are not comparable, and the CPU
     figure from an older revision is exactly what inflates a GPU speed-up.
 
@@ -126,6 +128,9 @@ def main(argv):
         if build == "cuda" and taken == "cpu":
             print("  !! built with CUDA but ran the CPU path: silent fallback.")
             print("     These are not GPU numbers.")
+        elif taken == "mixed":
+            print("  !! composite on the CPU, some stages on the GPU (path=mixed).")
+            print("     Neither a CPU nor a GPU number.")
         print(f"  {'phase':<10} {'s':>8} {'% of total':>11}")
         for name, _ in PHASES:
             v = phases[name]

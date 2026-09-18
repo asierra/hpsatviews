@@ -145,6 +145,11 @@ lost their lights on the first run after the upgrade and now pass `-l`.
   it went from falling back to the CPU (47.9 s) to running on the device
   (16.5 s). The CPU path keeps double precision; on the A30 the two differ by
   one count in 1.6·10⁻⁵ of the samples, and in none by more.
+- `--timing-csv` records `path=mixed` when the composite ran on the CPU but
+  the viewing geometry or the reprojection ran on the GPU, and the `--cuda`
+  warning says that instead of "using CPU path": an `airmass -B` gains 37 %
+  from the GPU reprojection alone, and neither message showed it.
+  `timebudget_summary.py` flags `mixed` groups.
 - `tests/run_all_tests.sh` reports a suite that skipped as skipped instead of
   counting it as passed, and with `CUDA=1` in the environment a skipped CUDA
   suite fails. A driver/library mismatch on the GPU server had left

@@ -68,7 +68,10 @@ typedef struct {
     int         n_channels;
     int         nx, ny;       /* output dimensions                             */
     bool        full_res;
-    bool        used_cuda;    /* whether this run actually took the GPU path  */
+    bool        used_cuda;    /* the composite was produced on the GPU        */
+    bool        device_partial; /* the composite ran on the CPU but some other
+                                   stage (reprojection, viewing geometry) ran
+                                   on the GPU: recorded as path=mixed          */
     int         exit_code;
 } TimingRow;
 

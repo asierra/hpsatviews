@@ -164,7 +164,10 @@ static bool load_rayleigh_nav(RgbContext *ctx, RayleighNav *nav,
             dataf_dev_destroy(&sza);
             dataf_dev_destroy(&vza);
             dataf_dev_destroy(&raa);
-            if (ok) return true;
+            if (ok) {
+                ctx->device_used = true;
+                return true;
+            }
             // Fallo a medias: soltar lo que se haya bajado y rehacerlo en CPU.
             dataf_destroy(&nav->sza);
             dataf_destroy(&nav->vza);
@@ -1371,8 +1374,11 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
             LOG_INFO("Generating 'truecolor' composite (CUDA, device-resident)...");
             cuda_handled = compose_truecolor_cuda(&ctx, NULL, NULL);
         }
+        // La composición cae a CPU, pero la geometría de vista y la reproyección
+        // siguen usando la GPU donde aplican: decir "CPU path" a secas era falso.
         if (!cuda_handled)
-            LOG_WARN("--cuda: this RGB configuration isn't GPU-accelerated yet; using CPU path.");
+            LOG_WARN("--cuda: this RGB composite has no GPU kernel and runs on the CPU; "
+                     "viewing geometry and reprojection still use the GPU where they apply.");
     }
 #endif
 
@@ -1536,6 +1542,9 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
             LOG_ERROR("Failure during reprojection.");
             goto cleanup;
         }
+#ifdef HPSV_CUDA
+        if (cfg->use_cuda) ctx.device_used = true;
+#endif
 
         image_destroy(&ctx.final_image);
         ctx.final_image = reprojected;
@@ -1705,6 +1714,7 @@ cleanup:
         trow.ny = (int)ctx.final_image.height;
         trow.n_channels = loaded;
         trow.used_cuda = cuda_handled;
+        trow.device_partial = ctx.device_used;
         trow.exit_code = status;
         timing_emit(&trow);
     }

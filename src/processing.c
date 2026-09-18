@@ -58,6 +58,9 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     // Set only when the image was actually produced on the GPU; the
     // --timing-csv row reports this, not the --cuda request.
     bool ran_on_gpu = false;
+    // The image was made on the CPU (byte data has no GPU kernel) but the
+    // reprojection ran on the GPU: recorded as path=mixed.
+    bool device_partial = false;
     bool is_pseudocolor = (cfg->command && strcmp(cfg->command, "pseudocolor") == 0);
     CPTData* cptdata = NULL;
     ColorArray *color_array = NULL;
@@ -545,6 +548,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
                   c01.native_resolution_km,
                   cfg->has_clip ? cfg->clip_coords : NULL,
                   nodata_pixel);
+        if (cfg->use_cuda && geo_base.data && !ran_on_gpu) device_partial = true;
 #else
         ImageData geo_base = reproject_image_analytical(
             &final_image, &c01,
@@ -690,6 +694,7 @@ cleanup:
         trow.ny = (int)final_image.height;
         trow.n_channels = expr_mode ? num_required_channels : 1;
         trow.used_cuda = ran_on_gpu;
+        trow.device_partial = device_partial;
         trow.exit_code = status;
         timing_emit(&trow);
     }

@@ -352,7 +352,8 @@ int timing_emit(const TimingRow *row) {
     csv_field(line, sizeof(line), &len, t_end);
     csv_field(line, sizeof(line), &len, host);
     csv_field(line, sizeof(line), &len, build_name());
-    csv_field(line, sizeof(line), &len, row->used_cuda ? "gpu" : "cpu");
+    csv_field(line, sizeof(line), &len,
+              row->used_cuda ? "gpu" : (row->device_partial ? "mixed" : "cpu"));
     csv_field(line, sizeof(line), &len, HPSV_VERSION);
     csv_field(line, sizeof(line), &len, git_commit());
     csv_field(line, sizeof(line), &len, gpu_name());

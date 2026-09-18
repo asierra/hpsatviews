@@ -111,6 +111,13 @@ typedef struct {
     /// por eso tests/test_cuda.sh compara ambos caminos píxel a píxel.
     bool final_image_touched;
 
+    /// true si alguna etapa corrió en GPU aunque la composición no (la geometría
+    /// de vista de load_rayleigh_nav, la reproyección). Con cuda_handled en false
+    /// la fila de --timing-csv dice path=mixed en vez de cpu: medido el
+    /// 2026-09-18, un airmass -B con --cuda baja de 4.91 a 3.10 s solo por la
+    /// reproyección, y registrarlo como cpu escondía de dónde salía esa ganancia.
+    bool device_used;
+
     bool error_occurred;
     char error_msg[512];
 } RgbContext;
