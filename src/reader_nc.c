@@ -635,8 +635,6 @@ static void sun_angles_from_ephemeris(float la, float lo, SolarEphemeris e,
     const double PI = M_PI;
     const double PI2 = 2 * M_PI;
     const double PIM = M_PI_2;
-    const double Pressure = 1;
-    const double Temperature = 0;
 
     double Longitude = lo * PI / 180.0;
     double Latitude = la * PI / 180.0;
@@ -654,13 +652,14 @@ static void sun_angles_from_ephemeris(float la, float lo, SolarEphemeris e,
     double ep = asin(se0) - 4.26e-5 * sqrt(1.0 - se0 * se0);
     double Azimuth = atan2(sH, cH * sp - e.sd * cp / e.cd);
 
-    double De;
-    if (ep > 0.0)
-        De = (0.08422 * Pressure) / ((273.0 + Temperature) * tan(ep + 0.003138 / (ep + 0.08919)));
-    else
-        De = 0.0;
-
-    double Zenith = PIM - ep - De;
+    // Geometric zenith, with no atmospheric refraction term. The one this used
+    // to carry applied only above the horizon (ep > 0), so the zenith jumped by
+    // 0.5 deg exactly there: a seam along the terminator once the true colour
+    // started rendering up to HPSV_SUNZ_MAX_SZA, worth 11% of the faded gain.
+    // pyorbital's sun_zenith_angle(), which satpy and geo2grid use, has no
+    // refraction either, and removing it moved the agreement with geo2grid by
+    // under 0.1 DN over the whole disk.
+    double Zenith = PIM - ep;
 
     if (zenith_out)
         *zenith_out = Zenith * 180.0 / M_PI;

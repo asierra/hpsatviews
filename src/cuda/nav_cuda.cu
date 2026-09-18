@@ -65,10 +65,8 @@ __global__ void solar_kernel(const float *la, const float *lo, float *sza,
   double ep = asin(se0) - 4.26e-5 * sqrt(1.0 - se0 * se0);
   double Azimuth = atan2(sH, cH * sp - sd * cp / cd);
 
-  double De = 0.0;
-  if (ep > 0.0)
-    De = (0.08422 * 1.0) / ((273.0 + 0.0) * tan(ep + 0.003138 / (ep + 0.08919)));
-  double Zenith = HPSV_PIM - ep - De;
+  // Cenit geométrico, sin refracción: ver sun_angles_from_ephemeris().
+  double Zenith = HPSV_PIM - ep;
 
   sza[i] = (float)(Zenith * 180.0 / HPSV_PI);
   saa[i] = (float)(Azimuth * 180.0 / HPSV_PI);

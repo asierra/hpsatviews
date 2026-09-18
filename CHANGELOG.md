@@ -143,6 +143,12 @@ lost their lights on the first run after the upgrade and now pass `-l`.
 - `.github/copilot-instructions.md`, stale and unused.
 
 ### Fixed
+- A seam along the terminator. The solar zenith carried an atmospheric
+  refraction term applied only above the horizon, so the zenith jumped by 0.5°
+  exactly there, worth 11 % of the faded gain; it was invisible while
+  everything past 85° was black. The zenith is now geometric, as in pyorbital,
+  which satpy and geo2grid use; the agreement with geo2grid moves by under
+  0.1 counts over the whole disk (3.32 to 3.39 mean absolute difference).
 - `--cuda` producing a wrong image when the GPU ran out of memory. The CPU
   fallback recomputed the navigation from C01's 1 km grid instead of the
   reference channel's, so at `-f` (0.5 km) the Rayleigh correction read
