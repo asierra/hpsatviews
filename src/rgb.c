@@ -365,7 +365,7 @@ static bool compose_truecolor_cuda(RgbContext *ctx, DataFDev *nav_keep_la,
             // Rayleigh de CPU ni la extensión del reproyectado tendrían de dónde salir.
             if (!nav_ready && ctx->nav_on_device) {
                 LOG_WARN("Navegación en device falló; se recalcula en CPU.");
-                if (compute_navigation_nc(nav_file, &ctx->nav_lat, &ctx->nav_lon) == 0) {
+                if (compute_navigation_nc(rgb_ref_filename(ctx), &ctx->nav_lat, &ctx->nav_lon) == 0) {
                     ctx->nav_on_device = false;
                 } else {
                     ctx->has_navigation = false;
@@ -1227,6 +1227,9 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     RgbContext ctx;
     config_to_rgb_context(cfg, &ctx);
     int status = 1;
+    // Whether the composite actually ran on the GPU, not whether --cuda was
+    // asked for: the --timing-csv row reports this as its execution path.
+    bool cuda_handled = false;
     char **custom_channels = NULL;
 
     // Use the short product name (-N flag) if provided; otherwise fall back to mode string.
@@ -1350,7 +1353,6 @@ int run_rgb(const ProcessConfig *cfg, MetadataContext *meta) {
     // RGB composite. The true-color path can run device-resident under --cuda;
     // every other mode/option (analytic Rayleigh, non-truecolor modes, custom)
     // still runs on the CPU.
-    bool cuda_handled = false;
 #ifdef HPSV_CUDA
     if (cfg->use_cuda) {
         // Accelerated: true-color, optionally with Rayleigh LUT, ratio
@@ -1702,6 +1704,7 @@ cleanup:
         trow.nx = (int)ctx.final_image.width;
         trow.ny = (int)ctx.final_image.height;
         trow.n_channels = loaded;
+        trow.used_cuda = cuda_handled;
         trow.exit_code = status;
         timing_emit(&trow);
     }

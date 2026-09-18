@@ -143,6 +143,15 @@ lost their lights on the first run after the upgrade and now pass `-l`.
 - `.github/copilot-instructions.md`, stale and unused.
 
 ### Fixed
+- `--cuda` producing a wrong image when the GPU ran out of memory. The CPU
+  fallback recomputed the navigation from C01's 1 km grid instead of the
+  reference channel's, so at `-f` (0.5 km) the Rayleigh correction read
+  geometry for the wrong pixels: 1 % of the samples, by up to 255 counts, on a
+  GOES-19 full disk on a 16 GB card. The fallback now matches the CPU path
+  exactly.
+- `--timing-csv` recorded `path=gpu` whenever `--cuda` was passed, including
+  runs that fell back to the CPU. The column now reports the path the image
+  was actually produced on.
 - Sibling channels loaded from the wrong scene. The key used to find them was
   meant to be the eleven digits of `YYYYJJJHHMM`, but it was copied with its
   leading `s`, so the last minute digit fell off and the key stopped at the

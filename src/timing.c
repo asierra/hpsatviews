@@ -297,7 +297,8 @@ void timing_row_from_nc(TimingRow *row, const DataNC *nc, const ProcessConfig *c
         row->subcmd    = cfg->command;
         row->product   = cfg->strategy;
         row->full_res  = cfg->use_full_res;
-        row->used_cuda = cfg->use_cuda;
+        // used_cuda is left to the caller: cfg->use_cuda is only the request,
+        // and a run that fell back to the CPU must not be recorded as "gpu".
         row->geo = cfg->save_both ? "both"
                  : (cfg->do_reprojection ? "geographic" : "fixed");
         row->scene_id = scene_signature(cfg->input_file);

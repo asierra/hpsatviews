@@ -55,6 +55,9 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
     LOG_INFO("Processing: %s", cfg->input_file);
     
     int status = 1;
+    // Set only when the image was actually produced on the GPU; the
+    // --timing-csv row reports this, not the --cuda request.
+    bool ran_on_gpu = false;
     bool is_pseudocolor = (cfg->command && strcmp(cfg->command, "pseudocolor") == 0);
     CPTData* cptdata = NULL;
     ColorArray *color_array = NULL;
@@ -350,6 +353,7 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
                 if (do_gamma) dataf_dev_apply_gamma(&dev, cfg->gamma[0], gmin, gmax);
                 final_image = create_single_gray_from_dev(&dev, cfg->invert_values, cfg->use_alpha,
                                                           minmax[0], minmax[1], is_pseudocolor ? cptdata : NULL);
+                ran_on_gpu = (final_image.data != NULL);
                 dataf_dev_destroy(&dev);
             } else {
                 // Attribute the failure to the GPU here; the NULL check below
@@ -685,6 +689,7 @@ cleanup:
         trow.nx = (int)final_image.width;
         trow.ny = (int)final_image.height;
         trow.n_channels = expr_mode ? num_required_channels : 1;
+        trow.used_cuda = ran_on_gpu;
         trow.exit_code = status;
         timing_emit(&trow);
     }
