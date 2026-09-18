@@ -206,6 +206,20 @@ extern "C" bool cuda_download_device_image(const unsigned char *d_image,
   return true;
 }
 
+extern "C" unsigned char *cuda_upload_device_image(const unsigned char *host,
+                                                   size_t bytes) {
+  if (!host || bytes == 0) return NULL;
+  unsigned char *d = NULL;
+  cudaError_t e = cudaMalloc((void **)&d, bytes);
+  if (e == cudaSuccess) e = cudaMemcpy(d, host, bytes, cudaMemcpyHostToDevice);
+  if (e != cudaSuccess) {
+    LOG_ERROR("cuda_upload_device_image: %s", cudaGetErrorString(e));
+    if (d) cudaFree(d);
+    return NULL;
+  }
+  return d;
+}
+
 extern "C" void cuda_free_device_image(unsigned char *d_image) {
   if (d_image) cudaFree(d_image);
 }

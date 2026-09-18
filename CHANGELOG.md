@@ -145,6 +145,13 @@ lost their lights on the first run after the upgrade and now pass `-l`.
   it went from falling back to the CPU (47.9 s) to running on the device
   (16.5 s). The CPU path keeps double precision; on the A30 the two differ by
   one count in 1.6·10⁻⁵ of the samples, and in none by more.
+- `daynite -l` runs on the GPU. The city-lights background is uploaded and
+  blended by the nocturnal kernel, which already had the blend; `-l` used to
+  take the whole composite back to the CPU, and it is what LANOT's production
+  runs. A full disk with `-l --ir-overlay -B` goes from 10.2 s to 5.0 s on an
+  RTX 5060 Ti, differing from the CPU path by one count at most. The
+  background is also checked against the grid's height now, not just its
+  width, before being indexed.
 - `--timing-csv` records `path=mixed` when the composite ran on the CPU but
   the viewing geometry or the reprojection ran on the GPU, and the `--cuda`
   warning says that instead of "using CPU path": an `airmass -B` gains 37 %

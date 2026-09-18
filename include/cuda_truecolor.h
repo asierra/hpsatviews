@@ -66,6 +66,11 @@ bool apply_ratio_sharpen_dev(const DataFDev *red, DataFDev *green,
 bool cuda_download_device_image(const unsigned char *d_image, unsigned char *host,
                                 size_t bytes);
 
+/* Sube a device un buffer de imagen de host (p.ej. el fondo de luces de ciudad).
+ * Devuelve el puntero en device, que se libera con cuda_free_device_image(), o
+ * NULL ante fallo. */
+unsigned char *cuda_upload_device_image(const unsigned char *host, size_t bytes);
+
 /* Libera un buffer de imagen de device obtenido vía d_retain. Seguro con NULL. */
 void cuda_free_device_image(unsigned char *d_image);
 

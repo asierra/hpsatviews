@@ -6,6 +6,7 @@
  * Licensed under the GNU General Public License v3.0 (see LICENSE file).
  */
 #include <libgen.h>
+#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -108,11 +109,12 @@ static bool truecolor_cuda_eligible(const RgbOptions *o) {
 }
 
 // Contraparte para daynite. No incluye apply_rayleigh porque compose_daynite_cuda
-// lo fuerza él mismo; sí excluye las luces de ciudad, que siguen en CPU.
+// lo fuerza él mismo. Las luces de ciudad (-l) entran desde el 2026-09-18: la
+// produccion de LANOT corre daynite -l, que hasta entonces caia entero a CPU.
 static bool daynite_cuda_eligible(const RgbOptions *o) {
 #ifdef HPSV_CUDA
     return o->use_cuda && strcmp(o->mode, "daynite") == 0 && !o->rayleigh_analytic &&
-           !o->use_sharpen && !o->use_citylights;
+           !o->use_sharpen;
 #else
     (void)o;
     return false;
@@ -257,6 +259,40 @@ static bool compose_truecolor(RgbContext *ctx) {
     ctx->max_b = range_max;
 
     return true;
+}
+
+/* Fondo de luces de ciudad (-l) para una malla de w x h, o una imagen vacia si
+ * no hay fondo para esa resolucion o no se pudo leer. Lo usan compose_night() y
+ * compose_daynite_cuda(), para que las dos rutas elijan el mismo archivo. El
+ * fondo se indexa pixel a pixel contra la malla de C13, asi que ademas del ancho
+ * tiene que coincidir el alto: antes solo se miraba el ancho, y un fondo de otro
+ * alto se habria leido fuera de su buffer. */
+static ImageData load_citylights(unsigned int w, unsigned int h) {
+    ImageData img = {0};
+    const char *bg_path = NULL;
+    if (w == 2500) {
+        bg_path = "/usr/local/share/lanot/images/land_lights_2016_conus.webp";
+    } else if (w == 5424) {
+        bg_path = "/usr/local/share/lanot/images/land_lights_2016_fd.webp";
+    } else if (w == 8987) {
+        bg_path = "/usr/local/share/lanot/images/land_lights_2016_lalo.webp";
+    } else {
+        LOG_WARN("Resolution (%u) does not match available backgrounds; skipping lights.", w);
+        return img;
+    }
+
+    LOG_INFO("Loading background image: %s", bg_path);
+    double t0 = omp_get_wtime();
+    img = reader_load_webp(bg_path);
+    LOG_TIMING_STAGE(TM_READ, omp_get_wtime() - t0, "City-lights background (WebP)");
+    if (img.data == NULL) {
+        LOG_WARN("Could not load the city-lights background image.");
+    } else if (img.width != w || img.height != h || img.bpp < 3) {
+        LOG_WARN("City-lights background is %ux%u (bpp %u), grid is %ux%u; skipping lights.",
+                 img.width, img.height, img.bpp, w, h);
+        image_destroy(&img);
+    }
+    return img;
 }
 
 #ifdef HPSV_CUDA
@@ -468,8 +504,8 @@ static bool compose_truecolor_cuda(RgbContext *ctx, DataFDev *nav_keep_la,
  * la única transferencia de salida es la imagen final, y aun esa la aprovecha la
  * reproyección vía el handoff residente.
  *
- * Las luces de ciudad (-l) siguen en CPU: requieren subir el fondo WebP y no
- * están en la ruta operativa. El gate en run_rgb las excluye. */
+ * Las luces de ciudad (-l) se suben como fondo del pseudocolor nocturno; ver
+ * load_citylights(). */
 static bool compose_daynite_cuda(RgbContext *ctx) {
     // Mismas opciones que fuerza compose_daynite() en la ruta CPU.
     ctx->opts.apply_rayleigh = true;
@@ -485,10 +521,27 @@ static bool compose_daynite_cuda(RgbContext *ctx) {
 
     bool ok = false;
     DataFDev temp = dataf_dev_upload(&c13->fdata);
-    unsigned char *d_night = NULL, *d_mask = NULL, *d_blend = NULL;
+    unsigned char *d_night = NULL, *d_mask = NULL, *d_blend = NULL, *d_fondo = NULL;
+    unsigned int fondo_bpp = 0;
 
     if (!temp.d_data) goto done;
-    if (!create_nocturnal_pseudocolor_dev(&temp, NULL, 0, &d_night)) goto done;
+
+    // Luces de ciudad: el kernel nocturno ya hace la misma mezcla que la CPU;
+    // solo faltaba darle el fondo. Si no hay fondo para esta malla se sigue sin
+    // luces, igual que la ruta CPU; si lo hay y no sube, se cae a CPU entera.
+    if (ctx->opts.use_citylights) {
+        ImageData fondo = load_citylights(temp.width, temp.height);
+        if (fondo.data) {
+            double t0 = omp_get_wtime();
+            d_fondo = cuda_upload_device_image(
+                fondo.data, (size_t)fondo.width * fondo.height * fondo.bpp);
+            LOG_TIMING_STAGE(TM_XFER, omp_get_wtime() - t0, "City-lights background upload");
+            fondo_bpp = fondo.bpp;
+            image_destroy(&fondo);
+            if (!d_fondo) goto done;
+        }
+    }
+    if (!create_nocturnal_pseudocolor_dev(&temp, d_fondo, fondo_bpp, &d_night)) goto done;
 
     // La máscara reutiliza los lat/lon que ya dejó el lado diurno en device. Solo
     // hay que subirlos si la navegación se resolvió en host (p.ej. porque el
@@ -566,42 +619,22 @@ done:
     cuda_free_device_image(d_night);
     cuda_free_device_image(d_mask);
     cuda_free_device_image(d_blend);
+    cuda_free_device_image(d_fondo);
     return ok;
 }
 
 #endif /* HPSV_CUDA */
 
 static bool compose_night(RgbContext *ctx) {
-    // Load city-lights background image if requested.
     ImageData fondo_img = {0};
-    const ImageData *fondo_ptr = NULL;
+    const DataF *c13 = &ctx->channels[13].fdata;
     if (ctx->opts.use_citylights) {
-        int width = ctx->channels[ctx->ref_channel_idx].fdata.width;
-        const char *bg_path = NULL;
-
-        if (width == 2500) {
-            bg_path = "/usr/local/share/lanot/images/land_lights_2016_conus.webp";
-        } else if (width == 5424) {
-            bg_path = "/usr/local/share/lanot/images/land_lights_2016_fd.webp";
-        } else if (width == 8987) {
-            bg_path = "/usr/local/share/lanot/images/land_lights_2016_lalo.webp";
-        } else {
-            LOG_WARN("Resolution (%d) does not match available backgrounds; skipping lights.", width);
-        }
-
-        if (bg_path) {
-            LOG_INFO("Loading background image: %s", bg_path);
-            fondo_img = reader_load_webp(bg_path);
-            if (fondo_img.data != NULL) {
-                fondo_ptr = &fondo_img;
-            } else {
-                LOG_WARN("Could not load the city-lights background image.");
-            }
-        }
+        fondo_img = load_citylights(c13->width, c13->height);
     } else {
         LOG_INFO("City lights disabled. Use -l or --citylights to enable them.");
     }
-    ctx->final_image = create_nocturnal_pseudocolor(&ctx->channels[13].fdata, fondo_ptr);
+    ctx->final_image =
+        create_nocturnal_pseudocolor(c13, fondo_img.data ? &fondo_img : NULL);
     image_destroy(&fondo_img);
     return true;
 }

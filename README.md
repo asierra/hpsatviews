@@ -718,15 +718,19 @@ composed image also stays on the device to feed the reprojection, so a full
 `daynite -G` render moves the four input channels in and one image out, with no
 intermediate round trips. Ratio sharpening (`--sharpen`) runs on the GPU too,
 fused into a single kernel that recomputes each 2×2 block mean in place instead
-of materializing the intermediate mean and ratio arrays the CPU builds. Options
-without a GPU kernel (`--ray-analytic`, `--citylights`, other RGB modes) fall
-back to the CPU transparently.
+of materializing the intermediate mean and ratio arrays the CPU builds. City
+lights (`--citylights`) are uploaded as the background of the nocturnal
+pseudocolour, so `daynite -l` stays on the device as well. Options without a GPU
+kernel (`--ray-analytic`, the other RGB modes) compose on the CPU; the viewing
+geometry and the reprojection still run on the GPU, which is most of their cost
+— a full-disk `airmass -B` goes from 4.9 s to 3.1 s on that alone.
 
 Worth checking when a configuration seems slower than expected: `--cuda` logs
-`this RGB configuration isn't GPU-accelerated yet; using CPU path` whenever an
-option takes true colour out of the accelerated gate. Until this release
-`--sharpen` did exactly that, which silently turned every geo2grid comparison —
-sharpening is required to match its product — into a CPU measurement.
+`this RGB composite has no GPU kernel and runs on the CPU` whenever an option
+takes the composite out of the accelerated gate, and `--timing-csv` records
+such a run as `path=mixed` rather than `gpu`. Until this release `--sharpen`
+did exactly that, which silently turned every geo2grid comparison — sharpening
+is required to match its product — into a CPU measurement.
 
 #### Results
 
@@ -818,8 +822,8 @@ backend (§6.6) now covers the whole compute path for the operational products,
 including reprojection, so the remaining wall time on a full-disk render is
 dominated by reading NetCDF and encoding the output rather than by arithmetic.
 GPU-side NetCDF decompression — so decoded data is born on the device — is the
-main lever left, and is under consideration; the city-lights composite and the
-less common RGB modes still run on the CPU.
+main lever left, and is under consideration; the less common RGB modes still
+compose on the CPU, though their reprojection runs on the GPU.
 
 Want to contribute, report a problem, or get support? See
 [CONTRIBUTING.md](CONTRIBUTING.md). This project follows the

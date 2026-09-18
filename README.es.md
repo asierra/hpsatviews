@@ -709,14 +709,18 @@ render completo de `daynite -G` mueve los cuatro canales de entrada hacia la GPU
 y una imagen de salida, sin viajes intermedios. El *ratio sharpening*
 (`--sharpen`) también corre en GPU, fundido en un solo kernel que recalcula el
 promedio de cada bloque 2×2 en sitio en vez de materializar los arreglos
-intermedios de promedio y razones que construye la CPU. Las opciones sin kernel
-(`--ray-analytic`, `--citylights`, otros modos RGB) caen a CPU de forma
-transparente.
+intermedios de promedio y razones que construye la CPU. Las luces de ciudad
+(`--citylights`) se suben como fondo del pseudocolor nocturno, así que
+`daynite -l` también se queda en la GPU. Las opciones sin kernel
+(`--ray-analytic`, los demás modos RGB) componen en CPU; la geometría de vista y
+la reproyección siguen corriendo en la GPU, y son la mayor parte de su costo: un
+`airmass -B` de disco completo baja de 4.9 s a 3.1 s solo por eso.
 
 Conviene revisarlo cuando una configuración parezca más lenta de lo esperado:
-`--cuda` registra `this RGB configuration isn't GPU-accelerated yet; using CPU
-path` cada vez que una opción saca a truecolor del gate acelerado. Hasta esta
-versión `--sharpen` hacía justo eso, lo que convertía en silencio toda
+`--cuda` registra `this RGB composite has no GPU kernel and runs on the CPU`
+cada vez que una opción saca la composición del gate acelerado, y
+`--timing-csv` registra esa corrida como `path=mixed` en vez de `gpu`. Hasta
+esta versión `--sharpen` hacía justo eso, lo que convertía en silencio toda
 comparación con geo2grid —que exige el realce para igualar su producto— en una
 medición de CPU.
 
@@ -811,7 +815,8 @@ operativos, incluida la reproyección, así que lo que queda del tiempo en un
 render de disco completo lo domina leer el NetCDF y codificar la salida, no la
 aritmética. La descompresión NetCDF en GPU —para que los datos decodificados
 nazcan en el device— es la palanca principal que resta y está en consideración;
-el compuesto con luces de ciudad y los modos RGB menos comunes siguen en CPU.
+los modos RGB menos comunes siguen componiendo en CPU, aunque su reproyección
+corre en la GPU.
 
 ¿Quieres contribuir, reportar un problema o pedir soporte? Consulta
 [CONTRIBUTING.md](CONTRIBUTING.md). El proyecto sigue el

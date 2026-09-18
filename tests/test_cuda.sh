@@ -139,4 +139,26 @@ if cmp -s daynite_ir_cpu.png daynite_cpu.png; then
     exit 1
 fi
 
-echo "OK: salida CUDA equivalente a la ruta CPU en los 12 casos."
+# Luces de ciudad (-l): el fondo WebP se sube a device y lo mezcla el kernel
+# nocturno. Hasta 2026-09-18 -l sacaba a daynite de la GPU entero, y la
+# produccion de LANOT corre daynite -l. Ademas de comparar, se exige que la
+# corrida --cuda haya compuesto en device: si cayera a CPU la comparacion
+# pasaria igual, que es justo la caida silenciosa que este test debe ver.
+../bin/hpsv rgb -v "$ANCHOR_C01" --mode daynite -l -G -o daynite_l_cpu.png
+../bin/hpsv rgb -v "$ANCHOR_C01" --mode daynite -l -G --cuda -o daynite_l_cuda.png \
+    2> daynite_l_cuda.log
+if ! grep -q "daynite' composite (CUDA, device-resident)" daynite_l_cuda.log ||
+     grep -q "runs on the CPU" daynite_l_cuda.log; then
+    echo "  FALLO: daynite -l --cuda no compuso en device"
+    exit 1
+fi
+./compare_image.sh daynite_l_cuda.png daynite_l_cpu.png
+# Sin el fondo instalado las dos rutas omiten las luces y la comparacion no dice
+# nada de ellas; con el fondo, -l tiene que cambiar la imagen.
+if [ -f /usr/local/share/lanot/images/land_lights_2016_conus.webp ] &&
+   cmp -s daynite_l_cpu.png daynite_cpu.png; then
+    echo "  FALLO: -l no cambió la salida de daynite"
+    exit 1
+fi
+
+echo "OK: salida CUDA equivalente a la ruta CPU en los 13 casos."
