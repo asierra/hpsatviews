@@ -763,12 +763,15 @@ del proceso que sí incluye la tabla de arriba).
 Dos advertencias que conviene decir sin rodeos:
 
 - **Estos números no se transfieren entre máquinas.** En una Tesla T4, cuya
-  capacidad en doble precisión es 1/32 de la simple, el mismo código apenas
-  supera a una CPU fuerte, porque la navegación y la reproyección son en doble.
-  Eso se midió cuando la geometría de vista también iba en doble; desde la 1.2.0
-  corre en precisión simple en la GPU, y la T4 no se ha vuelto a medir. La A30
-  (1/2) es otra historia. Hay que re-medir en el host objetivo antes de
-  activar `--cuda` en producción; `reproduction/bench_server.sh` hace justo eso.
+  capacidad en doble precisión es 1/32 de la simple, la GPU perdía contra la CPU
+  de 64 hilos del mismo servidor, porque la geometría de vista y la reproyección
+  iban en doble. Desde la 1.2.0 las dos van en precisión simple (la reproyección
+  rehace en doble solo los píxeles cuya decisión queda al filo de un umbral), y
+  en ese servidor un `daynite -l --ir-overlay -B` de disco completo baja de
+  2.51 s en CPU a 2.07 s en la T4; los productos ligeros empatan, porque crear el
+  contexto CUDA cuesta 0.2–0.3 s por proceso. La A30 (1/2) es otra historia. Hay
+  que re-medir en el host objetivo antes de activar `--cuda` en producción;
+  `reproduction/bench_server.sh` hace justo eso.
 - **Lo que queda del tiempo es I/O, no aritmética.** Tras el trabajo anterior, un
   `daynite -G` de disco completo gasta ~38% leyendo los cuatro canales y ~31%
   codificando el GeoTIFF, y menos del 20% calculando. A la GPU ya le queda poco

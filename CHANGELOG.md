@@ -145,6 +145,17 @@ lost their lights on the first run after the upgrade and now pass `-l`.
   it went from falling back to the CPU (47.9 s) to running on the device
   (16.5 s). The CPU path keeps double precision; on the A30 the two differ by
   one count in 1.6·10⁻⁵ of the samples, and in none by more.
+- The GPU reprojection runs in single precision, and redoes in double only the
+  pixels whose decision sits on a threshold: visibility at the limb, the edge
+  of the source, and the half-pixel point of nearest-neighbour sampling. Plain
+  float got those wrong by up to 195 counts in a handful of limb pixels and,
+  for `gray`, picked the neighbouring sample in 13 000; they go through a
+  queue to a second pass, because testing them inline stalled whole warps.
+  On a T4 the kernel drops from 0.21 s to 0.01 s on a 2 km full disk, and
+  `daynite -l --ir-overlay -B` from 2.51 s on the CPU to 2.07 s; `gray` comes
+  out identical to the CPU and the RGB modes within one count. The transfers
+  are now timed as `TM_XFER` instead of inside `TM_REPROJECT`, as the stage
+  taxonomy says. `HPSV_REPROJECT_FP64=1` runs it all in double, for A/B.
 - `daynite -l` runs on the GPU. The city-lights background is uploaded and
   blended by the nocturnal kernel, which already had the blend; `-l` used to
   take the whole composite back to the CPU, and it is what LANOT's production

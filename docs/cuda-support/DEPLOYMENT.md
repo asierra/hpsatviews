@@ -12,7 +12,7 @@ El Makefile compila para `CUDA_ARCH ?= sm_120` (RTX 50xx). Ajústalo a tu GPU:
 
 | GPU | `CUDA_ARCH` | Notas |
 |---|---|---|
-| Tesla T4 | `sm_75` | Turing. **FP64 flojo (~1:32)** → nav/reproyección (double) lentas. |
+| Tesla T4 | `sm_75` | Turing. **FP64 flojo (~1:32)** → la navegación (double) es lenta; geometría y reproyección van en float desde la 1.2.0. |
 | A30 / A100 | `sm_80` | Ampere. **FP64 fuerte** + HBM2 + PCIe 4.0 → ideal para este workload. |
 | RTX 30xx / A10 | `sm_86` | |
 | RTX 40xx | `sm_89` | |
