@@ -305,8 +305,9 @@ Generates a grayscale view of channel C13.
   `t_geom`, `t_correct`, `t_compose`, `t_enhance`, `t_reproject`, `t_write`,
   `t_xfer`, `t_mem`, `t_other`) are identical in
   the OpenMP and CUDA builds, so the two can be compared column by column;
-  `t_nav` and `t_geom` are kept apart because they are the double-precision
-  work, which is what makes a GPU pay or not on a given device. Stage times account for ~97% of
+  `t_nav` and `t_geom` are kept apart because they are the geolocation work,
+  and `t_nav` is what the GPU still does in double precision, which is what
+  makes a GPU pay or not on a given device. Stage times account for ~97% of
   `t_total`; the small remainder is untimed orchestration.
 
 * `-v, --verbose`
@@ -768,7 +769,9 @@ Two caveats worth stating plainly:
 - **These numbers do not transfer between machines.** On a Tesla T4, whose
   double-precision throughput is 1/32 of single, the same code is barely faster
   than a strong CPU, because the navigation and reprojection maths are in double.
-  The A30 (1/2) is a different story. Re-measure on the target host before
+  That was measured while the viewing geometry was in double as well; since
+  1.2.0 it runs in single precision on the GPU, and the T4 has not been
+  re-measured. The A30 (1/2) is a different story. Re-measure on the target host before
   enabling `--cuda` in production; `reproduction/bench_server.sh` does exactly
   that.
 - **The remaining wall time is I/O, not arithmetic.** After the work above, a

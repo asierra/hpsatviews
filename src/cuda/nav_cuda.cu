@@ -8,8 +8,9 @@
  * Port de sun_angles_from_ephemeris / compute_satellite_view_angles /
  * compute_relative_azimuth (src/reader_nc.c). La parte solo-tiempo de la
  * geometría solar (efeméride) se precomputa una vez en host y llega como
- * escalares (sd, cd, ha_base), evitando ~20 trig por píxel. Todo en double para
- * casar con la ruta CPU. Un hilo por píxel.
+ * escalares (sd, cd, ha_base), evitando ~20 trig por píxel. La geometría por
+ * píxel va en float (ver geometry_kernel, que dice por qué basta); la malla
+ * lat/lon de latlon_kernel sigue en double. Un hilo por píxel.
  */
 
 #include "cuda_common.cuh"
@@ -36,111 +37,85 @@ extern "C" {
     }                                                                        \
   } while (0)
 
-/* ---- solar (port de sun_angles_from_ephemeris) --------------------------- */
-__global__ void solar_kernel(const float *la, const float *lo, float *sza,
-                             float *saa, size_t n, double sd, double cd,
-                             double ha_base) {
+/* ---- geometría fusionada en float ----------------------------------------
+ * Port de sun_angles_from_ephemeris + compute_satellite_view_angles +
+ * compute_relative_azimuth en un solo kernel y en precisión simple. Escribe
+ * solo sza/vza/raa: los acimutes solar y del satélite viven en registros y no
+ * como dos mallas más (3.8 GB menos de pico a 0.5 km).
+ *
+ * Float es suficiente, y está medido (reproduction/float_geom_error.c, disco
+ * completo GOES-19 a 0.5 km contra la geometría en double): |dSZA| <= 0.019
+ * grados y la ganancia de cenit solar se mueve <= 0.017 DN en todo el disco,
+ * franja 88-95 incluida. La trampa es ha_base (~ -7.7e4 rad): en float,
+ * ha_base + Longitude pierde la longitud (ulp ~0.45 grados) y la ganancia se va
+ * hasta 79 DN en el crepúsculo. Por eso llega ya reducida mod 2*pi desde el
+ * host; la efeméride sigue en double en host (un escalar por escena). */
+__global__ void geometry_kernel(const float *la, const float *lo, float *sza,
+                                float *vza, float *raa, size_t n, float sd,
+                                float cd, float ha_base, float sat_lon,
+                                float sat_height_m) {
   size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= n) return;
 
   float laf = la[i], lof = lo[i];
   if (is_nondata_dev(laf) || is_nondata_dev(lof)) {
     sza[i] = HPSV_NONDATA_DEV;
-    saa[i] = HPSV_NONDATA_DEV;
-    return;
-  }
-
-  double Longitude = (double)lof * HPSV_PI / 180.0;
-  double Latitude = (double)laf * HPSV_PI / 180.0;
-
-  double HourAngle = ha_base + Longitude;
-  HourAngle = fmod(HourAngle + HPSV_PI, HPSV_PI2) - HPSV_PI;
-  if (HourAngle < -HPSV_PI) HourAngle += HPSV_PI2;
-
-  double sp = sin(Latitude);
-  double cp = sqrt(1.0 - sp * sp);
-  double sH = sin(HourAngle);
-  double cH = cos(HourAngle);
-  double se0 = sp * sd + cp * cd * cH;
-  double ep = asin(se0) - 4.26e-5 * sqrt(1.0 - se0 * se0);
-  double Azimuth = atan2(sH, cH * sp - sd * cp / cd);
-
-  // Cenit geométrico, sin refracción: ver sun_angles_from_ephemeris().
-  double Zenith = HPSV_PIM - ep;
-
-  sza[i] = (float)(Zenith * 180.0 / HPSV_PI);
-  saa[i] = (float)(Azimuth * 180.0 / HPSV_PI);
-}
-
-/* ---- satellite (port de compute_satellite_view_angles) ------------------- */
-__global__ void satellite_kernel(const float *la, const float *lo, float *vza,
-                                 float *vaa, size_t n, float sat_lon,
-                                 float sat_height_m) {
-  size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
-  if (i >= n) return;
-
-  float laf = la[i], lof = lo[i];
-  if (is_nondata_dev(laf) || is_nondata_dev(lof)) {
     vza[i] = HPSV_NONDATA_DEV;
-    vaa[i] = HPSV_NONDATA_DEV;
+    raa[i] = HPSV_NONDATA_DEV;
     return;
   }
 
-  const double a = 6378137.0;
-  const double f = 1.0 / 298.257223563;
-  double lat_rad = (double)laf * HPSV_PI / 180.0;
-  double lon_rad = (double)lof * HPSV_PI / 180.0;
-  double sat_lon_rad = (double)sat_lon * HPSV_PI / 180.0;
+  const float PI = (float)HPSV_PI, PI2 = (float)HPSV_PI2;
+  const float RAD2DEG = (float)(180.0 / HPSV_PI);
+  float lat = laf * (float)(HPSV_PI / 180.0);
+  float lon = lof * (float)(HPSV_PI / 180.0);
+  float slat, clat, slon, clon;
+  sincosf(lat, &slat, &clat);
+  sincosf(lon, &slon, &clon);
 
-  double N = a / sqrt(1.0 - (2.0 * f - f * f) * sin(lat_rad) * sin(lat_rad));
-  double x_pixel = N * cos(lat_rad) * cos(lon_rad);
-  double y_pixel = N * cos(lat_rad) * sin(lon_rad);
-  double z_pixel = N * (1.0 - (2.0 * f - f * f)) * sin(lat_rad);
+  /* solar */
+  float HourAngle = ha_base + lon;
+  HourAngle = fmodf(HourAngle + PI, PI2) - PI;
+  if (HourAngle < -PI) HourAngle += PI2;
+  float sH, cH;
+  sincosf(HourAngle, &sH, &cH);
+  float cp = sqrtf(1.0f - slat * slat);
+  float se0 = slat * sd + cp * cd * cH;
+  float ep = asinf(se0) - 4.26e-5f * sqrtf(1.0f - se0 * se0);
+  float saa_deg = atan2f(sH, cH * slat - sd * cp / cd) * RAD2DEG;
+  // Cenit geométrico, sin refracción: ver sun_angles_from_ephemeris().
+  sza[i] = ((float)HPSV_PIM - ep) * RAD2DEG;
 
-  double sat_radius = a + (double)sat_height_m;
-  double x_sat = sat_radius * cos(sat_lon_rad);
-  double y_sat = sat_radius * sin(sat_lon_rad);
+  /* satélite */
+  const float a = 6378137.0f;
+  const float e2 = (float)(2.0 / 298.257223563 - 1.0 / (298.257223563 * 298.257223563));
+  float sat_lon_rad = sat_lon * (float)(HPSV_PI / 180.0);
+  float N = a / sqrtf(1.0f - e2 * slat * slat);
+  float x_pixel = N * clat * clon;
+  float y_pixel = N * clat * slon;
+  float z_pixel = N * (1.0f - e2) * slat;
 
-  double dx = x_pixel - x_sat;
-  double dy = y_pixel - y_sat;
-  double dz = z_pixel - 0.0;
-  double dist = sqrt(dx * dx + dy * dy + dz * dz);
-  dx /= dist; dy /= dist; dz /= dist;
+  float sat_radius = a + sat_height_m;
+  float ssl, csl;
+  sincosf(sat_lon_rad, &ssl, &csl);
+  float dx = x_pixel - sat_radius * csl;
+  float dy = y_pixel - sat_radius * ssl;
+  float dz = z_pixel;
+  float inv_dist = rsqrtf(dx * dx + dy * dy + dz * dz);
+  dx *= inv_dist; dy *= inv_dist; dz *= inv_dist;
 
-  double n_len = sqrt(x_pixel * x_pixel + y_pixel * y_pixel + z_pixel * z_pixel);
-  double nx = x_pixel / n_len;
-  double ny = y_pixel / n_len;
-  double nz = z_pixel / n_len;
+  float inv_n = rsqrtf(x_pixel * x_pixel + y_pixel * y_pixel + z_pixel * z_pixel);
+  float cos_vza = -(dx * x_pixel + dy * y_pixel + dz * z_pixel) * inv_n;
+  vza[i] = acosf(fmaxf(-1.0f, fminf(1.0f, cos_vza))) * RAD2DEG;
 
-  double cos_vza = -(dx * nx + dy * ny + dz * nz);
-  double vza_deg = acos(fmax(-1.0, fmin(1.0, cos_vza))) * 180.0 / HPSV_PI;
+  float view_east = -dx * slon + dy * clon;
+  float view_north = -dx * slat * clon - dy * slat * slon + dz * clat;
+  float vaa_deg = atan2f(view_east, view_north) * RAD2DEG;
 
-  double east_x = -sin(lon_rad), east_y = cos(lon_rad);
-  double north_x = -sin(lat_rad) * cos(lon_rad);
-  double north_y = -sin(lat_rad) * sin(lon_rad);
-  double north_z = cos(lat_rad);
-
-  double view_east = dx * east_x + dy * east_y;
-  double view_north = dx * north_x + dy * north_y + dz * north_z;
-  double vaa_deg = atan2(view_east, view_north) * 180.0 / HPSV_PI;
-
-  vza[i] = (float)vza_deg;
-  vaa[i] = (float)vaa_deg;
-}
-
-/* ---- relative azimuth (port de compute_relative_azimuth) ----------------- */
-__global__ void relaz_kernel(const float *saa, const float *vaa, float *raa,
-                             size_t n) {
-  size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
-  if (i >= n) return;
-  float sa = saa[i], va = vaa[i];
-  if (is_nondata_dev(sa) || is_nondata_dev(va)) {
-    raa[i] = HPSV_NONDATA_DEV;
-  } else {
-    float diff = fabsf(sa - va);
-    if (diff > 180.0f) diff = 360.0f - diff;
-    raa[i] = diff;
-  }
+  /* acimut relativo, como compute_relative_azimuth */
+  float diff = fabsf(saa_deg - vaa_deg);
+  if (diff > 180.0f) diff = 360.0f - diff;
+  raa[i] = diff;
 }
 
 extern "C" bool compute_rayleigh_nav_dev(const DataFDev *navla,
@@ -159,10 +134,11 @@ extern "C" bool compute_rayleigh_nav_dev(const DataFDev *navla,
   unsigned int w = navla->width, h = navla->height;
 
   DataFDev sza = dataf_dev_alloc(w, h);
-  DataFDev saa = dataf_dev_alloc(w, h);
   DataFDev vza = dataf_dev_alloc(w, h);
-  DataFDev vaa = dataf_dev_alloc(w, h);
   DataFDev raa = dataf_dev_alloc(w, h);
+  /* ha_base se reduce aquí, en double, antes de bajar a float: ver
+   * geometry_kernel. */
+  float ha_red = (float)fmod(ha_base, HPSV_PI2);
 
   bool ok = false;
   cudaEvent_t t0 = NULL, t1 = NULL;
@@ -170,20 +146,16 @@ extern "C" bool compute_rayleigh_nav_dev(const DataFDev *navla,
   unsigned int block = 256;
   unsigned int grid = (unsigned int)((n + block - 1) / block);
 
-  if (!sza.d_data || !saa.d_data || !vza.d_data || !vaa.d_data || !raa.d_data)
+  if (!sza.d_data || !vza.d_data || !raa.d_data)
     goto cleanup;
 
   CUDA_CHECK(cudaEventCreate(&t0));
   CUDA_CHECK(cudaEventCreate(&t1));
   CUDA_CHECK(cudaEventRecord(t0));
 
-  solar_kernel<<<grid, block>>>(navla->d_data, navlo->d_data, sza.d_data,
-                                saa.d_data, n, sd, cd, ha_base);
-  CUDA_CHECK(cudaGetLastError());
-  satellite_kernel<<<grid, block>>>(navla->d_data, navlo->d_data, vza.d_data,
-                                    vaa.d_data, n, sat_lon, sat_height_m);
-  CUDA_CHECK(cudaGetLastError());
-  relaz_kernel<<<grid, block>>>(saa.d_data, vaa.d_data, raa.d_data, n);
+  geometry_kernel<<<grid, block>>>(navla->d_data, navlo->d_data, sza.d_data,
+                                   vza.d_data, raa.d_data, n, (float)sd,
+                                   (float)cd, ha_red, sat_lon, sat_height_m);
   CUDA_CHECK(cudaGetLastError());
 
   CUDA_CHECK(cudaEventRecord(t1));
@@ -202,8 +174,6 @@ extern "C" bool compute_rayleigh_nav_dev(const DataFDev *navla,
 cleanup:
   if (t0) cudaEventDestroy(t0);
   if (t1) cudaEventDestroy(t1);
-  dataf_dev_destroy(&saa);
-  dataf_dev_destroy(&vaa);
   if (!ok) {
     dataf_dev_destroy(&sza);
     dataf_dev_destroy(&vza);

@@ -36,8 +36,10 @@ bool compute_navigation_dev(const NavPlan *plan, DataFDev *lat_out,
 /* Computa sza/vza/raa en device a partir de lat/lon (ya en device) y los
  * parámetros escalares leídos en host: la efeméride solar (sd/cd/ha_base, ver
  * SolarEphemeris en reader_nc.h) y los del satélite (sub-punto y altitud).
- * Réplica exacta de compute_solar_angles_nc + compute_satellite_angles_nc +
- * compute_relative_azimuth (src/reader_nc.c). Reserva sza_out/vza_out/raa_out
+ * Port de compute_solar_angles_nc + compute_satellite_angles_nc +
+ * compute_relative_azimuth (src/reader_nc.c), en float y en un solo kernel: no
+ * es bit a bit igual a la ruta CPU (double), ver geometry_kernel en
+ * src/cuda/nav_cuda.cu. Reserva sza_out/vza_out/raa_out
  * (el llamador los libera con dataf_dev_destroy). Devuelve false ante fallo. */
 bool compute_rayleigh_nav_dev(const DataFDev *navla, const DataFDev *navlo,
                               double sd, double cd, double ha_base,

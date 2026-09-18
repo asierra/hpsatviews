@@ -87,9 +87,12 @@ reproduction/bench_server.sh /ruta/OR_ABI-L1b-RadF-M6C02_...nc
 # Overrides: CUDA_ARCH=sm_80  HDF5_LIB=hdf5  OMP_NUM_THREADS=<hilos de producción>
 ```
 Compara build CPU vs build CUDA (full-disk truecolor + Rayleigh, GeoTIFF por
-defecto) con desglose por etapa. **Vigila la línea
-`Solar+satellite geometry (CUDA)`**: es el kernel double-heavy más sensible al
-FP64 de la GPU (en dev, RTX 5060 Ti: ~0.33 s en full-disk).
+defecto) con desglose por etapa. **Vigila la navegación (`t_nav`)**: desde la
+1.2.0 es el único kernel en double de la ruta truecolor, y por tanto el más
+sensible al FP64 de la GPU. La geometría de vista (`Solar+satellite geometry
+(CUDA)`) pasó a float: en dev, RTX 5060 Ti, de 0.31 s a 0.006 s en el disco
+completo a 1 km (`reproduction/float_geom_error.c` mide qué cuesta eso en el
+producto).
 
 Cada etapa acelerada emite un `[PERF]` (nivel DEBUG, requiere `-v`) en **ambas**
 rutas, con etiquetas pareadas para poder dividir una entre otra:

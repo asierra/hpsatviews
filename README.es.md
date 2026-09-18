@@ -307,9 +307,9 @@ Genera una vista en escala de grises del canal C13.
   `t_geom`, `t_correct`, `t_compose`, `t_enhance`, `t_reproject`, `t_write`,
   `t_xfer`, `t_mem`, `t_other`) son
   idénticas en el build OpenMP y en el CUDA, de modo que los dos se comparan
-  columna contra columna; `t_nav` y `t_geom` van aparte porque son el trabajo
-  en doble precisión, que es lo que determina si una GPU conviene o no en un
-  dispositivo dado. Los tiempos por etapa cubren ~97% de `t_total`; el resto,
+  columna contra columna; `t_nav` y `t_geom` van aparte porque son la
+  geolocalización, y `t_nav` es lo que la GPU sigue haciendo en doble precisión,
+  que es lo que determina si una GPU conviene o no en un dispositivo dado. Los tiempos por etapa cubren ~97% de `t_total`; el resto,
   pequeño, es orquestación sin cronometrar.
 
 * `-v, --verbose`
@@ -761,7 +761,9 @@ Dos advertencias que conviene decir sin rodeos:
 - **Estos números no se transfieren entre máquinas.** En una Tesla T4, cuya
   capacidad en doble precisión es 1/32 de la simple, el mismo código apenas
   supera a una CPU fuerte, porque la navegación y la reproyección son en doble.
-  La A30 (1/2) es otra historia. Hay que re-medir en el host objetivo antes de
+  Eso se midió cuando la geometría de vista también iba en doble; desde la 1.2.0
+  corre en precisión simple en la GPU, y la T4 no se ha vuelto a medir. La A30
+  (1/2) es otra historia. Hay que re-medir en el host objetivo antes de
   activar `--cuda` en producción; `reproduction/bench_server.sh` hace justo eso.
 - **Lo que queda del tiempo es I/O, no aritmética.** Tras el trabajo anterior, un
   `daynite -G` de disco completo gasta ~38% leyendo los cuatro canales y ~31%

@@ -69,6 +69,9 @@ lost their lights on the first run after the upgrade and now pass `-l`.
 - `reproduction/sweep_ir_overlay.sh`, `ir_overlay_montage.py` and
   `pick_scenes.sh`: the study behind the `--ir-overlay` defaults, to be rerun
   before changing them or the blend limits.
+- `reproduction/float_nav_error.c` and `float_geom_error.c`: what computing
+  the navigation and the viewing geometry in single precision costs, over a
+  whole GOES-19 disk at 0.5 km, against the double-precision code.
 
 ### Changed
 - The solar terminator is now handled the way satpy, and therefore geo2grid,
@@ -129,6 +132,19 @@ lost their lights on the first run after the upgrade and now pass `-l`.
   `include/daynight_mask.h`, shared with the CUDA kernels so the two paths
   cannot drift.
 
+- The viewing geometry runs in single precision on the GPU, in one kernel
+  instead of three. It was the most FP64-bound stage, which is what decided
+  whether a card pays: on an RTX 5060 Ti it goes from 0.31 s to 0.006 s on a
+  1 km full disk, and from 0.102 s to 0.022 s at 0.5 km on the A30. Measured
+  with `reproduction/float_geom_error.c`, single precision moves the solar zenith
+  gain by at most 0.017 counts anywhere on the disk; the one trap is the
+  scene's hour-angle base (about −7.7·10⁴ rad), which the host now reduces
+  modulo 2π before handing it over, or the longitude is lost to rounding.
+  Fusing the kernels also drops the solar and satellite azimuth grids, 3.8 GB
+  at 0.5 km, so a 0.5 km true colour now fits a 16 GB card: on the RTX 5060 Ti
+  it went from falling back to the CPU (47.9 s) to running on the device
+  (16.5 s). The CPU path keeps double precision; on the A30 the two differ by
+  one count in 1.6·10⁻⁵ of the samples, and in none by more.
 - `tests/run_all_tests.sh` reports a suite that skipped as skipped instead of
   counting it as passed, and with `CUDA=1` in the environment a skipped CUDA
   suite fails. A driver/library mismatch on the GPU server had left
