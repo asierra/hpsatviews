@@ -11,14 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 STAC Items, a solar terminator aligned with satpy, a day-side IR enhancement
 for `daynite`, and a fix to how sibling channels are found that matters for
-mesoscale.
+mesoscale. On the GPU side, the viewing geometry and the reprojection moved to
+single precision, which is what had made a card with weak double precision (a
+Tesla T4) lose to the CPU of its own server: a 0.5 km true colour now fits and
+runs on a 16 GB card, and `daynite -l`, which production runs, no longer falls
+back to the CPU. Two wrong outputs are fixed along the way: `--cuda` running
+out of GPU memory produced a corrupted image, and the solar zenith jumped by
+0.5° at the horizon, leaving a seam along the terminator.
 
 **Upgrading:** `-j` writes a STAC Item instead of the previous sidecar, named
 after the Item id rather than after `-o` (see below); anything that read the
-sidecar has to read the Item. From a release older than 1.1.0 there is a
-second change: `daynite` no longer draws city lights unless `-l` is passed (a
-1.1.0 change its notes did not mention). LANOT's full-disk and CONUS scripts
-lost their lights on the first run after the upgrade and now pass `-l`.
+sidecar has to read the Item. The `path` column of `--timing-csv` can now be
+`mixed` besides `gpu` and `cpu`, and it reports what ran, not whether `--cuda`
+was passed. Twilight pixels change slightly, since the solar zenith lost its
+refraction term. From a release older than 1.1.0 there is one more change:
+`daynite` no longer draws city lights unless `-l` is passed (a 1.1.0 change its
+notes did not mention). LANOT's full-disk and CONUS scripts lost their lights
+on the first run after the upgrade and now pass `-l`.
 
 ### Added
 - STAC Items. `-j` writes a STAC 1.0.0 Item (projection, processing and, for
