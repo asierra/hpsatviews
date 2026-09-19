@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [1.2.0] - 2026-09-16
+## [1.2.0] - 2026-09-19
 
 STAC Items, a solar terminator aligned with satpy, a day-side IR enhancement
 for `daynite`, and a fix to how sibling channels are found that matters for
@@ -50,7 +50,7 @@ on the first run after the upgrade and now pass `-l`.
   end-to-end latency and host context, identical in the OpenMP and CUDA builds.
   Concurrent runs can share a file; a file written under another column schema
   is never appended to.
- (daynite): overlays the IR palette on the day side, so cold
+- `--ir-overlay` (daynite): overlays the IR palette on the day side, so cold
   cloud tops show over true colour instead of the day/night mask swapping one
   composite for the other. The weight is a linear ramp set by
   `--ir-range T1,T2` — pure IR at or below `T1`, true colour untouched at or
@@ -372,7 +372,8 @@ Initial public release. DOI: [10.5281/zenodo.20817974](https://doi.org/10.5281/z
 - Bilingual (English/Spanish) CLI help, man pages, and documentation.
 - End-to-end regression test suite and GitHub Actions CI.
 
-[Unreleased]: https://github.com/asierra/hpsatviews/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/asierra/hpsatviews/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/asierra/hpsatviews/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/asierra/hpsatviews/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/asierra/hpsatviews/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/asierra/hpsatviews/releases/tag/v1.0.0
