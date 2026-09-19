@@ -21,7 +21,7 @@ sudo make install
 make clean
 ```
 
-Dependencies (Debian/Ubuntu): `libnetcdf-dev`, `libhdf5-dev`, `libdeflate-dev`, `libpng-dev`, `libgdal-dev`, `libwebp-dev`, OpenMP-capable gcc. (`libhdf5-dev`/`libdeflate-dev` back the parallel chunk reader in `src/reader_nc_chunk.c`.) On RHEL/Rocky/Fedora the packages are `netcdf-devel hdf5-devel libdeflate-devel libpng-devel gdal-devel libwebp-devel` (GDAL/netcdf via EPEL). The Makefile auto-detects the HDF5 C library name (`libhdf5_serial` on Debian vs `libhdf5` on RHEL); override with `make HDF5_LIB=hdf5` if detection is wrong.
+Dependencies (Debian/Ubuntu): `libnetcdf-dev`, `libhdf5-dev`, `libdeflate-dev`, `libpng-dev`, `libgdal-dev`, OpenMP-capable gcc. (`libhdf5-dev`/`libdeflate-dev` back the parallel chunk reader in `src/reader_nc_chunk.c`.) On RHEL/Rocky/Fedora the packages are `netcdf-devel hdf5-devel libdeflate-devel libpng-devel gdal-devel` (GDAL/netcdf via EPEL). The Makefile auto-detects the HDF5 C library name (`libhdf5_serial` on Debian vs `libhdf5` on RHEL); override with `make HDF5_LIB=hdf5` if detection is wrong.
 
 CUDA build: `make CUDA=1 CUDA_ARCH=sm_XX` where `sm_XX` matches the GPU — `sm_75` (Tesla T4), `sm_80` (A30/A100), `sm_86` (RTX 30xx/A10), `sm_89` (RTX 40xx), `sm_90` (H100), `sm_120` (RTX 50xx, the default; needs CUDA ≥ 12.8). Switching between plain `make` and `make CUDA=1` needs a `make clean` first (make doesn't rebuild C objects on a CFLAGS-only change). `reproduction/bench_server.sh <anchor.nc>` benchmarks CPU-build vs CUDA-build on a target server (the dev speedups don't transfer — re-measure per host).
 
@@ -83,7 +83,7 @@ Anchor file (`OR_ABI-L1b-RadF-M6C13_G16_s20253231800172...nc`) identifies the sc
 
 ### RGB Mode System
 
-Modes defined in `src/rgb.c` switch: `truecolor`, `night`, `ash`, `airmass`, `daynite`, `severestorm`, `so2`, `custom`. Each specifies channel combinations and per-channel linear algebra. `daynite` auto-blends day/night using solar geometry from `src/daynight_mask.c`. `night` (and the night side of `daynite`) renders C13 brightness temperature via `create_nocturnal_pseudocolor()` (`src/nocturnal_pseudocolor.c`), optionally composited over a city-lights background read by `src/reader_webp.c`.
+Modes defined in `src/rgb.c` switch: `truecolor`, `night`, `ash`, `airmass`, `daynite`, `severestorm`, `so2`, `custom`. Each specifies channel combinations and per-channel linear algebra. `daynite` auto-blends day/night using solar geometry from `src/daynight_mask.c`. `night` (and the night side of `daynite`) renders C13 brightness temperature via `create_nocturnal_pseudocolor()` (`src/nocturnal_pseudocolor.c`), optionally composited over a city-lights background read by `src/reader_ppm.c`. The backgrounds are uncompressed binary PPM on purpose: they used to be WebP, and decoding the full-disk one cost 0.17 s per run — more than every `daynite` kernel on the GPU put together — for files that never change. A raw read from the page cache takes ~0.01 s; the price is disk (11/88/242 MB for conus/fd/lalo instead of 3.3 MB for all three). Converting with `dwebp -ppm` wrote exactly the pixels `WebPDecodeRGBInto` produced, so outputs were byte-identical across the switch. zstd -19 (5.7 MB, 0.056 s) is the fallback if a server ever reads them cold from a slow disk.
 
 True color synthesizes a green channel not present in ABI: `G = 0.465*B + 0.465*R + 0.07*NIR`.
 

@@ -27,7 +27,9 @@ was passed. Twilight pixels change slightly, since the solar zenith lost its
 refraction term. From a release older than 1.1.0 there is one more change:
 `daynite` no longer draws city lights unless `-l` is passed (a 1.1.0 change its
 notes did not mention). LANOT's full-disk and CONUS scripts lost their lights
-on the first run after the upgrade and now pass `-l`.
+on the first run after the upgrade and now pass `-l`. The city-lights
+backgrounds are now PPM files, to be converted from the WebP ones on each
+server before installing the binary (see Changed).
 
 ### Added
 - STAC Items. `-j` writes a STAC 1.0.0 Item (projection, processing and, for
@@ -186,6 +188,19 @@ on the first run after the upgrade and now pass `-l`.
   `include/clip_loader.h`, and can be overridden at build time with
   `make CFLAGS_EXTRA='-DRUTA_CLIPS=\"..\"'`. The override the source
   advertised was silently discarded before.
+
+- The city-lights backgrounds (`-l`) are read as uncompressed binary PPM
+  instead of WebP. Decoding the full-disk WebP took 0.17 s per run, more than
+  all of `daynite`'s GPU kernels together, for files that never change; the PPM
+  loads in about 0.01 s. Output is byte-identical. `libwebp` is no longer a
+  build dependency.
+
+  **Upgrading:** convert the three backgrounds next to the WebP ones before
+  installing the new binary, or `-l` drops its lights while the run still
+  exits 0 (only the log says so):
+  `for f in conus fd lalo; do dwebp land_lights_2016_$f.webp -ppm -o land_lights_2016_$f.ppm; done`
+  in `/usr/local/share/lanot/images/` (`dwebp` is in the `webp` package on
+  Debian, `libwebp-tools` on RHEL). They take 340 MB instead of 3.3 MB.
 
 ### Removed
 - `.github/copilot-instructions.md`, stale and unused.

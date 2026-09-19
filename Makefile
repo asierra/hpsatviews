@@ -35,7 +35,7 @@ CFLAGS_COMMON = -Wall -Wextra -std=c11 -fopenmp -D_POSIX_C_SOURCE=200809L \
 # differs by distro: libhdf5_serial (Debian/Ubuntu) vs libhdf5 (RHEL/Rocky/
 # Fedora). Auto-detect via the installed .so; override with e.g. HDF5_LIB=hdf5.
 HDF5_LIB ?= $(if $(wildcard /usr/lib*/libhdf5_serial.so* /usr/lib/*/libhdf5_serial.so*),hdf5_serial,hdf5)
-LDFLAGS = -lm -lnetcdf -l$(HDF5_LIB) -ldeflate -lpng -lwebp -fopenmp $(shell gdal-config --libs)
+LDFLAGS = -lm -lnetcdf -l$(HDF5_LIB) -ldeflate -lpng -fopenmp $(shell gdal-config --libs)
 
 ifeq ($(CUDA),1)
     CFLAGS_COMMON += -DHPSV_CUDA -I$(CUDA_HOME)/include

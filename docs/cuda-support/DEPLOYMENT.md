@@ -49,14 +49,14 @@ Compila para la arch exacta del servidor.
 **Debian/Ubuntu:**
 ```bash
 sudo apt-get install -y libnetcdf-dev libhdf5-dev libdeflate-dev \
-                        libpng-dev libgdal-dev libwebp-dev
+                        libpng-dev libgdal-dev
 ```
 **RHEL / Rocky / Fedora** (GDAL/netcdf vienen de EPEL + CRB):
 ```bash
 sudo dnf install -y epel-release
 sudo dnf config-manager --set-enabled crb
 sudo dnf install -y gcc make netcdf-devel hdf5-devel libdeflate-devel \
-                    libpng-devel gdal-devel libwebp-devel
+                    libpng-devel gdal-devel
 ```
 El nombre del lib HDF5 difiere (`libhdf5_serial` en Debian, `libhdf5` en RHEL). El
 Makefile lo **autodetecta**; si falla el link, fuérzalo con `make HDF5_LIB=hdf5`.

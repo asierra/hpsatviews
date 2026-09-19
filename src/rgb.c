@@ -31,7 +31,7 @@
 #include "rayleigh.h"
 #include "reader_nc.h"
 #include "nav_plan.h"
-#include "reader_webp.h"
+#include "reader_ppm.h"
 #include "reprojection.h"
 #include "rgb.h"
 #include "timing.h"
@@ -271,11 +271,11 @@ static ImageData load_citylights(unsigned int w, unsigned int h) {
     ImageData img = {0};
     const char *bg_path = NULL;
     if (w == 2500) {
-        bg_path = "/usr/local/share/lanot/images/land_lights_2016_conus.webp";
+        bg_path = "/usr/local/share/lanot/images/land_lights_2016_conus.ppm";
     } else if (w == 5424) {
-        bg_path = "/usr/local/share/lanot/images/land_lights_2016_fd.webp";
+        bg_path = "/usr/local/share/lanot/images/land_lights_2016_fd.ppm";
     } else if (w == 8987) {
-        bg_path = "/usr/local/share/lanot/images/land_lights_2016_lalo.webp";
+        bg_path = "/usr/local/share/lanot/images/land_lights_2016_lalo.ppm";
     } else {
         LOG_WARN("Resolution (%u) does not match available backgrounds; skipping lights.", w);
         return img;
@@ -283,8 +283,8 @@ static ImageData load_citylights(unsigned int w, unsigned int h) {
 
     LOG_INFO("Loading background image: %s", bg_path);
     double t0 = omp_get_wtime();
-    img = reader_load_webp(bg_path);
-    LOG_TIMING_STAGE(TM_READ, omp_get_wtime() - t0, "City-lights background (WebP)");
+    img = reader_load_ppm(bg_path);
+    LOG_TIMING_STAGE(TM_READ, omp_get_wtime() - t0, "City-lights background (PPM)");
     if (img.data == NULL) {
         LOG_WARN("Could not load the city-lights background image.");
     } else if (img.width != w || img.height != h || img.bpp < 3) {

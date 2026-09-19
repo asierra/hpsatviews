@@ -75,14 +75,13 @@ cd hpsatviews
   - **libnetcdf-dev** - Reading GOES L1b/L2 NetCDF files
   - **libpng-dev** - PNG image generation
   - **libgdal-dev** - COG (Cloud Optimized GeoTIFF) image generation
-  - **libwebp-dev** - Reading the background image (night lights) in `night`/`daynite` modes
   - **libm** - Math functions
   - **OpenMP** - Parallelism
 
 On Debian/Ubuntu:
 
 ```bash
-sudo apt install build-essential libnetcdf-dev libpng-dev libgdal-dev libwebp-dev
+sudo apt install build-essential libnetcdf-dev libpng-dev libgdal-dev
 ```
 
 To run the test suite you also need **ImageMagick** (tolerant pixel diff),
@@ -395,8 +394,10 @@ Generates an RGB composite from linear combinations of multiple bands.
 							in `night` and `daynite` modes. Without the flag the night side has a
 							plain backdrop. Before v1.1.0 `daynite` always drew the lights; an
 							installation upgrading from an older release has to add `-l` to keep
-							them. The CUDA path does not implement it yet, so `daynite -l --cuda`
-							composes on the CPU.
+							them. The backgrounds are binary PPM files,
+							`land_lights_2016_{conus,fd,lalo}.ppm` under
+							`/usr/local/share/lanot/images/`, one per grid; a grid without one
+							skips the lights with a warning.
 
 * `-N, --name <label>`      Descriptive product name. Written to the JSON and GeoTIFF metadata as
 						the root-level `product` field (alongside `satellite`, `sector`, `timestamp`).

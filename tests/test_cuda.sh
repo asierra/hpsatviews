@@ -139,7 +139,7 @@ if cmp -s daynite_ir_cpu.png daynite_cpu.png; then
     exit 1
 fi
 
-# Luces de ciudad (-l): el fondo WebP se sube a device y lo mezcla el kernel
+# Luces de ciudad (-l): el fondo PPM se sube a device y lo mezcla el kernel
 # nocturno. Hasta 2026-09-18 -l sacaba a daynite de la GPU entero, y la
 # produccion de LANOT corre daynite -l. Ademas de comparar, se exige que la
 # corrida --cuda haya compuesto en device: si cayera a CPU la comparacion
@@ -155,7 +155,7 @@ fi
 ./compare_image.sh daynite_l_cuda.png daynite_l_cpu.png
 # Sin el fondo instalado las dos rutas omiten las luces y la comparacion no dice
 # nada de ellas; con el fondo, -l tiene que cambiar la imagen.
-if [ -f /usr/local/share/lanot/images/land_lights_2016_conus.webp ] &&
+if [ -f /usr/local/share/lanot/images/land_lights_2016_conus.ppm ] &&
    cmp -s daynite_l_cpu.png daynite_cpu.png; then
     echo "  FALLO: -l no cambió la salida de daynite"
     exit 1
