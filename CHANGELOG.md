@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.2.0] - 2026-09-19
 
+DOI: [10.5281/zenodo.22849164](https://doi.org/10.5281/zenodo.22849164).
+
 STAC Items, a solar terminator aligned with satpy, a day-side IR enhancement
 for `daynite`, and a fix to how sibling channels are found that matters for
 mesoscale. On the GPU side, the viewing geometry and the reprojection moved to
