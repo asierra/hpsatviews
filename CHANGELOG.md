@@ -7,19 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Changed
-- `rgb`, and `gray`/`pseudocolor` with a multi-band `--expr`, reduce a
-  channel finer than the output grid while calibrating it, instead of building
-  it at full resolution and averaging it afterwards. The
-  0.5 km C02 of a 2 km full disk used to become 1.9 GB of floats read once and
-  discarded; now the packed counts of each block are averaged and calibrated
-  once. On a 6-core workstation the load of a full-disk `daynite` went from
-  1.8 s to 1.15 s, and `gray --expr C02-C03` of a full disk from 4.2 s to
-  3.6 s. The result is the same box filter, fill rules included, up
-  to float rounding: 130 of 29 M pixels of a full disk move by one level. The
-  L1b infrared bands, whose calibration is not linear, keep the old path. In
-  `--timing-csv` that time moves from `t_enhance` to `t_unpack`.
-
 ## [1.2.0] - 2026-09-19
 
 STAC Items, a solar terminator aligned with satpy, a day-side IR enhancement
@@ -42,7 +29,8 @@ refraction term. From a release older than 1.1.0 there is one more change:
 notes did not mention). LANOT's full-disk and CONUS scripts lost their lights
 on the first run after the upgrade and now pass `-l`. The city-lights
 backgrounds are now PPM files, to be converted from the WebP ones on each
-server before installing the binary (see Changed).
+server before installing the binary (see Changed). In `--timing-csv`, reducing
+a finer channel to the output grid moves from `t_enhance` to `t_unpack`.
 
 ### Added
 - STAC Items. `-j` writes a STAC 1.0.0 Item (projection, processing and, for
@@ -214,6 +202,19 @@ server before installing the binary (see Changed).
   `for f in conus fd lalo; do dwebp land_lights_2016_$f.webp -ppm -o land_lights_2016_$f.ppm; done`
   in `/usr/local/share/lanot/images/` (`dwebp` is in the `webp` package on
   Debian, `libwebp-tools` on RHEL). They take 340 MB instead of 3.3 MB.
+
+- `rgb`, and `gray`/`pseudocolor` with a multi-band `--expr`, reduce a channel
+  finer than the output grid while calibrating it, instead of building it at
+  full resolution and averaging it afterwards. The 0.5 km C02 of a 2 km full
+  disk used to become 1.9 GB of floats read once and discarded; now the packed
+  counts of each block are averaged and calibrated once. On tahan, calibrating
+  and reducing C01–C03 of a full-disk `daynite` went from 0.159 s to 0.061 s;
+  on a 6-core workstation the whole load went from 1.8 s to 1.15 s, and
+  `gray --expr C02-C03` of a full disk from 4.2 s to 3.6 s. The result is the
+  same box filter, fill rules included, up to float rounding: 130 of 29 M
+  pixels of a full disk move by one level. The L1b infrared bands, whose
+  calibration is not linear, keep the old path. In `--timing-csv` that time
+  moves from `t_enhance` to `t_unpack`.
 
 ### Removed
 - `.github/copilot-instructions.md`, stale and unused.
