@@ -852,20 +852,25 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
     }
     free(input_dup_dir);
 
-    // 4. Load channels and validate.
+    // 4. Read every header first, pick the reference channel from them, then
+    // read the grids. Knowing the target grid before reading lets load_nc_read()
+    // reduce a finer channel as it calibrates it, instead of building its full
+    // resolution floats only for the resampling below to average them away.
+    NcChannel *open_ch[17] = {0};
     for (int i = 0; i < ctx->channel_set->count; i++) {
         if (!ctx->channel_set->channels[i].filename) {
             snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falta archivo para canal %s",
                      ctx->channel_set->channels[i].name);
-            return false;
+            goto fail_open;
         }
         int cn = atoi(ctx->channel_set->channels[i].name + 1); // "C01" -> 1
         if (cn > 0 && cn <= 16) {
             LOG_DEBUG("Loading channel C%02d from %s", cn, ctx->channel_set->channels[i].filename);
-            if (load_nc_sf(ctx->channel_set->channels[i].filename, &ctx->channels[cn]) != 0) {
+            open_ch[cn] = load_nc_open(ctx->channel_set->channels[i].filename, &ctx->channels[cn]);
+            if (!open_ch[cn]) {
                 snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falla al cargar NetCDF: %s",
                          ctx->channel_set->channels[i].filename);
-                return false;
+                goto fail_open;
             }
 
             if (ctx->opts.use_full_res) {
@@ -886,6 +891,25 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
         }
     }
 
+    for (int cn = 1; cn <= 16; cn++) {
+        if (!open_ch[cn])
+            continue;
+        // Same factor the resampling loop below would use; a channel read at
+        // the reference grid is then skipped there by its dimensions.
+        const DataNC *ref = &ctx->channels[ctx->ref_channel_idx];
+        const DataNC *c = &ctx->channels[cn];
+        int factor = load_nc_reduction_factor(c, ref);
+        NcChannel *ch = open_ch[cn];
+        open_ch[cn] = NULL;
+        if (load_nc_read(ch, &ctx->channels[cn], factor) != 0) {
+            snprintf(ctx->error_msg, sizeof(ctx->error_msg), "Falla al cargar NetCDF: C%02d", cn);
+            goto fail_open;
+        }
+        if (factor > 1)
+            LOG_INFO("Read C%02d reduced %dx on load (%.1fkm -> %.1fkm)", cn, factor,
+                     c->native_resolution_km, ref->native_resolution_km);
+    }
+
     LOG_DEBUG("Channels loaded:");
     for (int i = 0; i < ctx->channel_set->count; i++) {
         int cn = atoi(ctx->channel_set->channels[i].name + 1);
@@ -903,6 +927,9 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
         int cn = atoi(ctx->channel_set->channels[i].name + 1);
         if (cn == ctx->ref_channel_idx || ctx->channels[cn].fdata.data_in == NULL)
             continue;
+        if (ctx->channels[cn].fdata.width == ctx->channels[ctx->ref_channel_idx].fdata.width &&
+            ctx->channels[cn].fdata.height == ctx->channels[ctx->ref_channel_idx].fdata.height)
+            continue; // already reduced by load_nc_read()
 
         float res = ctx->channels[cn].native_resolution_km;
         float factor_f = res / ref_res;
@@ -938,6 +965,11 @@ static bool load_channels(RgbContext *ctx, const char **req_channels) {
     }
 
     return true;
+
+fail_open:
+    for (int cn = 1; cn <= 16; cn++)
+        load_nc_close(open_ch[cn]);
+    return false;
 }
 
 static bool process_geospatial(RgbContext *ctx, const RgbStrategy *strategy) {

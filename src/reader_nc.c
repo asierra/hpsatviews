@@ -247,7 +247,76 @@ static int datanc_read_metadata(int ncid, int varid, DataNC *datanc, NCScaleConf
 }
 
 /// Phase 4 - Unpacking and parallelization: converts raw packed integers to calibrated floats.
-static int datanc_unpack_grid(int ncid, int varid, size_t total_size, DataNC *datanc, const NCScaleConfig *cfg) {
+/* Calibrates packed integers straight into a grid `factor` times coarser, which
+ * is what downsample_boxfilter() would make of the full-resolution floats: the
+ * mean of each factor x factor block, and fill if the block touches fill. Valid
+ * only where calibration is linear in the count (everything but the L1b
+ * emissive bands, whose Planck inversion is not), because then the mean of the
+ * calibrated block is the calibration of the mean count. It exists so a 0.5 km
+ * C02 headed for a 2 km grid never becomes 1.9 GB of floats that are read once
+ * and thrown away. The macro is instantiated for the two 16-bit packings. */
+#define DATANC_REDUCE_LOOP(T)                                                        \
+    do {                                                                             \
+        const T *src = (const T *)datatmp;                                           \
+        const T fillv = (T)cfg->fillvalue;                                           \
+        int dn_min = INT32_MAX, dn_max = INT32_MIN;                                  \
+        _Pragma("omp parallel for reduction(min:dn_min) reduction(max:dn_max)")      \
+        for (unsigned int j = 0; j < oh; j++) {                                      \
+            for (unsigned int i = 0; i < ow; i++) {                                  \
+                int32_t sum = 0;                                                     \
+                int fill = 0;                                                        \
+                for (int l = 0; l < factor; l++) {                                   \
+                    const T *row = src + ((size_t)j * factor + l) * w + (size_t)i * factor; \
+                    for (int k = 0; k < factor; k++) {                               \
+                        int v = row[k];                                              \
+                        if (row[k] == fillv) { fill = 1; continue; }                 \
+                        sum += v;                                                    \
+                        if (v < dn_min) dn_min = v;                                  \
+                        if (v > dn_max) dn_max = v;                                  \
+                    }                                                                \
+                }                                                                    \
+                float *dst = &datanc->fdata.data_in[(size_t)j * ow + i];             \
+                if (fill) { *dst = NonData; continue; }                              \
+                double val = (double)sum * inv_n * cfg->scale_factor + cfg->add_offset; \
+                *dst = (float)(val * gain);                                          \
+            }                                                                        \
+        }                                                                            \
+        min_dn = dn_min; max_dn = dn_max;                                            \
+    } while (0)
+
+static int datanc_unpack_reduced(const void *datatmp, DataNC *datanc, const NCScaleConfig *cfg,
+                                 int factor) {
+    const unsigned int w = datanc->fdata.width, h = datanc->fdata.height;
+    const unsigned int ow = w / factor, oh = h / factor;
+    datanc->fdata = dataf_create(ow, oh);
+    if (!datanc->fdata.data_in) return -1;
+
+    const bool l1b_reflective = datanc->level == LEVEL_L1b;
+    const double gain = l1b_reflective ? cfg->kappa0 : 1.0;
+    const double inv_n = 1.0 / ((double)factor * factor);
+    int min_dn = INT32_MAX, max_dn = INT32_MIN;
+    if (cfg->var_type == NC_USHORT) DATANC_REDUCE_LOOP(unsigned short);
+    else                            DATANC_REDUCE_LOOP(short);
+
+    /* fmin/fmax describe the full-resolution values, as downsample_boxfilter()
+     * leaves them. The extremes of a linear map sit at the extreme counts, run
+     * through the same float expression the full-resolution loop uses. */
+    if (min_dn <= max_dn) {
+        float a = min_dn * cfg->scale_factor + cfg->add_offset;
+        float b = max_dn * cfg->scale_factor + cfg->add_offset;
+        if (l1b_reflective) { a *= cfg->kappa0; b *= cfg->kappa0; }
+        datanc->fdata.fmin = fminf(a, b);
+        datanc->fdata.fmax = fmaxf(a, b);
+    } else {
+        datanc->fdata.fmin = 1e30f; datanc->fdata.fmax = -1e30f;
+    }
+    datanc->is_float = true;
+    return 0;
+}
+#undef DATANC_REDUCE_LOOP
+
+static int datanc_unpack_grid(int ncid, int varid, size_t total_size, DataNC *datanc,
+                              const NCScaleConfig *cfg, int factor) {
     size_t tsize = (cfg->var_type == NC_BYTE || cfg->var_type == NC_UBYTE) ? 1 : 2;
     void *datatmp = malloc(tsize * total_size);
     if (!datatmp) return -1;
@@ -274,6 +343,15 @@ static int datanc_unpack_grid(int ncid, int varid, size_t total_size, DataNC *da
     if (!fast_loaded && nc_get_var(ncid, varid, datatmp) != NC_NOERR) { free(datatmp); return -1; }
 
     double t_unpack = omp_get_wtime();
+    const unsigned int w = datanc->fdata.width, h = datanc->fdata.height;
+    const bool linear = !(datanc->level == LEVEL_L1b && datanc->band_id >= 7);
+    if (factor > 1 && tsize == 2 && linear && w % factor == 0 && h % factor == 0) {
+        int rc = datanc_unpack_reduced(datatmp, datanc, cfg, factor);
+        LOG_TIMING_STAGE(TM_UNPACK, omp_get_wtime() - t_unpack,
+                         "Calibration/unpack + boxfilter (factor=%d, fused)", factor);
+        free(datatmp);
+        return rc;
+    }
     if (cfg->var_type == NC_BYTE || cfg->var_type == NC_UBYTE) {
         datanc->is_float = false;
         datanc->bdata = datab_create(datanc->fdata.width, datanc->fdata.height);
@@ -328,47 +406,99 @@ static int datanc_unpack_grid(int ncid, int varid, size_t total_size, DataNC *da
      * (Planck inversion) or reflectances (kappa0), for every pixel. */
     LOG_TIMING_STAGE(TM_UNPACK, omp_get_wtime() - t_unpack, "Calibration/unpack");
     free(datatmp);
+
+    /* A reduction the fused loop could not do (Planck, byte products, a grid
+     * the factor does not divide) is still honoured, the slow way. */
+    if (factor > 1 && datanc->is_float) {
+        DataF reduced = downsample_boxfilter(datanc->fdata, factor);
+        if (!reduced.data_in) return -1;
+        dataf_destroy(&datanc->fdata);
+        datanc->fdata = reduced;
+    }
     return 0;
 }
 
-/// Phase 5 - Final orchestration: open, identify, read metadata, unpack, and clean up.
-int load_nc_sf(const char *filename, DataNC *datanc) {
-    int ncid, varid, status = -1;
-    NCScaleConfig cfg = { .scale_factor = 1.0f, .add_offset = 0.0f, .fillvalue = -1, .var_type = NC_SHORT };
+/// Phase 5 - Final orchestration, in two steps so a caller holding several
+/// channels can read every header before deciding what grid to read them onto.
+struct NcChannel {
+    int ncid;
+    int varid;
+    NCScaleConfig cfg;
+    char *filename;
+};
+
+NcChannel *load_nc_open(const char *filename, DataNC *datanc) {
+    NcChannel *ch = calloc(1, sizeof(*ch));
+    if (!ch) return NULL;
+    ch->cfg = (NCScaleConfig){ .scale_factor = 1.0f, .add_offset = 0.0f, .fillvalue = -1, .var_type = NC_SHORT };
 
     if (datanc != NULL) {
-		memset(datanc, 0, sizeof(DataNC));
+        memset(datanc, 0, sizeof(DataNC));
         datanc->proj_info.valid = false;
     }
-    
+
     double t_open = omp_get_wtime();
-    if (nc_open(filename, NC_NOWRITE, &ncid) != NC_NOERR) {
+    if (nc_open(filename, NC_NOWRITE, &ch->ncid) != NC_NOERR) {
         LOG_ERROR("Error opening NetCDF: %s", filename);
-        return -1;
+        free(ch);
+        return NULL;
     }
 
-    varid = datanc_identify_product(ncid, filename, datanc);
-    if (varid < 0) {
+    ch->varid = datanc_identify_product(ch->ncid, filename, datanc);
+    if (ch->varid < 0) {
         LOG_WARN("Skipped or unsupported product: %s", filename);
-        goto cleanup;
+        goto fail;
     }
-
-    if (datanc_read_metadata(ncid, varid, datanc, &cfg) != 0) goto cleanup;
+    if (datanc_read_metadata(ch->ncid, ch->varid, datanc, &ch->cfg) != 0) goto fail;
     LOG_TIMING_STAGE(TM_OPEN, omp_get_wtime() - t_open, "NetCDF open + metadata");
     {   /* Every sibling channel counts toward the run's input volume. */
         struct stat st_in;
         if (stat(filename, &st_in) == 0) timing_add_bytes((long long)st_in.st_size);
     }
+    ch->filename = strdup(filename);
+    if (!ch->filename) goto fail;
+    return ch;
 
+fail:
+    nc_close(ch->ncid);
+    free(ch);
+    LOG_FATAL("NetCDF read pipeline failed for %s", filename);
+    return NULL;
+}
+
+void load_nc_close(NcChannel *ch) {
+    if (!ch) return;
+    nc_close(ch->ncid);
+    free(ch->filename);
+    free(ch);
+}
+
+int load_nc_read(NcChannel *ch, DataNC *datanc, int factor) {
+    if (!ch) return -1;
+    if (factor < 1) factor = 1;
     size_t total_size = (size_t)datanc->fdata.width * (size_t)datanc->fdata.height;
     LOG_INFO("NetCDF dimensions: %ux%u (total: %zu)", datanc->fdata.width, datanc->fdata.height, total_size);
-    if (datanc_unpack_grid(ncid, varid, total_size, datanc, &cfg) != 0) goto cleanup;
-
-    status = 0;
-cleanup:
-    nc_close(ncid);
-    if (status != 0) LOG_FATAL("NetCDF read pipeline failed for %s", filename);
+    int status = datanc_unpack_grid(ch->ncid, ch->varid, total_size, datanc, &ch->cfg, factor);
+    if (status != 0) LOG_FATAL("NetCDF read pipeline failed for %s", ch->filename);
+    load_nc_close(ch);
     return status;
+}
+
+int load_nc_reduction_factor(const DataNC *ch, const DataNC *ref) {
+    if (!ch || !ref || ch == ref || ch->native_resolution_km <= 0.0f ||
+        ref->native_resolution_km <= ch->native_resolution_km * 1.01f)
+        return 1;
+    int f = (int)(ref->native_resolution_km / ch->native_resolution_km + 0.5f);
+    if (f > 1 && ch->fdata.width / f == ref->fdata.width &&
+        ch->fdata.height / f == ref->fdata.height)
+        return f;
+    return 1;
+}
+
+int load_nc_sf(const char *filename, DataNC *datanc) {
+    NcChannel *ch = load_nc_open(filename, datanc);
+    if (!ch) return -1;
+    return load_nc_read(ch, datanc, 1);
 }
 
 

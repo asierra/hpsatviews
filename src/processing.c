@@ -187,21 +187,25 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         }
         free(dir_dup);
         
-        // Load each channel's NetCDF data.
-        for (int i = 0; i < cset->count; i++) {
+        // Read every header first and pick the reference channel from them, so
+        // each grid can be read already reduced to it (see load_nc_read()).
+        NcChannel* open_ch[17] = {0};
+        bool load_ok = true;
+        for (int i = 0; i < cset->count && load_ok; i++) {
             int band_id = atoi(cset->channels[i].name + 1);
             if (band_id < 1 || band_id > 16) continue;
-            
+
             LOG_INFO("Loading channel %s", cset->channels[i].name);
-            if (load_nc_sf(cset->channels[i].filename, &channels[band_id]) != 0) {
+            open_ch[band_id] = load_nc_open(cset->channels[i].filename, &channels[band_id]);
+            if (!open_ch[band_id]) {
                 LOG_ERROR("Failed to load channel %s", cset->channels[i].name);
-                channelset_destroy(cset); goto cleanup;
+                load_ok = false;
             }
         }
-        
+
         // Identify the reference channel (target resolution).
         int ref_channel_idx = 0;
-        for (int i = 0; i < cset->count; i++) {
+        for (int i = 0; i < cset->count && load_ok; i++) {
             int cn = atoi(cset->channels[i].name + 1);
             if (cfg->use_full_res) {
                 if (ref_channel_idx == 0 || channels[cn].native_resolution_km < channels[ref_channel_idx].native_resolution_km) {
@@ -213,7 +217,22 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
                 }
             }
         }
-        
+
+        for (int cn = 1; cn <= 16; cn++) {
+            if (!open_ch[cn]) continue;
+            NcChannel* ch = open_ch[cn];
+            open_ch[cn] = NULL;
+            if (!load_ok) { load_nc_close(ch); continue; }
+            int factor = load_nc_reduction_factor(&channels[cn], &channels[ref_channel_idx]);
+            if (load_nc_read(ch, &channels[cn], factor) != 0) {
+                LOG_ERROR("Failed to load channel C%02d", cn);
+                load_ok = false;
+            } else if (factor > 1) {
+                LOG_INFO("Read C%02d reduced %dx on load", cn, factor);
+            }
+        }
+        if (!load_ok) { channelset_destroy(cset); goto cleanup; }
+
         LOG_INFO("Reference channel: C%02d", ref_channel_idx);
         
         // Resample channels to match the reference resolution.
@@ -221,6 +240,9 @@ int run_processing(const ProcessConfig* cfg, MetadataContext* meta) {
         for (int i = 0; i < cset->count; i++) {
             int cn = atoi(cset->channels[i].name + 1);
             if (cn == ref_channel_idx) continue;
+            if (channels[cn].fdata.width == channels[ref_channel_idx].fdata.width &&
+                channels[cn].fdata.height == channels[ref_channel_idx].fdata.height)
+                continue; // already reduced by load_nc_read()
             
             float res = channels[cn].native_resolution_km;
             float factor_f = res / ref_res;

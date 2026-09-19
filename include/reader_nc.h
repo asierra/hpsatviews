@@ -13,6 +13,24 @@
 /// Loads GOES ABI L1b or L2 data and metadata from a NetCDF file.
 int load_nc_sf(const char *filename, DataNC *datanc);
 
+/// The same load in two steps. load_nc_open() reads only the header into
+/// `datanc` (dimensions, calibration, native_resolution_km, ...) and keeps the
+/// file open; load_nc_read() then reads the grid and closes it, whatever the
+/// outcome. With factor > 1 the grid comes back factor times coarser, each
+/// pixel the mean of a factor x factor block (fill if the block touches fill),
+/// as downsample_boxfilter() would leave it. Where calibration is linear this
+/// is done on the packed counts, without the full-resolution float grid. A
+/// channel opened and never read must be released with load_nc_close().
+typedef struct NcChannel NcChannel;
+NcChannel *load_nc_open(const char *filename, DataNC *datanc);
+int load_nc_read(NcChannel *ch, DataNC *datanc, int factor);
+void load_nc_close(NcChannel *ch);
+
+/// Factor by which `ch` (header only, from load_nc_open()) has to be reduced to
+/// land on `ref`'s grid: the same factor the downsample_boxfilter() pass after a
+/// full load would use, or 1 if it is not finer or the grids do not line up.
+int load_nc_reduction_factor(const DataNC *ch, const DataNC *ref);
+
 /// Computes the lat/lon navigation grids from a GOES-R fixed-grid file's
 /// projection metadata. The projection setup is shared with the CUDA path via
 /// nav_build_plan() (include/nav_plan.h).
